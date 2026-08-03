@@ -73,7 +73,7 @@
         <h2>Verification and follow-up</h2>
         <p>
           PostgreSQL 16 container contract는 active last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection,
-          no-overlap rotation과 repeated revocation을 확인합니다. stopped database outage/restart, migration/restore drill, backup/RLS access,
+          no-overlap rotation, repeated revocation, stopped database에서 bounded/redacted store readiness failure와 restart 뒤 requalification을 확인합니다. migration/restore drill, backup/RLS access,
           KMS/pepper rotation, audit retention과 alert owner는 qualification register의 deployment-owned gate입니다.
         </p>
       </section>

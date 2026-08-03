@@ -1,6 +1,6 @@
 //! Opt-in `PostgreSQL` contract tests for the keyed API-key store.
 
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use rustee_auth::{
     ApiKeyError, ApiKeyFingerprint, ApiKeyFingerprintStore, ApiKeyPepper, Principal,
@@ -191,4 +191,32 @@ async fn expired_and_duplicate_fingerprints_are_rejected_without_overwriting_an_
         .unwrap(),
         1
     );
+}
+
+#[tokio::test]
+#[ignore = "requires CI to stop its PostgreSQL container before this contract"]
+async fn api_key_store_readiness_fails_within_the_deadline_during_an_outage() {
+    assert!(
+        std::env::var_os("RUSTEE_AUTH_SQLX_EXPECT_OUTAGE").is_some(),
+        "CI must explicitly opt into the stopped-PostgreSQL contract"
+    );
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_millis(200))
+        .connect_lazy(&database_url())
+        .unwrap();
+    let store = PostgresApiKeyStore::new(pool);
+
+    let started = Instant::now();
+    let error = store
+        .readiness(Duration::from_millis(500))
+        .await
+        .unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(matches!(
+        &error,
+        PostgresApiKeyStoreError::Storage(_) | PostgresApiKeyStoreError::ReadinessTimedOut(_)
+    ));
+    assert!(!error.to_string().contains("127.0.0.1"));
+    assert!(!format!("{error:?}").contains("127.0.0.1"));
 }

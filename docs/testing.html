@@ -263,6 +263,7 @@ examples/
           keyed authenticator test는 same key의 stable 32-byte fingerprint, distinct key separation, non-zero pepper requirement, redacted <code>Debug</code>,
           invalid key pre-store rejection과 fake fingerprint store의 principal handoff를 확인합니다. optional <code>rustee-auth-sqlx</code> PostgreSQL 16 contract는
           active lookup의 last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection, no-overlap rotation와 repeated revocation을 확인합니다.
+          CI는 이어 PostgreSQL을 중지해 store readiness가 500ms deadline 안에서 endpoint를 render하지 않는 failure로 끝나는지, restart 뒤 같은 durable credential contract가 다시 성공하는지도 확인합니다.
           static API-key mapping은 local/test only이며 real deployment의 client-key/pepper migration, KMS delivery, audit retention과 provider-specific constant-time lookup은 separate provider integration gate입니다.
         </p>
       </section>
@@ -414,7 +415,7 @@ examples/
         <p>
           <code>rustee-sqlx</code>는 기본 5초 initial-pool deadline을 사용합니다. PostgreSQL 16 CI는 database를
           중지한 상태에서 500ms deadline의 connection failure가 URL credential 또는 endpoint를 render하지 않는지
-          확인합니다. restart와 readiness 확인 뒤 SQLx, transactional outbox, AI audit/usage ledger, MongoDB checkpoint PostgreSQL
+          확인합니다. restart와 readiness 확인 뒤 SQLx, transactional outbox, keyed API-key store, AI audit/usage ledger, MongoDB checkpoint PostgreSQL
           contracts를 다시 실행합니다. application은 이 low-level error를 HTTP response로 변환할 때 별도의 status와
           body policy를 소유합니다.
         </p>

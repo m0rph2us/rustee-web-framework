@@ -8,7 +8,7 @@
 
 use std::{
     fmt,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures_util::future::BoxFuture;
@@ -98,6 +98,26 @@ impl PostgresApiKeyStore {
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Executes a database query within an application-supplied readiness deadline.
+    ///
+    /// API-key authentication must fail closed when its durable identity store is unavailable.
+    /// A zero timeout is rejected before a query starts.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sanitized storage error when `PostgreSQL` cannot complete the query, or a
+    /// distinct timeout or validation error.
+    pub async fn readiness(&self, timeout: Duration) -> Result<(), PostgresApiKeyStoreError> {
+        if timeout.is_zero() {
+            return Err(PostgresApiKeyStoreError::InvalidReadinessTimeout);
+        }
+        tokio::time::timeout(timeout, sqlx::query("SELECT 1").execute(&self.pool))
+            .await
+            .map_err(|_| PostgresApiKeyStoreError::ReadinessTimedOut(timeout))?
+            .map(|_| ())
+            .map_err(PostgresApiKeyStoreError::storage)
     }
 
     /// Registers one active fingerprint and returns an opaque record identity.
@@ -296,6 +316,12 @@ pub enum PostgresApiKeyStoreError {
     /// Principal serialization failed before storage.
     #[error("API-key principal metadata is invalid")]
     InvalidPrincipal,
+    /// A readiness check was requested with no deadline.
+    #[error("API-key store readiness timeout must be greater than zero")]
+    InvalidReadinessTimeout,
+    /// The readiness query did not complete before its deadline.
+    #[error("API-key store readiness timed out after {0:?}")]
+    ReadinessTimedOut(Duration),
     /// `PostgreSQL` storage did not complete; source detail remains available to application logs.
     #[error("PostgreSQL API-key store operation failed")]
     Storage(#[source] sqlx::Error),
@@ -314,6 +340,8 @@ impl fmt::Debug for PostgresApiKeyStoreError {
             Self::MissingActiveRecord => "MissingActiveRecord",
             Self::InvalidExpiry => "InvalidExpiry",
             Self::InvalidPrincipal => "InvalidPrincipal",
+            Self::InvalidReadinessTimeout => "InvalidReadinessTimeout",
+            Self::ReadinessTimedOut(_) => "ReadinessTimedOut",
             Self::Storage(_) => "Storage",
         };
         formatter
@@ -338,7 +366,11 @@ mod tests {
 
     use rustee_auth::{ApiKeyPepper, Principal};
 
-    use super::{ApiKeyRegistration, PostgresApiKeyStoreError, system_time_unix_seconds};
+    use sqlx::postgres::PgPoolOptions;
+
+    use super::{
+        ApiKeyRegistration, PostgresApiKeyStore, PostgresApiKeyStoreError, system_time_unix_seconds,
+    };
 
     #[test]
     fn registration_debug_redacts_fingerprint_and_principal() {
@@ -361,6 +393,19 @@ mod tests {
         assert!(matches!(
             system_time_unix_seconds(before_epoch),
             Err(PostgresApiKeyStoreError::InvalidExpiry)
+        ));
+    }
+
+    #[tokio::test]
+    async fn readiness_rejects_a_zero_timeout_before_connecting() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://rustee:rustee@127.0.0.1:5432/rustee")
+            .unwrap();
+        let store = PostgresApiKeyStore::new(pool);
+
+        assert!(matches!(
+            store.readiness(Duration::ZERO).await,
+            Err(PostgresApiKeyStoreError::InvalidReadinessTimeout)
         ));
     }
 }

@@ -272,6 +272,7 @@ jobs:
       - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract lease_blocks_contenders_and_rejects_a_stale_checkpoint_writer -- --ignored
       - run: docker stop rustee-postgres
       - run: RUSTEE_SQLX_EXPECT_OUTAGE=1 cargo test -p rustee-sqlx --test postgres_contract initial_pool_connect_is_bounded_and_does_not_render_database_credentials -- --ignored
+      - run: RUSTEE_AUTH_SQLX_EXPECT_OUTAGE=1 cargo test -p rustee-auth-sqlx --test postgres_contract api_key_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
       - run: RUSTEE_CHECKPOINT_EXPECT_OUTAGE=1 cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoint_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
       - run: docker start rustee-postgres
       - run: |
