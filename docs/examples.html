@@ -40,7 +40,7 @@
             <tr><td><code>middleware-example</code></td><td><code>examples/middleware</code>, port 3002</td><td>explicit CORS, request ID, panic boundary, compression order</td><td>proxy trust와 production panic policy는 deployment가 선택</td></tr>
             <tr><td><code>security-jwt</code></td><td><code>examples/security-jwt</code>, port 3003, <code>JWT_HMAC_SECRET</code></td><td>HMAC JWT verified principal과 missing bearer challenge</td><td>OIDC/JWKS, key rotation, issuer outage qualification은 포함하지 않음</td></tr>
             <tr><td><code>jobs-example</code></td><td><code>examples/jobs</code></td><td>typed envelope, idempotency key, publish와 registry dispatch</td><td>local publisher는 durable broker, ack, retry, DLQ가 아님</td></tr>
-            <tr><td><code>ai-pipeline</code></td><td><code>examples/ai-pipeline</code>, port 3004, <code>OPENAI_API_KEY</code></td><td>explicit model alias, AI pipeline, response mapping, failure redaction</td><td>recorded test provider는 live spend, tenant/budget/retention gate가 아님</td></tr>
+            <tr><td><code>ai-pipeline</code></td><td><code>examples/ai-pipeline</code>, port 3004, <code>OPENAI_API_KEY</code>, <code>OPENAI_MODEL</code></td><td>deployment-configured provider model, AI pipeline, response mapping, failure redaction</td><td>recorded test provider는 live spend, tenant/budget/retention gate가 아님</td></tr>
           </tbody>
         </table>
       </section>
@@ -52,8 +52,8 @@ cargo +1.94.1 run -p json-api
 cargo +1.94.1 run -p middleware-example
 JWT_HMAC_SECRET=change-me cargo +1.94.1 run -p security-jwt
 cargo +1.94.1 run -p jobs-example
-OPENAI_API_KEY=... cargo +1.94.1 run -p ai-pipeline</code></pre>
-        <p><code>ai-pipeline</code>의 run command만 real OpenAI provider request를 만들 수 있습니다. live credential, spending limit, tenant policy, output retention과 provider outage handling을 검증할 때는 <a href="./ai.html">AI application integration</a>과 release qualification을 함께 따릅니다.</p>
+OPENAI_API_KEY=... OPENAI_MODEL=your-provider-model-id cargo +1.94.1 run -p ai-pipeline</code></pre>
+        <p><code>ai-pipeline</code>의 run command만 real OpenAI provider request를 만들 수 있습니다. <code>OPENAI_MODEL</code>은 adapter에 전달할 provider model ID이며 application alias를 자동 해석하지 않습니다. live credential, spending limit, tenant policy, output retention과 provider outage handling을 검증할 때는 <a href="./ai.html">AI application integration</a>과 release qualification을 함께 따릅니다.</p>
       </section>
 
       <section>

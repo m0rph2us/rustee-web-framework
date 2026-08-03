@@ -16,15 +16,20 @@ struct SupportReply {
     model: String,
 }
 
+struct SupportState<P> {
+    pipeline: AiPipeline<P>,
+    model: String,
+}
+
 async fn answer<P>(
-    State(pipeline): State<AiPipeline<P>>,
+    State(state): State<SupportState<P>>,
     Json(question): Json<SupportQuestion>,
 ) -> Result<Json<SupportReply>>
 where
     P: AiProvider,
 {
     let request = ChatRequest::new(
-        "support.default",
+        state.model.clone(),
         [
             ChatMessage::new(
                 MessageRole::System,
@@ -36,7 +41,8 @@ where
         ],
     )
     .map_err(|_| Error::bad_request("a support request needs one message"))?;
-    let response = pipeline
+    let response = state
+        .pipeline
         .complete(request)
         .await
         .map_err(|_| Error::internal())?;
@@ -47,21 +53,32 @@ where
     }))
 }
 
-fn app<P>(pipeline: AiPipeline<P>) -> App
+fn app<P>(pipeline: AiPipeline<P>, model: impl Into<String>) -> App
 where
     P: AiProvider,
 {
     App::new()
-        .with_state(pipeline)
+        .with_state(SupportState {
+            pipeline,
+            model: model.into(),
+        })
         .post("/support/answer", answer::<P>)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = OpenAiResponsesProvider::new(OpenAiConfig::new(env::var("OPENAI_API_KEY")?)?)?;
+    let model = env::var("OPENAI_MODEL")?;
+    if model.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "OPENAI_MODEL must not be blank",
+        )
+        .into());
+    }
     rustee::serve(
         SocketAddr::from(([127, 0, 0, 1], 3004)),
-        app(AiPipeline::new(provider)),
+        app(AiPipeline::new(provider), model),
     )
     .await?;
     Ok(())
@@ -77,7 +94,7 @@ mod tests {
     use super::{SupportQuestion, SupportReply, app};
 
     #[tokio::test]
-    async fn pipeline_endpoint_uses_the_explicit_model_alias_and_returns_a_provider_response() {
+    async fn pipeline_endpoint_uses_the_configured_provider_model_and_returns_a_response() {
         let provider = RecordedAiProvider::new();
         provider.queue_completion(
             ChatResponse::new(
@@ -92,7 +109,7 @@ mod tests {
             )
             .unwrap(),
         );
-        let client = TestApp::new(app(AiPipeline::new(provider.clone())));
+        let client = TestApp::new(app(AiPipeline::new(provider.clone()), "gpt-test"));
 
         let response = client
             .post("/support/answer")
@@ -116,13 +133,13 @@ mod tests {
         let records = provider.recorded_requests();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].operation(), RecordedAiOperation::Complete);
-        assert_eq!(records[0].model(), "support.default");
+        assert_eq!(records[0].model(), "gpt-test");
         assert_eq!(records[0].message_count(), 2);
     }
 
     #[tokio::test]
     async fn provider_failures_are_normalized_before_the_http_response() {
-        let client = TestApp::new(app(AiPipeline::new(RecordedAiProvider::new())));
+        let client = TestApp::new(app(AiPipeline::new(RecordedAiProvider::new()), "gpt-test"));
 
         let response = client
             .post("/support/answer")
