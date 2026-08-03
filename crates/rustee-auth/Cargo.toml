@@ -9,12 +9,15 @@ description = "Authentication principal and bearer authorization middleware for 
 
 [dependencies]
 futures-util.workspace = true
+hmac.workspace = true
 http.workspace = true
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
 rustee-tenant = { path = "../rustee-tenant", version = "0.1.0" }
 serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tower.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 rustee-router = { path = "../rustee-router", version = "0.1.0" }

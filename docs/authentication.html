@@ -362,8 +362,8 @@ async fn login_callback(
             </tr>
             <tr>
               <td>API key service authentication</td>
-              <td><code>rustee-auth::ApiKeyLayer::header</code>와 application-owned <code>ApiKeyAuthenticator</code></td>
-              <td>explicit header field name, exactly one printable ASCII value at most 4 KiB, no query/cookie credential, provider의 secret-safe lookup/constant-time comparison·rotation·audit, raw-key-free error/logging</td>
+              <td><code>rustee-auth::ApiKeyLayer::header</code>와 <code>KeyedApiKeyAuthenticator&lt;ApiKeyFingerprintStore&gt;</code></td>
+              <td>explicit header field name, exactly one printable ASCII value at most 4 KiB, no query/cookie credential, HMAC-SHA-256 keyed fingerprint lookup, store-owned rotation/revocation/audit, raw-key-free error/logging</td>
             </tr>
             <tr>
               <td>Cookie session</td>
@@ -393,15 +393,27 @@ async fn login_callback(
           503으로 fail-closed 합니다. layer는 validated <code>Principal</code>만 extension에 넣으며 raw key, configured header name,
           lookup detail을 response, handler 또는 <code>Debug</code> output에 넣지 않습니다.
         </p>
-        <pre><code>use rustee_auth::{ApiKeyAuthenticator, ApiKeyLayer, Principal};
+        <pre><code>use rustee_auth::{
+    ApiKeyLayer, ApiKeyPepper, KeyedApiKeyAuthenticator,
+};
 
-// The provider owns hashed lookup, rotation, tenant mapping, and audit policy.
+// deployment_secret_bytes is exactly 32 bytes from application-owned secret delivery.
+let pepper = ApiKeyPepper::new(deployment_secret_bytes)?;
+let api_key_authenticator = KeyedApiKeyAuthenticator::new(pepper, api_key_store);
 let protected = ApiKeyLayer::header("X-API-Key", api_key_authenticator)?
     .layer(App::new().get("/service", handler));</code></pre>
         <p>
-          <code>StaticApiKeyAuthenticator</code>는 test/local example만을 위한 raw in-memory mapping입니다. production에는 keyed hash,
-          constant-time comparison 또는 provider-native secret lookup과 revocation/rotation runbook을 가진 application provider를 사용합니다.
-          query parameter와 cookie API key, automatic OpenAPI-to-middleware wiring, database schema, rate-limit key derivation은 이 layer의 scope가 아닙니다.
+          <code>KeyedApiKeyAuthenticator</code>는 valid raw key에서 HMAC-SHA-256 <code>ApiKeyFingerprint</code>를 만들고
+          <code>ApiKeyFingerprintStore</code>에는 그 opaque binary value만 전달합니다. store는 unknown/revoked/expired를 rejection으로,
+          infrastructure failure를 unavailable로 정규화하며 successful lookup과 last-used/audit update를 하나의 transaction으로 처리할 수 있습니다.
+          client key rotation은 동일 principal에 여러 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부하는 방식으로 구현합니다.
+        </p>
+        <p>
+          pepper는 application의 secret manager 또는 protected configuration에서 공급하는 32-byte, non-zero deployment secret입니다. Rustee는
+          pepper rotation migration, database schema, KMS policy, audit retention, rate-limit key derivation 또는 provider-specific
+          constant-time lookup을 강제하지 않습니다. <code>StaticApiKeyAuthenticator</code>는 test/local example만을 위한 raw in-memory mapping입니다.
+          query parameter와 cookie API key, automatic OpenAPI-to-middleware wiring은 이 layer의 scope가 아닙니다. 설계 이유와 migration 경계는
+          <a href="./adr/0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>에 기록합니다.
         </p>
       </section>
 

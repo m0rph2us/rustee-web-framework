@@ -170,6 +170,7 @@ http = "1.2"
 httpdate = "1.0"
 http-body = "1.0"
 http-body-util = "0.1"
+hmac = "0.12"
 jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
 hyper = { version = "1.6", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["server", "server-auto", "tokio", "http1"] }

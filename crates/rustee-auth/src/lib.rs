@@ -11,12 +11,15 @@ use std::{
 };
 
 use futures_util::future::BoxFuture;
+use hmac::{Hmac, Mac};
 use http::{
     HeaderMap, HeaderValue, StatusCode,
     header::{AUTHORIZATION, HOST, HeaderName},
 };
 use rustee_core::{Error, FromRequest, IntoResponse, Request, Response, RouteParams, StateStore};
+use sha2::Sha256;
 use tower::{Layer, Service, util::BoxCloneService};
+use zeroize::Zeroize;
 
 pub use rustee_tenant::{TenantContext, TenantContextError as TenantPolicyError};
 
@@ -265,6 +268,134 @@ pub enum StaticTokenError {
 }
 
 const MAX_API_KEY_BYTES: usize = 4 * 1024;
+const API_KEY_PEPPER_BYTES: usize = 32;
+
+/// Secret material used to derive API-key lookup fingerprints.
+///
+/// Load this value from a secret manager or a deployment-owned protected configuration source.
+/// It is deliberately not serializable or printable.
+pub struct ApiKeyPepper([u8; API_KEY_PEPPER_BYTES]);
+
+impl ApiKeyPepper {
+    /// Creates a pepper from exactly 256 bits of deployment-owned secret material.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiKeyPepperError::AllZero`] for the all-zero value, which would not provide a
+    /// deployment-held secret for the keyed derivation.
+    pub fn new(bytes: [u8; API_KEY_PEPPER_BYTES]) -> Result<Self, ApiKeyPepperError> {
+        if bytes.iter().all(|byte| *byte == 0) {
+            return Err(ApiKeyPepperError::AllZero);
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Derives a bounded, keyed lookup fingerprint without exposing the API key to a store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiKeyError::InvalidApiKey`] when `api_key` cannot appear as a valid API-key
+    /// header value. A failure to initialize the HMAC implementation is mapped to
+    /// [`ApiKeyError::ProviderUnavailable`].
+    pub fn fingerprint(&self, api_key: &str) -> Result<ApiKeyFingerprint, ApiKeyError> {
+        if !is_valid_api_key_value(api_key) {
+            return Err(ApiKeyError::InvalidApiKey);
+        }
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0)
+            .map_err(|_| ApiKeyError::ProviderUnavailable)?;
+        mac.update(api_key.as_bytes());
+        Ok(ApiKeyFingerprint(mac.finalize().into_bytes().into()))
+    }
+}
+
+impl Clone for ApiKeyPepper {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl Drop for ApiKeyPepper {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl fmt::Debug for ApiKeyPepper {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ApiKeyPepper([redacted])")
+    }
+}
+
+/// Invalid deployment-owned API-key pepper material.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum ApiKeyPepperError {
+    /// The all-zero value is not a deployment-held secret.
+    #[error("API-key pepper must not be all zero")]
+    AllZero,
+}
+
+/// Opaque HMAC-SHA-256 lookup value for one API key.
+///
+/// The value is not the API key and has no text rendering. It can be used as the primary lookup
+/// key in a provider store, alongside that provider's active/revoked state and audit transaction.
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ApiKeyFingerprint([u8; 32]);
+
+impl ApiKeyFingerprint {
+    /// Returns the fixed-size binary value for a protected provider lookup.
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for ApiKeyFingerprint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ApiKeyFingerprint([redacted])")
+    }
+}
+
+/// A production-facing API-key store that receives only a keyed fingerprint.
+///
+/// The store owns persistence and maps unknown, revoked, expired, or disabled keys to
+/// [`ApiKeyError::RejectedApiKey`]. It may atomically update last-used/audit records with a
+/// successful lookup, but must not record the raw API key or fingerprint in general logs.
+pub trait ApiKeyFingerprintStore: Clone + Send + Sync + 'static {
+    /// Resolves one keyed fingerprint to a validated principal.
+    fn authenticate(
+        &self,
+        fingerprint: ApiKeyFingerprint,
+    ) -> BoxFuture<'static, Result<Principal, ApiKeyError>>;
+}
+
+/// [`ApiKeyAuthenticator`] implementation that sends only a keyed fingerprint to its store.
+///
+/// Rotation and revocation are represented by store records: deployments can keep multiple active
+/// fingerprints for one principal during client-key rotation and reject a revoked record without
+/// changing the HTTP layer.
+#[derive(Clone)]
+pub struct KeyedApiKeyAuthenticator<S> {
+    pepper: ApiKeyPepper,
+    store: S,
+}
+
+impl<S> KeyedApiKeyAuthenticator<S> {
+    /// Creates an API-key authenticator that derives HMAC-SHA-256 lookup fingerprints.
+    #[must_use]
+    pub fn new(pepper: ApiKeyPepper, store: S) -> Self {
+        Self { pepper, store }
+    }
+}
+
+impl<S> fmt::Debug for KeyedApiKeyAuthenticator<S> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("KeyedApiKeyAuthenticator")
+            .field("store", &std::any::type_name::<S>())
+            .finish_non_exhaustive()
+    }
+}
 
 /// A failure that is safe to render as an API-key authentication rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -291,6 +422,17 @@ pub enum ApiKeyError {
 pub trait ApiKeyAuthenticator: Clone + Send + Sync + 'static {
     /// Verifies a raw API-key header value and returns only a validated principal.
     fn authenticate(&self, api_key: &str) -> BoxFuture<'static, Result<Principal, ApiKeyError>>;
+}
+
+impl<S> ApiKeyAuthenticator for KeyedApiKeyAuthenticator<S>
+where
+    S: ApiKeyFingerprintStore,
+{
+    fn authenticate(&self, api_key: &str) -> BoxFuture<'static, Result<Principal, ApiKeyError>> {
+        let fingerprint = self.pepper.fingerprint(api_key);
+        let store = self.store.clone();
+        Box::pin(async move { store.authenticate(fingerprint?).await })
+    }
 }
 
 /// A deliberately simple static API-key authenticator for tests and local examples only.
@@ -1260,8 +1402,9 @@ mod tests {
     use tower::{Layer, ServiceExt};
 
     use super::{
-        ApiKeyAuthenticator, ApiKeyError, ApiKeyLayer, ApiKeyLayerError, AuthError, AuthLayer,
-        AuthUser, BearerAuthenticator, HostTenantResolver, HostTenantResolverError,
+        ApiKeyAuthenticator, ApiKeyError, ApiKeyFingerprint, ApiKeyFingerprintStore, ApiKeyLayer,
+        ApiKeyLayerError, ApiKeyPepper, ApiKeyPepperError, AuthError, AuthLayer, AuthUser,
+        BearerAuthenticator, HostTenantResolver, HostTenantResolverError, KeyedApiKeyAuthenticator,
         PermissionPolicyError, Principal, RequireAuth, RequirePermissionsLayer, RequireScopesLayer,
         RequireTenantMatchLayer, RolePolicy, RolePolicyError, ScopePolicyError,
         StaticApiKeyAuthenticator, StaticApiKeyError, StaticTokenAuthenticator, TenantContext,
@@ -1290,6 +1433,22 @@ mod tests {
             _: &str,
         ) -> futures_util::future::BoxFuture<'static, Result<Principal, ApiKeyError>> {
             Box::pin(future::ready(Err(ApiKeyError::ProviderUnavailable)))
+        }
+    }
+
+    #[derive(Clone)]
+    struct FingerprintStore {
+        expected: ApiKeyFingerprint,
+        principal: Principal,
+    }
+
+    impl ApiKeyFingerprintStore for FingerprintStore {
+        fn authenticate(
+            &self,
+            fingerprint: ApiKeyFingerprint,
+        ) -> futures_util::future::BoxFuture<'static, Result<Principal, ApiKeyError>> {
+            let principal = (fingerprint == self.expected).then(|| self.principal.clone());
+            Box::pin(future::ready(principal.ok_or(ApiKeyError::RejectedApiKey)))
         }
     }
 
@@ -1422,6 +1581,51 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn keyed_api_key_authenticator_uses_only_a_keyed_fingerprint_for_lookup() {
+        let pepper = ApiKeyPepper::new([7; 32]).unwrap();
+        let expected = pepper.fingerprint("local-api-key").unwrap();
+        let authenticator = KeyedApiKeyAuthenticator::new(
+            pepper,
+            FingerprintStore {
+                expected,
+                principal: Principal::new("service-client").unwrap(),
+            },
+        );
+        let service = ApiKeyLayer::header("x-api-key", authenticator)
+            .unwrap()
+            .layer(
+                App::new().get("/me", |AuthUser(principal): AuthUser| async move {
+                    principal.subject().to_owned()
+                }),
+            );
+
+        let response = service
+            .oneshot(api_key_request(&["local-api-key"]))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn api_key_pepper_fingerprint_is_stable_bounded_and_redacted() {
+        let pepper = ApiKeyPepper::new([7; 32]).unwrap();
+        let fingerprint = pepper.fingerprint("local-api-key").unwrap();
+        assert_eq!(fingerprint, pepper.fingerprint("local-api-key").unwrap());
+        assert_ne!(fingerprint, pepper.fingerprint("other-api-key").unwrap());
+        assert_eq!(fingerprint.as_bytes().len(), 32);
+        assert_eq!(format!("{pepper:?}"), "ApiKeyPepper([redacted])");
+        assert_eq!(format!("{fingerprint:?}"), "ApiKeyFingerprint([redacted])");
+        assert_eq!(
+            pepper.fingerprint("not a valid key").unwrap_err(),
+            ApiKeyError::InvalidApiKey
+        );
+        assert_eq!(
+            ApiKeyPepper::new([0; 32]).unwrap_err(),
+            ApiKeyPepperError::AllZero
+        );
     }
 
     #[tokio::test]

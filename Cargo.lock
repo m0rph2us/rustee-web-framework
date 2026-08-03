@@ -3942,15 +3942,18 @@ name = "rustee-auth"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "hmac 0.12.1",
  "http 1.5.0",
  "rustee-core",
  "rustee-router",
  "rustee-server",
  "rustee-tenant",
  "serde",
+ "sha2 0.10.9",
  "thiserror",
  "tokio",
  "tower",
+ "zeroize",
 ]
 
 [[package]]

@@ -182,7 +182,7 @@
             <tr>
               <td>Identity and access</td>
               <td>인증 결과를 <code>Principal</code>로 정규화하고 route/handler 권한 정책을 적용합니다.</td>
-              <td><code>rustee-tenant</code> (security/storage가 공유하는 trusted <code>TenantContext</code>), <code>rustee-auth</code> (principal, bearer와 explicit header-only API-key layer, scope/role/permission policy, tenant-match guard와 host-map tenant resolution 구현), <code>rustee-auth-jwt</code> (static-key JWT의 algorithm/signature/issuer/audience/time 및 verified role/permission claim 정규화 구현), <code>rustee-auth-oidc</code> (HTTPS JWKS, strict asymmetric algorithm, cache/rotation, discovery/Code+PKCE/nonce ID token/session bridge, opaque introspection의 active/issuer/audience/time/fingerprint cache 및 verified role/permission claim 정규화 구현), <code>rustee-auth-oidc-redis</code> (transaction namespace/TTL/GETDEL atomic consume 구현), <code>rustee-auth-session</code> (opaque server-side session, secure cookie, rotation/logout, CSRF layer 구현), <code>rustee-auth-session-redis</code> (namespace/TTL을 갖는 Redis store 구현)</td>
+              <td><code>rustee-tenant</code> (security/storage가 공유하는 trusted <code>TenantContext</code>), <code>rustee-auth</code> (principal, bearer와 explicit header-only API-key layer, HMAC-SHA-256 keyed fingerprint store boundary, scope/role/permission policy, tenant-match guard와 host-map tenant resolution 구현), <code>rustee-auth-jwt</code> (static-key JWT의 algorithm/signature/issuer/audience/time 및 verified role/permission claim 정규화 구현), <code>rustee-auth-oidc</code> (HTTPS JWKS, strict asymmetric algorithm, cache/rotation, discovery/Code+PKCE/nonce ID token/session bridge, opaque introspection의 active/issuer/audience/time/fingerprint cache 및 verified role/permission claim 정규화 구현), <code>rustee-auth-oidc-redis</code> (transaction namespace/TTL/GETDEL atomic consume 구현), <code>rustee-auth-session</code> (opaque server-side session, secure cookie, rotation/logout, CSRF layer 구현), <code>rustee-auth-session-redis</code> (namespace/TTL을 갖는 Redis store 구현)</td>
             </tr>
             <tr>
               <td>Background jobs</td>
@@ -333,7 +333,7 @@ let app = App::new()
         <h2>인증과 권한 경계</h2>
         <p>
           <code>rustee-core</code>는 <code>Principal</code>, JWT, cookie, identity provider를 알지 않습니다.
-          <code>rustee-auth</code>가 <code>AuthUser</code> extractor, <code>RequireAuth</code>, bearer와 explicit header-only API-key authentication, 권한 정책 middleware를 제공하고,
+          <code>rustee-auth</code>가 <code>AuthUser</code> extractor, <code>RequireAuth</code>, bearer와 explicit header-only API-key authentication 및 keyed fingerprint store boundary, 권한 정책 middleware를 제공하고,
           <code>rustee-auth-jwt</code>가 static verification key를 사용하는 JWT bearer token을 검증합니다.
           <code>rustee-auth-oidc</code>는 HTTPS JWKS bearer verification/key rotation, OIDC discovery/Code+PKCE browser login, opaque token introspection을, <code>rustee-auth-oidc-redis</code>은 durable state transaction을, <code>rustee-auth-session</code>은 browser session을 확장하며,
           <code>rustee-auth-session-redis</code>은 후자의 production state-store adapter를 제공합니다.

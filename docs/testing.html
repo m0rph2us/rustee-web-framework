@@ -260,7 +260,9 @@ examples/
           missing/repeated/malformed API key를 provider 호출 전에 sanitized 401로, provider outage를 credential detail 없는 503으로 처리하는지 확인합니다.
           별도 real loopback HTTP/1.1 contract는 duplicate <code>X-API-Key</code> field가 transport parser를 지나도 401로 거부되고 어느 raw key도 response에 echo되지 않는지 고정합니다.
           API-key header name은 configuration 시 HTTP field-name으로 검증하고 value는 exactly one printable ASCII entry at most 4 KiB로 제한합니다.
-          static API-key mapping은 local/test only이며 production hash lookup, constant-time comparison, rotation/revocation/audit는 separate provider integration gate입니다.
+          keyed authenticator test는 same key의 stable 32-byte fingerprint, distinct key separation, non-zero pepper requirement, redacted <code>Debug</code>,
+          invalid key pre-store rejection과 fake fingerprint store의 principal handoff를 확인합니다. static API-key mapping은 local/test only이며 real database
+          atomic audit, client-key/pepper rotation, revocation, KMS delivery와 provider-specific constant-time lookup은 separate provider integration gate입니다.
         </p>
       </section>
 
