@@ -376,22 +376,24 @@ impl ApiKeyPepperRing {
         active: ApiKeyPepper,
         retired: impl IntoIterator<Item = ApiKeyPepper>,
     ) -> Result<Self, ApiKeyPepperRingError> {
-        let retired: Vec<_> = retired.into_iter().collect();
-        if retired.len() > MAX_RETIRED_API_KEY_PEPPERS {
-            return Err(ApiKeyPepperRingError::TooManyRetired);
-        }
-        if retired
-            .iter()
-            .any(|candidate| candidate.same_material(&active))
-            || retired.iter().enumerate().any(|(index, candidate)| {
-                retired[..index]
+        let mut retained = Vec::with_capacity(MAX_RETIRED_API_KEY_PEPPERS);
+        for candidate in retired {
+            if retained.len() == MAX_RETIRED_API_KEY_PEPPERS {
+                return Err(ApiKeyPepperRingError::TooManyRetired);
+            }
+            if candidate.same_material(&active)
+                || retained
                     .iter()
                     .any(|previous| candidate.same_material(previous))
-            })
-        {
-            return Err(ApiKeyPepperRingError::DuplicatePepper);
+            {
+                return Err(ApiKeyPepperRingError::DuplicatePepper);
+            }
+            retained.push(candidate);
         }
-        Ok(Self { active, retired })
+        Ok(Self {
+            active,
+            retired: retained,
+        })
     }
 
     fn fingerprints(&self, api_key: &str) -> Result<Vec<ApiKeyFingerprint>, ApiKeyError> {
@@ -1612,6 +1614,24 @@ mod tests {
         unavailable: Option<ApiKeyFingerprint>,
     }
 
+    struct RetiredPepperIterator {
+        yielded: usize,
+    }
+
+    impl Iterator for RetiredPepperIterator {
+        type Item = ApiKeyPepper;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            assert!(
+                self.yielded <= MAX_RETIRED_API_KEY_PEPPERS,
+                "pepper ring must stop reading once it rejects an oversized iterator"
+            );
+            self.yielded += 1;
+            let byte = u8::try_from(self.yielded + 1).unwrap();
+            Some(ApiKeyPepper::new([byte; 32]).unwrap())
+        }
+    }
+
     impl ApiKeyFingerprintStore for RecordingFingerprintStore {
         fn authenticate(
             &self,
@@ -1909,6 +1929,13 @@ mod tests {
                     ApiKeyPepper::new([3; 32]).unwrap(),
                     ApiKeyPepper::new([4; 32]).unwrap(),
                 ],
+            ),
+            Err(ApiKeyPepperRingError::TooManyRetired)
+        ));
+        assert!(matches!(
+            ApiKeyPepperRing::with_retired(
+                ApiKeyPepper::new([1; 32]).unwrap(),
+                RetiredPepperIterator { yielded: 0 },
             ),
             Err(ApiKeyPepperRingError::TooManyRetired)
         ));
