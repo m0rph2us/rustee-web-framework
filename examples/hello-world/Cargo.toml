@@ -1,0 +1,17 @@
+[package]
+name = "hello-world"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+description = "Compile-checked hello world example for the Rustee web framework"
+
+[dependencies]
+rustee = { path = "../../crates/rustee", version = "0.1.0", features = ["openapi"] }
+serde.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

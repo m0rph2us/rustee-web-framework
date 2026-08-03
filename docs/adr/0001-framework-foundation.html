@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0001: 프레임워크 기반 선택</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0001</div>
+        <h1>프레임워크 기반 선택</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Rustee는 Rust 웹 프레임워크로서 작은 시작 경험과 장기적인 엔터프라이즈 확장성을 동시에 목표로 한다.
+          HTTP 파서, async runtime, 미들웨어 생태계를 모두 직접 만드는 것은 초기 품질과 유지보수성에 큰 부담을 준다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            Rustee는 초기 기반으로 Tokio runtime, Hyper HTTP stack, Tower-compatible Service/Layer 모델을 채택한다.
+            프레임워크는 이 위에 작고 안정적인 core API, 라우터, 서버 어댑터, 미들웨어, 선택적 매크로를 구성한다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>Tower 생태계의 timeout, tracing, rate limit, load shedding 같은 패턴을 재사용할 수 있다.</li>
+          <li>Tokio/Hyper에 묶이는 대신 Rust 서버 생태계의 검증된 기반 위에서 빠르게 품질을 확보한다.</li>
+          <li>core API는 transport 세부사항을 숨기되, 고급 사용자가 필요하면 낮은 수준으로 내려갈 수 있게 해야 한다.</li>
+          <li>runtime 독립성은 초기 목표가 아니다. 나중에 필요하면 adapter 계층에서 별도 ADR로 재검토한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>대안</th>
+              <th>판단</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>HTTP server를 직접 구현</td>
+              <td>학습 가치는 있으나 보안, 성능, 표준 호환성 부담이 크므로 초기 목표에서 제외한다.</td>
+            </tr>
+            <tr>
+              <td>Actix Web 스타일 독자 생태계</td>
+              <td>성능과 완성도는 매력적이지만 Tower 호환성을 잃으면 확장성이 좁아질 수 있다.</td>
+            </tr>
+            <tr>
+              <td>Rocket 스타일 매크로 중심 API</td>
+              <td>DX는 좋지만 Rustee는 macro-free API를 먼저 안정화한 뒤 선택적으로 매크로를 얹는다.</td>
+            </tr>
+            <tr>
+              <td>풀스택 MVC 프레임워크로 시작</td>
+              <td>Loco 같은 생산성 모델은 장기 참고 대상이지만, Rustee의 첫 목표는 composable web core다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>Stage 1에서 core trait의 최소 형태를 실제 코드로 검증한다.</li>
+          <li>Stage 2에서 Hyper adapter와 Tower Service 변환 경계를 검증한다.</li>
+          <li>runtime 독립성 요구가 생기면 별도 ADR로 재검토한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-02. Supersede this ADR if Rustee changes its runtime, HTTP, or middleware foundation.</p>
+      </footer>
+    </main>
+  </body>
+</html>

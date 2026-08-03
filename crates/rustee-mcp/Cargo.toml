@@ -1,0 +1,29 @@
+[package]
+name = "rustee-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Approval-gated MCP Streamable HTTP tool server adapter for Rustee"
+
+[dependencies]
+base64.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+serde_json.workspace = true
+thiserror.workspace = true
+tower.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+serde = { workspace = true, features = ["derive"] }
+tokio.workspace = true
+
+[lints]
+workspace = true

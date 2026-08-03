@@ -1,0 +1,5 @@
+error: `routes!` supports GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE, and CONNECT; use `App::route` for a custom method
+ --> tests/ui/routes/unsupported_method.rs:6:9
+  |
+6 |         BREW "/coffee" => endpoint,
+  |         ^^^^

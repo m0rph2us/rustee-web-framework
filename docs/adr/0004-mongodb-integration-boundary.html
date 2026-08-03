@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0004: MongoDB 통합 경계</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0004</div>
+        <h1>MongoDB 통합 경계</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          MongoDB의 BSON document, collection, aggregation, replica set, change stream은 SQL database와 다른 모델과
+          운영 특성을 갖는다. 이를 SQLx 또는 공통 repository trait에 맞추면 document model의 장점과 중요 제약이 숨겨진다.
+          반면 MongoDB Rust driver 자체의 client/pool, schema evolution, transaction, worker lifecycle에 대한 공식 경로가
+          없으면 서비스별 구현 품질이 달라질 수 있다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            MongoDB는 Stage 7에서 공식 async <code>mongodb</code> Rust driver를 사용하는 선택적
+            <code>rustee-mongodb</code> integration으로 지원한다. <code>mongodb::Client</code>는 long-lived
+            application state로 주입하고, driver의 내장 connection pool을 그대로 사용한다.
+          </p>
+        </div>
+        <ul>
+          <li><code>rustee-core</code>는 MongoDB 또는 BSON에 의존하지 않는다.</li>
+          <li>Rustee는 driver의 collection, aggregation, transaction API를 새 generic trait로 감싸지 않는다.</li>
+          <li>BSON persistence document와 HTTP request/response DTO는 분리한다.</li>
+          <li>index, validator, data backfill은 배포 pipeline의 명시적 작업으로 관리하고 server startup에서 자동 실행하지 않는다.</li>
+          <li>multi-document transaction은 <code>ClientSession</code>에서 명시적으로 관리하며, 기본 extractor나 요청 단위 자동 transaction을 제공하지 않는다.</li>
+          <li>change stream은 resume token과 restart 전략을 갖는 background worker로 다루며, HTTP handler에 직접 결합하지 않는다.</li>
+          <li>opaque resume token은 <code>ChangeStreamCheckpointStore</code>로 durable storage를 선택하고, PostgreSQL 환경에는 선택적 <code>rustee-mongodb-checkpoint-sqlx</code> adapter와 database-clock writer lease를 제공한다. deployment는 고유 lease owner identity, renewal schedule, token invalidation과 recovery를 명시한다.</li>
+          <li>tenant-owned document는 shared trusted <code>TenantContext</code>에서 만든 <code>MongoTenantScope</code>로 outer-AND <code>tenant_id</code> filter, document/update boundary와 target collection first-match aggregation pipeline을 적용한다. 이는 MongoDB RLS가 아니며 raw driver, aggregation의 <code>$lookup</code>/<code>$unionWith</code>와 change stream pipeline의 tenant policy를 자동으로 강제하지 않는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>MongoDB를 쓰지 않는 서비스의 core dependency와 compile time이 늘지 않는다.</li>
+          <li>driver가 제공하는 pool, topology monitoring, replica set 기능을 중복 구현하지 않는다.</li>
+          <li>API response가 persistence 세부사항에 고정되지 않아 document schema를 점진적으로 변경할 수 있다.</li>
+          <li>schema evolution, transaction, change stream의 운영 책임이 명시적으로 남아 production behavior를 검토할 수 있다.</li>
+          <li>generic CRUD의 초기 편의성은 포기하지만, authorization, index, aggregation, API versioning이 숨겨지지 않는다.</li>
+          <li>MongoDB는 PostgreSQL RLS와 다른 application-level tenant boundary를 갖는다. raw collection handle을 HTTP handler에 넓게 주입하지 않고, administration/migration은 별도 access review와 운영 권한으로 분리해야 한다.</li>
+          <li>checkpoint adapter는 restart 뒤 duplicate event를 줄이고 opt-in writer lease는 stale concurrent checkpoint writer를 거부하지만 exactly-once를 주장하지 않는다. handler idempotency와 lease owner/renewal 운영이 gate로 남는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>대안</th>
+              <th>판단</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>MongoDB를 SQLx backend로 취급</td>
+              <td>query/model/transaction의 본질이 달라 적절하지 않으며 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>MongoDB dependency를 core에 포함</td>
+              <td>모든 서비스에 필요한 기능이 아니므로 core 안정성과 dependency budget을 해쳐 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>별도 connection pool을 기본으로 추가</td>
+              <td>공식 driver <code>Client</code>가 내부 pool을 관리하므로 중복 계층을 만들지 않는다.</td>
+            </tr>
+            <tr>
+              <td>collection 자동 CRUD route와 BSON response 제공</td>
+              <td>authorization, schema, internal field, query 비용을 숨기므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>startup 때 index와 migration 자동 실행</td>
+              <td>대용량 index와 data change가 배포 가용성을 해칠 수 있어 채택하지 않는다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>Stage 7에서 <code>rustee-mongodb</code>의 configuration, readiness, shutdown integration을 구현한다.</li>
+          <li>typed collection과 DTO mapping, duplicate key/error mapping, schema evolution example을 integration test로 검증한다.</li>
+          <li>replica set을 사용하는 transaction과 change-stream resume test를 추가한다.</li>
+          <li>trusted-context tenant BSON scope의 A/B read/update/delete isolation과 tenant-field mutation rejection을 replica-set contract로 검증한다.</li>
+          <li>PostgreSQL adapter의 opaque token load/upsert/corruption rejection 및 database-clock lease contention/renewal/expiry/stale-writer rejection, stopped checkpoint-store readiness failure/recovery contract를 추가하고 MongoDB outage는 별도 release gate로 검증한다.</li>
+          <li>Stage 10에서 sharding, read preference, retry, event delivery 요구가 생기면 workload와 함께 별도 ADR 및 release gate로 확장한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes its MongoDB client, document-model, lifecycle, or tenant-boundary direction.</p>
+      </footer>
+    </main>
+  </body>
+</html>

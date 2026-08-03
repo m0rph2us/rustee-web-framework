@@ -1,0 +1,39 @@
+[package]
+name = "rustee-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+http = "1.2"
+libfuzzer-sys = "0.4"
+rustee-router = { path = "../crates/rustee-router" }
+rustee-openapi = { path = "../crates/rustee-openapi" }
+
+# Use independent workspace for fuzzers
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "route_pattern"
+path = "fuzz_targets/route_pattern.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openapi_route"
+path = "fuzz_targets/openapi_route.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openapi_security_scheme"
+path = "fuzz_targets/openapi_security_scheme.rs"
+test = false
+doc = false
+bench = false

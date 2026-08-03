@@ -1,0 +1,20 @@
+[package]
+name = "rustee-events-kafka-sqlx-observability"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Exporter-neutral metrics for Rustee Kafka PostgreSQL delayed-retry relays"
+
+[features]
+rdkafka = [
+  "dep:rustee-events-kafka-sqlx",
+  "rustee-events-kafka-sqlx/rdkafka",
+]
+
+[dependencies]
+rustee-events-kafka-sqlx = { path = "../rustee-events-kafka-sqlx", version = "0.1.0", optional = true }
+
+[lints]
+workspace = true

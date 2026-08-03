@@ -1,0 +1,21 @@
+[package]
+name = "rustee-ai-eval-jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reference-only durable AI evaluation jobs for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+rustee-ai-eval = { path = "../rustee-ai-eval", version = "0.1.0" }
+rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

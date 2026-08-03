@@ -1,0 +1,5 @@
+error: `rustee(header)` must be a valid HTTP header name
+ --> tests/ui/from_header/invalid_header.rs:2:19
+  |
+2 | #[rustee(header = "not a header")]
+  |                   ^^^^^^^^^^^^^^

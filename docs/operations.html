@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Operations and Deployment</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Operations and Deployment</div>
+        <h1>서비스의 trust boundary를 먼저 운영 가능하게 만듭니다</h1>
+        <p class="lead">
+          configuration, secret, log, trace, health, shutdown, reverse proxy는 optional database나 broker보다 먼저 필요한 운영 계약입니다.
+          Rustee는 Stage 3에서 이 기반을 정하고, application이 실제 deployment의 TLS와 proxy trust를 추측하지 않게 합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>결정 요약</h2>
+        <div class="decision">
+          <p>
+            Stage 2의 <code>rustee-server</code>는 개발과 직접 origin test를 위한 cleartext HTTP/1.1 server를 제공합니다.
+            Stage 3의 production baseline은 TLS를 trusted reverse proxy 또는 load balancer에서 종료하는 deployment입니다.
+            Rustee는 forwarded header를 기본적으로 신뢰하지 않으며, 명시적으로 설정한 trusted proxy에서 온 request에만
+            scheme, client IP, host 정보를 복원합니다. 현재 Hyper server는 actual peer address를 <code>ConnectionInfo</code> request extension으로 주입하고, <code>TrustedProxyLayer</code>가 explicit CIDR allowlist에 맞는 direct peer의 RFC 7239 <code>Forwarded</code>를 기본 family로 복원합니다. legacy <code>X-Forwarded-*</code>는 <code>with_x_forwarded()</code>를 명시한 deployment만 복원합니다. direct TLS와 HTTP/2는 초기 지원 범위 밖이며 별도 ADR 없이는 암묵적으로 추가하지 않습니다.
+          </p>
+        </div>
+        <p>
+          <code>rustee-config</code>, <code>rustee-observability</code>, <code>rustee-observability-prometheus</code>, <code>rustee-observability-opentelemetry</code>는 Stage 3의 선택적 integration crate입니다.
+          <code>rustee-core</code>는 특정 config file format, secret manager, telemetry exporter에 의존하지 않습니다.
+          application은 typed configuration과 capability client를 <code>AppState</code>에 주입합니다. 현재 <code>RequestIdLayer</code>는
+          generated correlation ID, response header, configured route template 또는 reserved router outcome을 포함한 HTTP server span을 제공합니다. Prometheus export는 explicit helper로 제공하며 proxy/CDN deployment integration은 별도 release gate입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Configuration과 secret</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>영역</th>
+              <th>Rustee 정책</th>
+              <th>애플리케이션 책임</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>typed config</td>
+              <td>명시적 config struct, source precedence, startup validation, redacted diagnostic helper를 제공합니다.</td>
+              <td>필수 값, 기본값, profile, 변경 가능 여부를 schema에 선언합니다.</td>
+            </tr>
+            <tr>
+              <td>source precedence</td>
+              <td>code default, 명시적 local file, environment, deployment-injected value의 순서와 override 결과를 문서화합니다.</td>
+              <td>production file source와 environment/secret injection 경로를 deployment에 맞게 선택합니다.</td>
+            </tr>
+            <tr>
+              <td>secret</td>
+              <td>secret value는 <code>Debug</code>, error, trace, metric, health response에서 redaction합니다. Rustee가 만드는 parse/schema error는 입력 값 대신 config key와 안전한 원인만 반환합니다.</td>
+              <td>secret manager, rotation, file permission, environment exposure와 audit retention을 운영합니다.</td>
+            </tr>
+            <tr>
+              <td>reload</td>
+              <td>initial release는 hot reload를 제공하지 않습니다. restart-safe configuration을 기본으로 합니다.</td>
+              <td>reload가 필요한 값은 separate controller와 atomicity/rollback policy를 설계합니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Transport와 reverse proxy trust</h2>
+        <div class="warning">
+          <p>
+            <code>Forwarded</code>, <code>X-Forwarded-For</code>, <code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>는
+            internet client가 직접 보낼 수 있습니다. trusted proxy policy가 없으면 Rustee는 이를 client identity나 scheme으로 사용하지 않습니다.
+          </p>
+        </div>
+        <ul>
+          <li><code>ConnectionInfo</code>는 transport가 관찰한 direct peer address를 제공합니다. <code>TrustedProxyPolicy</code>는 이 값을 non-/0 CIDR allowlist와 비교한 뒤에만 선택된 family의 client IP, scheme, host를 <code>ForwardedContext</code>로 복원합니다. trusted peer의 malformed 또는 duplicate selected header는 400으로 거부하고 untrusted peer의 header는 무시합니다.</li>
+          <li>기본 family는 RFC 7239 <code>Forwarded</code>입니다. 기본은 single-hop이고 multi-hop은 <code>with_forwarded_chain_hops(n)</code>로만 opt-in합니다. right-to-left로 최대 <code>n</code>개의 trusted intermediary를 건너뛰어 첫 client를 선택하며 16 hop/2 KiB header로 bounded합니다. <code>proto</code>/<code>host</code>는 direct trusted proxy의 rightmost element에만 둘 수 있습니다.</li>
+          <li>legacy family는 <code>TrustedProxyLayer::new(policy).with_x_forwarded()</code>로만 고릅니다. 이 mode는 단일 <code>X-Forwarded-For</code>의 comma-separated bare IP chain을 같은 hop policy로 해석하며, 선택적 <code>X-Forwarded-Proto</code>는 정확히 <code>http</code> 또는 <code>https</code>, <code>X-Forwarded-Host</code>는 userinfo 없는 single authority여야 합니다. Proto/Host는 For 없이 올 수 없고 duplicate header는 거부합니다.</li>
+          <li>한 layer는 한 family만 해석합니다. 기본 mode에서는 <code>X-Forwarded-*</code>를, X mode에서는 <code>Forwarded</code>를 context 복원에 섞지 않습니다. proxy는 선택한 family 하나만 sanitize하고 전달해야 합니다. quoted/obfuscated identifier와 IP port form은 여전히 지원하지 않습니다.</li>
+          <li>Linux CI는 <code>nginx:1.30.4-alpine</code>의 host-network contract에서 client가 보낸 spoofed <code>Forwarded</code> 값을 Nginx가 single-hop sanitized value로 덮어쓴 뒤 Rustee가 <code>ForwardedContext</code>로 복원하는지 확인합니다. 같은 Nginx <code>proxy_cache</code> contract는 gzip과 identity response가 <code>Vary: Accept-Encoding</code>으로 분리되어 각각 cache hit가 되는지, shutdown이 시작된 뒤에도 이미 Nginx가 전달한 active request가 drain timeout 안에서 200 response로 끝나는지를 확인합니다. 이 contract는 vendor CDN purge/cache-control policy 또는 production TLS certificate/IAM 정책을 대신하지 않습니다.</li>
+          <li>TLS termination, HTTP/2, WAF, load balancer health probe는 Rustee 밖의 infrastructure 책임입니다. application은 trusted deployment contract에 맞는 listener를 엽니다.</li>
+          <li>direct TLS, HTTP/2, WebSocket/protocol upgrade 지원은 performance, shutdown, proxy interoperability, test matrix를 포함한 별도 design decision이 있어야 합니다.</li>
+          <li>redirect URL, secure cookie, origin/CORS policy는 restored scheme/host를 쓰기 전에 trusted proxy policy가 활성화됐는지 확인합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Lifecycle, health, limits</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>계약</th>
+              <th>정책</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>liveness</td>
+              <td>process event loop가 요청을 처리할 수 있는지만 보고합니다. database나 model provider 장애를 자동으로 포함하지 않습니다.</td>
+            </tr>
+            <tr>
+              <td>readiness</td>
+              <td>application이 traffic 전에 필요하다고 선택한 local dependency와 configuration을 확인합니다. check는 timeout과 redacted error를 가집니다.</td>
+            </tr>
+            <tr>
+              <td>shutdown</td>
+              <td>new accept를 중단하고 readiness를 false로 전환한 뒤, grace period 동안 request/worker를 drain하고 cancellation을 전파합니다.</td>
+            </tr>
+            <tr>
+              <td>limits</td>
+              <td>body size, header/request timeout, concurrency와 response compression ownership을 명시합니다. Rustee compression은 opt-in Tower layer이며 CDN/proxy가 같은 책임을 가지면 origin에서 중복 적용하지 않습니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Runtime panic boundary</h2>
+        <p>
+          <code>rustee-middleware::PanicCatchLayer</code>는 application이 명시적으로 layer한 handler/middleware call future가 response를 만들기 전에 panic할 때만
+          payload 없는 <code>internal_error</code> 500 JSON을 반환합니다. client response와 Rustee tracing field에는 panic detail을 넣지 않습니다.
+          response body streaming이 시작된 뒤의 panic, <code>panic = &quot;abort&quot;</code>, process-wide panic hook, restart와 state recovery는 이 layer가 처리하지 않습니다.
+        </p>
+        <p>
+          production은 application이 redacted panic hook, supervisor restart, alert owner와 recovery procedure를 정해야 합니다. layer order는 명시적입니다.
+          catch하려는 service future의 바깥에 놓으며, transport가 이미 response를 commit한 뒤의 failure를 성공 또는 HTTP 500으로 바꾸지 않습니다.
+          상세 결정은 <a href="./adr/0026-panic-response-boundary.html">ADR 0026</a>을 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Response compression ownership</h2>
+        <p>
+          <code>CompressionLayer</code>는 origin에서 gzip/Brotli를 streaming으로 제공하는 선택적 middleware입니다.
+          transform 가능한 response는 identity 표현을 포함해 <code>Vary: Accept-Encoding</code>을 가지므로 shared cache와 CDN은 이 header를 cache key 정책에 포함해야 합니다.
+          <code>Range</code>, <code>HEAD</code>, <code>no-transform</code>, existing content coding은 layer가 그대로 전달합니다.
+        </p>
+        <p>
+          edge CDN, ingress, reverse proxy가 compression을 수행한다면 application은 layer를 끄고 한 곳만 representation을 변환합니다.
+          compressed response의 cache hit ratio, CPU, payload size, origin/edge ownership은 deployment metric과 실제 proxy integration test로 판단합니다.
+          상세 API와 static file 순서는 <a href="./compression.html">응답 압축 문서</a>를 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Edge delivery와 CDN</h2>
+        <p>
+          CDN/edge는 Rustee transport가 아니라 deployment component입니다. TLS certificate, WAF, public DNS, origin network isolation,
+          cache key, purge, edge compression과 cached-error policy는 application/deployment가 named vendor와 versioned configuration으로 소유합니다.
+          origin은 edge direct peer CIDR만 trusted proxy로 설정하고, edge는 한 header family를 sanitize하여 전달합니다.
+        </p>
+        <p>
+          <code>rustee-static</code>의 default는 <code>no-store</code>이며 public asset cacheability도 application이 explicit하게 선택합니다.
+          authenticated/tenant response, metrics, health와 error는 shared cache에 넣지 않는 것이 기본입니다. dynamic compression은 edge 또는 origin 한 곳만 수행하며
+          cache는 <code>Vary: Accept-Encoding</code>의 identity/gzip/Brotli representation을 분리해야 합니다. purge, TLS renewal, edge outage,
+          origin drain/rollback을 포함한 Supported evidence는 <a href="./edge-delivery.html">edge delivery policy</a>와
+          <a href="./adr/0027-edge-delivery-boundary.html">ADR 0027</a>을 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Observability와 privacy</h2>
+        <ul>
+          <li><code>rustee-observability::RequestIdLayer</code>는 매 request마다 server-generated UUID ID를 extension과 <code>X-Request-Id</code> response header에 넣고, <code>HTTP request</code>라는 server span에 request ID, method, response status, duration과 <code>RouteClassification</code>을 기록합니다. 분류는 매칭된 configured route template 또는 <code>&lt;fallback&gt;</code>, <code>&lt;method-not-allowed&gt;</code>, <code>&lt;not-found&gt;</code>뿐입니다. raw URI, host, cookie, authorization header와 query string은 span attribute가 아닙니다. client-supplied request ID는 trusted proxy policy가 구현되기 전까지 재사용하지 않습니다.</li>
+          <li><code>RequestMetrics</code>/<code>MetricsLayer</code>는 exporter-neutral collector로 <code>rustee_http_requests_total</code>, <code>rustee_http_route_requests_total</code>, <code>rustee_http_requests_in_flight</code>, <code>rustee_http_request_duration_seconds</code>의 naming baseline을 제공합니다. completed count, status class, <code>RouteClassification</code>별 status class, total duration과 전역 cumulative latency histogram만 기본 수집하며 raw request path는 label로 쓰지 않습니다. cancellation은 completed가 아닌 in-flight 감소로 처리합니다.</li>
+          <li>기본 latency bucket은 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s입니다. application은 32개 이하의 non-zero, strictly increasing upper bound로 collector를 생성할 수 있지만 route별 histogram은 제공하지 않습니다.</li>
+          <li><code>rustee-observability-prometheus</code>의 <code>metrics_response(&amp;metrics)</code>는 Prometheus text 0.0.4와 <code>Cache-Control: no-store</code> response를 만듭니다. duration은 histogram <code>_bucket</code>/<code>_sum</code>/<code>_count</code>으로 출력합니다. global registry나 자동 <code>/metrics</code> route는 없으므로 application은 인증, network isolation, scrape path를 배포 정책으로 명시합니다.</li>
+          <li><code>rustee-observability-opentelemetry</code>는 <code>tracing-opentelemetry</code> 기반의 exporter-neutral bridge입니다. <code>init(tracer)</code>는 format layer와 OpenTelemetry layer를 global subscriber에 한 번 설치하고, 이미 subscriber가 있으면 <code>false</code>를 반환합니다. 기존 subscriber에 결합할 때는 <code>layer(tracer)</code>를 사용합니다. application은 tracer provider, exporter endpoint/credential, resource/service metadata, sampling과 provider shutdown을 소유합니다.</li>
+          <li>W3C propagation은 <code>TraceContextLayer</code>에서만 opt-in합니다. 이 layer는 <code>RequestIdLayer</code> 바깥에 두며, ASCII 512 byte 이하의 단일 <code>traceparent</code>와 wire order로 합친 512 byte 이하 <code>tracestate</code>만 request span의 remote parent로 사용합니다. malformed, duplicate 또는 oversized input은 trace와 <code>tracestate</code>를 이어가지 않고 새 root trace로 처리합니다. raw propagation header는 span attribute가 아니며 response에 추가하지 않습니다.</li>
+          <li><code>inject_current_context(&amp;mut headers)</code>는 handler가 만든 outbound HTTP client request에 현재 span의 child context를 명시적으로 넣습니다. 기존 W3C header는 먼저 제거하므로 active span이 없으면 caller-supplied value를 그대로 forward하지 않습니다. bridge는 Prometheus <code>RequestMetrics</code>를 대체하지 않습니다. CI는 pinned OTLP/HTTP Collector에 <code>HTTP request</code> span을 flush하고 Collector debug output까지 확인합니다. production collector endpoint, TLS/mTLS, authorization metadata, sampling, retention과 vendor policy는 application deployment가 소유합니다.</li>
+          <li>authorization header, cookie, token, password, secret, full body, prompt/completion은 default field가 아닙니다. 필요한 audit는 explicit redaction과 retention policy를 가져야 합니다.</li>
+          <li>OpenTelemetry exporter는 optional이며 service name, deployment environment, version, sampling, cardinality budget은 application configuration입니다.</li>
+          <li>readiness, database/broker/AI provider check, retry는 trace와 metric에 원인 category를 남기되 raw endpoint credential과 payload는 내보내지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Outbox relay metrics</h2>
+        <p>
+          <code>rustee-outbox-observability-prometheus</code>는 transaction outbox relay의 application-owned
+          <code>OutboxRelayMetrics</code>를 explicit Prometheus text response로 바꿉니다. pass count/in-flight,
+          fixed event/job kind와 terminal outcome, aggregate row count와 global duration만 내보내고 <code>Cache-Control: no-store</code>를 설정합니다.
+          route registration, scrape authentication/network isolation, alert threshold, retention과 incident owner는 application deployment가 정합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Kafka consumer readiness</h2>
+        <p>
+          <code>KafkaEventConsumer::connect</code>는 librdkafka consumer와 subscription을 구성하지만 broker connection, topic metadata,
+          group assignment 또는 handler availability를 blocking startup operation으로 만들지 않습니다. application startup/readiness policy는
+          explicit <code>consumer.readiness(timeout)</code>로 consumer가 subscribe한 source/retry topic metadata를 bounded read-only로
+          확인할 수 있습니다. missing/broker-error topic 또는 timeout은 sanitized <code>KafkaError::Readiness</code>입니다.
+        </p>
+        <p>
+          consumer readiness는 topic provision, partition mutation, offset movement, poll loop, group member count, assignment, lag-zero,
+          retry/DLQ delivery 또는 downstream side-effect readiness를 보장하지 않습니다. deployment는 topic ACL/retention, producer startup
+          order, health aggregation, timeout, alert/backoff와 recovery supervisor를 명시적으로 소유합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Kafka consumer delivery metrics</h2>
+        <p>
+          <code>KafkaEventConsumer::with_delivery_observer</code>는 optional <code>EventDeliveryObserver</code>를 연결합니다.
+          <code>rustee-events-observability::EventMetrics</code>와 its Prometheus adapter는 source offset commit 뒤의
+          <code>acknowledged</code>/<code>retried</code>/<code>dead_lettered</code>, cancellation 또는 settlement failure의
+          <code>unsettled</code>, bounded provider label, in-flight와 global duration만 집계합니다. observer panic은 Kafka
+          settlement에서 격리되고 unfinished observation은 <code>unsettled</code>가 됩니다.
+        </p>
+        <p>
+          application deployment가 collector ownership, protected/network-isolated scrape route, alert and incident owner를 정합니다.
+          exporter는 global registry, listener, automatic route, broker probe, topic/partition/group/offset query, alert threshold, retry
+          policy 또는 replay command를 만들지 않습니다. topic, offset, key, payload, event identity/type, endpoint, tenant와 raw error는
+          label이나 text response가 아닙니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Kafka delayed-retry operation</h2>
+        <p>
+          <code>PostgresKafkaDelayedRetryRelay</code>는 background task, health route 또는 automatic migration을 만들지 않습니다.
+          application startup 또는 readiness policy에서 <code>readiness(KafkaDelayedRetryReadinessConfig)</code>를 await해 PostgreSQL
+          <code>rustee_kafka_delayed_retries</code> table select와 configured retry/DLQ Kafka topic metadata를 각각 bounded timeout으로 확인합니다.
+          check는 topic을 provision하거나 migration을 실행하지 않으며 broker endpoint, credential, key, payload와 raw backend detail을 error에 넣지 않습니다.
+          supervisor는 readiness 뒤 <code>run_until(KafkaDelayedRetryRelayLoopConfig, shutdown)</code>을 own task에서 await하고, readiness failure,
+          relay error, queue age, unpublished row, lease expiry와 duplicate-consumer effect를 deployment alert/runbook에 연결합니다. migration/restore,
+          polling/backoff, alert threshold/owner, topic ACL/retention, replay approval과 external side-effect idempotency는 application이 소유합니다.
+        </p>
+        <p>
+          relay에는 opt-in <code>KafkaDelayedRetryRelayObserver</code>를 연결할 수 있습니다.
+          <code>rustee-events-kafka-sqlx-observability::KafkaDelayedRetryRelayMetrics</code>는 pass started/in-flight,
+          fixed <code>succeeded</code>/<code>failed</code>/<code>abandoned</code> outcome, fully successful pass의 confirmed publish count와 global duration만 집계합니다.
+          application은 자기 polling cadence와 timeout으로 <code>relay.backlog()</code>를 호출한 뒤 aggregate-only
+          <code>unpublished</code>/<code>due</code>/<code>leased</code>/oldest-due-age snapshot을 <code>record_backlog</code>에 전달합니다.
+          <code>rustee-events-kafka-sqlx-observability-prometheus</code>는 이를 explicit <code>no-store</code> text response로 인코드하지만
+          registry, listener, database query loop, health route, alert threshold를 만들지 않습니다. topic, row ID, key, payload, broker endpoint와 raw error는 label이 아닙니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Event schema rollout</h2>
+        <p>
+          <code>rustee-events-schema</code>는 service endpoint, background registration 또는 Kafka header injection을 만들지 않습니다.
+          application은 typed JSON Schema artifact, exact fingerprint, subject/version/compatibility catalog를 source control에서 review하고,
+          자신의 registry adapter로 remote acknowledgement를 local artifact와 대조합니다. optional <code>rustee-events-schema-confluent</code>는
+          effective compatibility policy를 read-only로 확인하고 exact lookup, absent artifact registration, exact relookup을 하나의 explicit call에서 수행합니다.
+          registry endpoint/credential/ACL, remote compatibility semantics, topic mapping, schema ID wire format, verification timing과 consumer-first rollout은 deployment-owned입니다.
+        </p>
+        <p>
+          schema 변경은 producer보다 compatible consumer와 explicit older-payload <code>EventUpcaster</code>를 먼저 준비합니다.
+          registry acknowledgement만으로 retained record replay, source group offset, downstream external side effect나 rollback safety가 보장되지는 않습니다.
+          Confluent adapter의 non-loopback endpoint는 HTTPS여야 하고 Basic/bearer credential, timeout, provider version과 ACL/rotation은 application이 명시합니다.
+          <code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE=1</code> ignored qualification test는 approved non-production registry에 retained unique subject를 만들므로,
+          execution approval, subject retention/cleanup owner와 effective <code>BACKWARD</code> policy evidence를 release record에 남깁니다.
+          remote provider evidence, replay dry-run, rollback window와 idempotency reconciliation을 release gate에 남기며, 상세 절차는
+          <a href="./event-schema-operations.html">event schema runbook</a>과 <a href="./adr/0036-event-schema-registry-boundary.html">ADR 0036</a>를 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Recurring scheduler operation</h2>
+        <p>
+          <code>PostgresRecurringJobs</code>는 process나 timer를 자동으로 만들지 않습니다. application supervisor는 bounded
+          <code>fire_due(RecurringJobFireLimit)</code> pass를 UTC-aware polling cadence로 호출하고, PostgreSQL readiness, pass failure와
+          <code>RecurringJobFireReport::rate_limited</code> increase를 own alert policy에 연결합니다. <code>RecurringJobFireObserver</code>와
+          optional <code>rustee-jobs-cron-observability</code> collector는 started/in-flight/completed, fixed
+          succeeded/failed/abandoned outcome, claimed/staged/rate-limited aggregate와 global duration만 live 집계합니다.
+          <code>rustee-jobs-cron-observability-prometheus</code>의 explicit <code>no-store</code> response는 protected 또는 network-isolated
+          scrape route에 application이 mount합니다. schedule key, cron expression, destination, payload, tenant, rate key와 raw storage error는
+          metric label에 넣지 않습니다. 여러 replica가 동시에 실행해도 due row lock은 <code>SKIP LOCKED</code>로 분리되고 shared governor state는
+          same-transaction upsert로 consume됩니다. sustained database outage 뒤에는 schedule당 one catch-up execution이 생길 수 있으므로
+          downstream idempotency, capacity, shared rate-key inventory와 pause/defer runbook을 함께 운영합니다. alert threshold/owner, scrape
+          isolation, tzdb dependency update qualification, holiday/business calendar, tenant fairness, daily quota와 external-provider quota는 deployment-specific scheduler policy입니다. Durable IANA zone, DST gap skip와 overlap earlier-once rule은 <a href="./adr/0033-recurring-job-time-zone-calendar.html">ADR 0033</a>을 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>OpenTelemetry 연결</h2>
+        <p>
+          exporter와 lifecycle은 application configuration에 남깁니다. 아래의 <code>exporter</code>는 OTLP 또는 vendor SDK가 만든 exporter이며,
+          process 종료 전에 provider를 shutdown합니다. 이미 global subscriber를 초기화했다면 <code>init</code> 대신 <code>layer</code>를 application subscriber에 조합합니다.
+        </p>
+        <pre><code>use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use rustee_observability::RequestIdLayer;
+use rustee_observability_opentelemetry::{TraceContextLayer, init};
+use tower::Layer;
+
+let provider = SdkTracerProvider::builder()
+    .with_simple_exporter(exporter)
+    .build();
+
+assert!(init(provider.tracer("my-service")));
+let service = TraceContextLayer::new().layer(RequestIdLayer::new().layer(app));
+// Start serving `service`. For an outbound client request in a handler:
+// rustee_observability_opentelemetry::inject_current_context(request.headers_mut());
+provider.shutdown()?;</code></pre>
+        <p>
+          OTLP/HTTP는 application-owned exporter의 한 선택입니다. CI contract는 <code>opentelemetry-otlp</code> 0.32의 binary protobuf exporter와
+          pinned Collector를 사용하지만, Rustee bridge는 이를 강제하지 않습니다.
+        </p>
+        <pre><code>use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
+
+let exporter = SpanExporter::builder()
+    .with_http()
+    .with_protocol(Protocol::HttpBinary)
+    .with_endpoint("https://collector.example.com:4318")
+    .build()?;
+let provider = SdkTracerProvider::builder()
+    .with_batch_exporter(exporter)
+    .build();</code></pre>
+      </section>
+
+      <section>
+        <h2>필수 검증</h2>
+        <ul>
+          <li>malformed config, missing secret, schema/parse error가 rejected value를 노출하지 않는지, profile override, required/optional readiness의 test</li>
+          <li>transport peer address가 request extension으로 전달되는 real TCP test, untrusted forwarded header spoofing, trusted proxy allowlist, Nginx가 client-supplied <code>Forwarded</code>를 overwrite하는 Linux container contract, <code>Vary: Accept-Encoding</code> 기반 gzip/identity proxy-cache separation, Nginx를 통과한 active request graceful drain, secure cookie/redirect scheme의 real TCP test</li>
+          <li>liveness/readiness transition, request timeout, client disconnect, graceful drain과 cancellation leak test</li>
+          <li>generated request ID가 extractor/response/trace를 일관되게 연결하고 client-supplied ID를 신뢰하지 않는 regression test, log/trace에서 authorization credential과 secret/payload가 누출되지 않는 regression test</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>의도적으로 제공하지 않는 것</h2>
+        <ul>
+          <li>모든 config format, secret manager, cloud deployment를 감추는 universal configuration framework</li>
+          <li>모든 reverse proxy를 자동 신뢰하거나 forwarded header를 원격 주소 검증 없이 사용하는 middleware</li>
+          <li>초기 release의 built-in ACME, direct TLS, HTTP/2, automatic config hot reload</li>
+          <li>dependency outage를 구분하지 않고 모든 health endpoint를 하나의 boolean으로 처리하는 API</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>외부 표준</h2>
+        <ul>
+          <li><a href="https://www.rfc-editor.org/rfc/rfc7239.html">RFC 7239: Forwarded HTTP Extension</a></li>
+          <li><a href="https://opentelemetry.io/docs/specs/semconv/general/">OpenTelemetry semantic conventions</a></li>
+          <li><a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a></li>
+          <li><a href="https://docs.rs/opentelemetry-otlp/0.32.0/opentelemetry_otlp/">OpenTelemetry Rust OTLP exporter</a></li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this document when configuration, secret, proxy/TLS trust, transport support, health, lifecycle, observability, or operational limit policy changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

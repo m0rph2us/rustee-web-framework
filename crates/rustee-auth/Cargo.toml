@@ -1,0 +1,25 @@
+[package]
+name = "rustee-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Authentication principal and bearer authorization middleware for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-tenant = { path = "../rustee-tenant", version = "0.1.0" }
+serde.workspace = true
+thiserror.workspace = true
+tower.workspace = true
+
+[dev-dependencies]
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+rustee-server = { path = "../rustee-server", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

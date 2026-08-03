@@ -1,0 +1,22 @@
+[package]
+name = "rustee-mongodb"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MongoDB client lifecycle and readiness helpers for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+mongodb.workspace = true
+rustee-tenant = { path = "../rustee-tenant", version = "0.1.0" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,26 @@
+[package]
+name = "rustee-static"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prefix-bound static file Tower layer for Rustee"
+
+[dependencies]
+async-stream.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+httpdate.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0039: OpenAPI explicit description boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../openapi.html">OpenAPI</a>
+          <a href="../adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0039 · Accepted · 2026-08-04</div>
+        <h1>OpenAPI explicit description boundary</h1>
+        <p class="lead">API 문서는 handler 구현에서 추측하지 않고, application이 검토 가능한 metadata로 명시합니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Stage 4에는 public API schema 경로가 필요하지만 Rust handler signature, extractor, state와 middleware만으로 request/response,
+          authorization, error semantics를 안전하게 추론할 수 없습니다. route tree를 runtime에 탐색해 문서를 생성하면 mounted service,
+          application-owned policy와 documented behavior가 조용히 달라질 수 있습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>rustee-openapi</code>는 optional crate이며 facade의 <code>openapi</code> feature로만 re-export합니다.</li>
+          <li>application은 Rustee route template을 <code>OpenApiRoute::from_rustee</code>로 명시하고, operation ID, parameter, request/response schema와 status를 직접 선언합니다. <code>:id</code>와 <code>{id}</code>의 parameter set이 다르면 document build를 fail-closed 합니다.</li>
+          <li>schema는 bounded JSON object 또는 small helper로만 만들고, document는 normal <code>application/json</code> handler response가 됩니다.</li>
+          <li>framework는 handler/extractor/authorization/error response를 추론하지 않으며, endpoint mount/access control, security scheme, server metadata, schema derive와 model validation은 application 또는 별도 feature track의 책임입니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>route/operation을 함께 검토할 수 있고, raw runtime input이나 credential을 specification builder에 넣을 이유가 없습니다.</li>
+          <li>route table과 OpenAPI document가 서로 다른 file에서 독립 변경될 수 있으므로 application은 same-change review와 contract test를 유지해야 합니다.</li>
+          <li>initial contract는 deterministic JSON shape와 route parameter consistency만 증명합니다. OpenAPI UI, client generation, security semantics와 external validator compatibility를 Supported evidence로 주장하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>채택하지 않은 이유</th></tr></thead>
+          <tbody>
+            <tr><td>handler/extractor reflection으로 자동 생성</td><td>Rust type만으로 authorization, status/error, body semantics와 mounted external service를 정확히 표현할 수 없습니다.</td></tr>
+            <tr><td>router가 모든 route metadata를 소유</td><td>runtime dispatch API와 public stability surface를 넓히고 application metadata의 ownership을 흐립니다.</td></tr>
+            <tr><td>처음부터 derive macro와 full OpenAPI UI를 제공</td><td>schema/version/asset/security policy를 동시에 고정해야 하므로 minimal verified boundary를 넘습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          security scheme metadata는 <a href="./0043-openapi-security-metadata-boundary.html">ADR 0043</a>에서 explicit component/requirement로,
+          Authorization Code/Client Credentials flow와 global/operation security semantics는 <a href="./0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>에서
+          확장했습니다. server URL, schema derive, external validation, route/document drift detection 또는 hosted UI를 추가할 때에는
+          application ownership, generated artifact retention, credential/data exposure와 compatibility policy를 정한 후 별도 ADR을 작성합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Supersede this ADR if Rustee adds inferred or generated OpenAPI metadata.</p>
+      </footer>
+    </main>
+  </body>
+</html>

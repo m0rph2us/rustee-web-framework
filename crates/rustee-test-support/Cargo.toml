@@ -1,0 +1,14 @@
+[package]
+name = "rustee-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Workspace-only fixtures and deterministic test support for Rustee"
+
+[dependencies]
+
+[lints]
+workspace = true

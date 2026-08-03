@@ -1,0 +1,30 @@
+[package]
+name = "rustee-mcp-oauth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OAuth protected-resource metadata and bearer authorization layer for Rustee MCP servers"
+
+[dependencies]
+futures-util.workspace = true
+http.workspace = true
+rustee-auth = { path = "../rustee-auth", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tower.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+rustee-mcp = { path = "../rustee-mcp", version = "0.1.0" }
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

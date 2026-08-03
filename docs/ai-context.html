@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee AI 유지관리 규칙</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">AI Operating Context</div>
+        <h1>AI가 계속 참고하고 갱신해야 할 규칙</h1>
+        <p class="lead">
+          이 문서는 Rustee에서 AI 에이전트가 작업할 때 따라야 하는 운영 규칙입니다. 목표는 매 세션의 판단이
+          이전 설계와 이어지고, 중요한 변경이 코드에만 남지 않게 하는 것입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>작업 시작 체크리스트</h2>
+        <ol>
+          <li>먼저 이 문서를 읽습니다.</li>
+          <li><a href="./index.html">문서 인덱스</a>, <a href="./release-plan.html">출하 계획과 지원 정책</a>, <a href="./supply-chain.html">공급망과 릴리스 증거</a>, <a href="./release-inventory.html">release inventory</a>, <a href="./support-matrix.html">지원 현황 매트릭스</a>, <a href="./implementation-review.html">구현 계획 재검토</a>에서 현재 문서 맵, 지원 단계와 release blocker를 확인합니다.</li>
+          <li>새 facade나 provider를 제안하기 전, <a href="./implementation-review.html">계획 재검토</a>의 P0→P4 순서를 확인합니다. P0/F1 뒤에는 owner가 고른 하나의 reference deployment의 qualification을 우선하며, Contract-verified code가 live-provider 또는 Supported 증거를 대신한다고 판단하지 않습니다.</li>
+          <li>작업 영역에 따라 <a href="./design-philosophy.html">디자인 철학</a>, <a href="./architecture.html">구조</a>, <a href="./operations.html">운영과 배포</a>, <a href="./static-files.html">정적 파일</a>, <a href="./compression.html">응답 압축</a>, <a href="./openapi.html">OpenAPI</a>, <a href="./macros.html">매크로 경계</a>, <a href="./database.html">데이터베이스</a>, <a href="./redis.html">Redis</a>, <a href="./mongodb.html">MongoDB</a>, <a href="./authentication.html">인증과 권한</a>, <a href="./queues.html">Queue와 background job</a>, <a href="./events.html">Kafka event stream</a>, <a href="./event-schema-operations.html">event schema runbook</a>, <a href="./kafka-delayed-retry-operations.html">Kafka delayed retry runbook</a>, <a href="./ai.html">AI application integration</a>, <a href="./testing.html">테스트와 검증 전략</a>, <a href="./roadmap.html">기능 로드맵</a>, 관련 ADR을 읽습니다.</li>
+          <li>기존 파일과 git 상태를 확인하고, 사용자가 만든 변경을 되돌리지 않습니다.</li>
+          <li>코드를 바꾸기 전에 어떤 문서가 함께 갱신되어야 하는지 판단합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>문서 갱신 규칙</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>상황</th>
+              <th>필수 행동</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>public API 방향 변경</td>
+              <td><code>docs/architecture.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>철학이나 비목표 변경</td>
+              <td><code>docs/design-philosophy.html</code> 갱신, ADR 추가</td>
+            </tr>
+            <tr>
+              <td>단계, 우선순위, 완료 기준 변경</td>
+              <td><code>docs/roadmap.html</code>와 <code>docs/release-plan.html</code> 갱신</td>
+            </tr>
+            <tr>
+              <td>v1 범위, public API 안정성, adapter 지원 단계, release gate 또는 platform 지원선 변경</td>
+              <td><code>docs/release-plan.html</code>, <code>docs/support-matrix.html</code>, <code>docs/implementation-review.html</code>, <code>docs/testing.html</code> 갱신 및 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>workspace crate, publication intent, package metadata 또는 release artifact 정책 변경</td>
+              <td><code>docs/release-inventory.html</code>, <code>docs/release-plan.html</code>, <code>docs/supply-chain.html</code>, <code>docs/testing.html</code>, inventory verifier, candidate archive assembler, post-publish consumer verifier와 SBOM collector를 같은 변경에서 갱신</td>
+            </tr>
+            <tr>
+              <td>DB toolkit, migration, transaction, pool, PostgreSQL outbox/inbox lease와 receipt 정책 변경</td>
+              <td><code>docs/database.html</code>, <code>docs/queues.html</code>, <code>docs/events.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>Redis client, cache, session, rate limit, 장애 정책 변경</td>
+              <td><code>docs/redis.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>MongoDB client, document model, schema evolution, transaction, change stream, BSON tenant scope 정책 변경</td>
+              <td><code>docs/mongodb.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>인증 방식, token 검증, session, permission, tenant 권한 정책 변경</td>
+              <td><code>docs/authentication.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>job envelope, worker, retry, DLQ, outbox, broker provider 정책 변경</td>
+              <td><code>docs/queues.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>event envelope, topic/key, partition, offset, consumer group, delayed retry, schema, replay 정책 변경</td>
+              <td><code>docs/events.html</code>, <code>docs/database.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code>, <code>docs/testing.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>AI provider, model alias, prompt/pipeline, tool/approval, RAG/memory, usage/budget, observability, MCP 정책 변경</td>
+              <td><code>docs/ai.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>test helper, test layer, deterministic time, feature matrix, CI/release gate, backend contract 정책 변경</td>
+              <td><code>docs/testing.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>정적 파일 mount, cache validator, MIME, filesystem trust, HTTP range normalization/precompressed/streaming 정책 변경</td>
+              <td><code>docs/static-files.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>response content coding, cache variation, compression stream, proxy/CDN ownership 정책 변경</td>
+              <td><code>docs/compression.html</code>, <code>docs/operations.html</code>, <code>docs/testing.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>configuration, secret, proxy/TLS trust, transport, health, lifecycle, observability 정책 변경</td>
+              <td><code>docs/operations.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
+            </tr>
+            <tr>
+              <td>장기적으로 되돌리기 어려운 기술 선택</td>
+              <td><code>docs/adr/NNNN-short-title.html</code> 추가</td>
+            </tr>
+            <tr>
+              <td>AI 작업 절차 변경</td>
+              <td><code>docs/ai-context.html</code>와 root bootstrap 갱신</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>문서 형식 규칙</h2>
+        <ul>
+          <li>정식 문서는 HTML로 작성합니다.</li>
+          <li>문서 파일은 <code>docs/**/*.html</code> 아래에 둡니다.</li>
+          <li>문서 간 링크는 상대 경로를 사용합니다.</li>
+          <li>각 문서 하단에 <code>Last updated</code>와 갱신 조건을 적습니다.</li>
+          <li>새로운 문서가 생기면 <code>docs/index.html</code>에 링크를 추가합니다.</li>
+        </ul>
+        <div class="warning">
+          <p>
+            루트의 <code>AGENTS.md</code>는 일반 문서가 아니라 AI 에이전트가 HTML 문서를 찾기 위한 부트스트랩 파일입니다.
+            정식 설계 내용은 이 HTML 문서 세트를 기준으로 합니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>MCP 구현 기준</h2>
+        <p>
+          <code>rustee-ai-mcp</code>은 MCP 2025-11-25 Streamable HTTP의 JSON/SSE POST-response와 local stdio client path를, <code>rustee-mcp</code>은 nested JSON server path를 제공합니다. AI는 endpoint trust, HTTPS/non-loopback rule, request/body/page/tool/context limit, local program/argument/inherited-environment trust, tool별 risk와 Rustee approval/audit 연결을 <a href="./ai.html">AI 문서</a>, <a href="./adr/0015-mcp-remote-tool-boundary.html">ADR 0015</a>, <a href="./adr/0016-mcp-tool-server-boundary.html">ADR 0016</a>, <a href="./adr/0017-mcp-context-boundary.html">ADR 0017</a>에 함께 기록해야 합니다. remote schema, description, annotation, argument와 result는 authorization이 아니며, remote call은 <code>McpRemoteTool</code> 또는 <code>McpStdioRemoteTool</code>이 <code>ToolRegistry</code> 승인 뒤에만 보냅니다. client SSE parser는 matching result 전 notification만 소모하며 unexpected request를 실행하지 않습니다. session-bearing request의 404는 stored session만 비우고 <code>SessionExpired</code>를 반환하며 tool을 자동 재실행하지 않습니다. opt-in HTTP session recovery는 bounded backoff로 replacement initialize/notification만 준비해 next explicit request에 쓰며 expired request를 replay하지 않습니다. valid event ID 뒤 opt-in SSE resumption은 bounded <code>Last-Event-ID</code> GET만 보내고 origin POST, tool call 또는 context request를 replay하지 않습니다. <code>open_server_event_stream()</code>은 initialized session에서 standalone GET notification을 명시적으로 읽고, server request/response를 거부하며 notification을 tool, context 또는 provider에 자동 전달하지 않습니다. <code>close_session()</code>은 session-bearing DELETE를 보내고 stateless 405도 local cleanup으로 처리합니다. stdio는 bounded newline JSON-RPC와 request/shutdown deadline을 적용하고 timeout, pipe failure, protocol/output violation 뒤 connection을 폐기합니다. 기본은 caller의 explicit <code>restart()</code>이고, opt-in automatic restart는 bounded backoff로 replacement handshake만 준비하며 prior tool call이나 context request를 replay하지 않습니다. Rust fixture integration test와 macOS/Windows CI matrix는 initialize/discovery/approved execution/close 공통 경로를 검증하도록 구성합니다. server는 Origin header가 있으면 explicit canonical allowlist가 없을 때 403으로 거부하고, access policy가 visible tool과 application-owned execution/idempotency context를 만들며 mandatory terminal audit을 거치게 합니다. optional <code>McpContextProvider</code>는 같은 authenticated request로 tenant/user/data authorization을 수행한 뒤 명시적 read-only resource/template/prompt 결과만 제공하며 model context로 자동 채택하지 않습니다. Origin allowlist는 DNS rebinding 방어이지 authentication/CORS가 아닙니다. client/server full session lifecycle, server-initiated request/sampling/elicitation, Windows advanced subprocess lifecycle와 context subscription/completion은 구현되지 않은 범위로 유지하고 완료된 것처럼 문서화하지 않습니다. optional <code>rustee-mcp-oauth</code>는 separate protected-resource metadata와 Bearer/scope layer를 제공하며 existing MCP tool/context policy에 verified principal만 전달합니다.
+        </p>
+        <p>
+          client HTTP MCP authorization은 optional <code>rustee-ai-mcp-oauth</code>만 담당합니다. application은 protected-resource discovery 뒤 authorization server와 scope를 선택하고, state/PKCE callback을 atomic short-TTL store에 보관한 다음 token set을 encrypted tenant/user store에 넣어야 합니다. <code>rustee-ai-mcp-oauth-redis</code>는 AES-256-GCM envelope, active/retired decrypt key rotation, TTL/GETDEL state consume와 token persistence를 제공하지만 tenant/user key/KMS/retention policy는 application이 소유합니다. authorization-code와 explicit refresh request는 canonical <code>resource</code>를 보내며 revoke는 locally resource-bound token을 선택합니다. expired tool/read/prompt request는 replay하지 않습니다. opposite-direction <code>rustee-mcp-oauth</code>는 canonical resource/metadata/issuer allowlist/scope configuration, public metadata GET과 Bearer challenge만 제공하고 token을 저장하지 않습니다. application verifier는 exact resource audience와 issuer/key source를 검증해 <code>Principal</code>만 layer에 전달해야 하며 existing MCP tool/context/tenant/approval policy가 최종 권한을 계속 소유합니다. 이 lifecycle은 <a href="./mcp-oauth.html">MCP OAuth</a>, <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018</a>, <a href="./adr/0019-mcp-oauth-resource-server-boundary.html">ADR 0019</a>을 함께 갱신합니다.
+        </p>
+        <p>
+          AI evaluation/cache/batch 변경은 <code>rustee-ai-eval</code>, <code>rustee-ai-cache</code>, <code>rustee-ai-cache-redis</code>, <code>rustee-ai-batch</code>, <code>rustee-ai-batch-jobs</code>, <code>rustee-ai-batch-sqlx</code>, <code>rustee-ai-openai</code>과 <a href="./adr/0020-ai-evaluation-cache-batch-boundary.html">ADR 0020</a>, <a href="./adr/0021-ai-response-cache-boundary.html">ADR 0021</a>, <a href="./adr/0022-ai-provider-batch-submission-boundary.html">ADR 0022</a>, <a href="./adr/0023-openai-batch-lifecycle-adapter.html">ADR 0023</a>, <a href="./adr/0024-ai-batch-artifact-reconciliation-boundary.html">ADR 0024</a>, <a href="./adr/0025-ai-batch-postgres-artifact-ledger.html">ADR 0025</a>를 기준으로 합니다. evaluation suite 식별자와 report는 safe metadata만 담고 prompt, expected target, completion은 application-owned 실행·grader 경계를 벗어나지 않습니다. cache key는 application-generated tenant-scoped opaque fingerprint여야 하며 raw prompt를 framework가 hash하거나 pipeline에 automatic cache를 넣으면 안 됩니다. submission batch job은 tenant/policy scope, catalog ID, run key만 보관하고 ledger가 existing receipt/pending ambiguity를 보존하므로 provider submit을 automatic retry하면 안 됩니다. artifact job은 output/error role, opaque provider file ID, reconciliation key만 보관하고 loader/processor failure 뒤 <code>Pending</code>을 release하지 않습니다. <code>rustee-ai-batch-sqlx</code>은 scope/reconciliation-key reference를 restart-safe로 보존하고 same key의 다른 identity를 거부하지만, artifact authorization이나 row output을 보관하지 않습니다. application은 provider <code>custom_id</code>와 domain key로 row-level side effect를 멱등 처리한 뒤 검토할 수 있으며, 재처리가 안전할 때에만 새 reconciliation key를 가진 새 job을 명시적으로 schedule합니다. OpenAI adapter의 upload/download/delete는 caller가 명시적으로 고른 bounded, non-serializable input 또는 file ID에서만 수행합니다. output JSONL iterator는 safe ID/status/request ID/error code만 구조적으로 파싱하고 model body는 explicit consume 뒤에만 보입니다. built-in <code>into_chat_response()</code>/<code>into_embeddings(expected_count)</code> conversion 외의 raw JSONL/prompt와 output/error content를 automatic cache/evaluation에 주입하면 안 됩니다. tool interaction/stream은 cache 대상이 아니고, read bypass/fail-closed, write failure status, exact invalidation, key salt/version, tenant erase, encryption/TLS, retention과 stale-answer UX를 명시합니다. catalog authorization, external human 또는 LLM grader의 authorization·cost·redaction, semantic cache와 provider domain response semantics/partial result/billing reconciliation도 숨겨서 구현하면 안 됩니다. 이 범위는 <a href="./ai.html">AI 문서</a>, <a href="./testing.html">테스트</a>, <a href="./roadmap.html">로드맵</a>, <a href="./release-plan.html">출하 계획</a>을 같은 변경에서 갱신합니다.
+        </p>
+        <p>
+          durable evaluation run은 <code>rustee-ai-eval-jobs</code>, <code>rustee-ai-eval-sqlx</code>와 <a href="./adr/0038-ai-evaluation-durable-run-boundary.html">ADR 0038</a>을 추가로 따릅니다. <code>AiEvaluationReference</code>에는 validated scope, catalog ID, run key만 들어가고 raw suite, report, prompt, target, completion은 저장하거나 serialize하지 않습니다. worker는 authorized catalog loader 뒤에만 runner를 호출하며 ledger의 exact scope/run-key reservation이 completed result를 재사용하거나 failure를 <code>Pending</code>으로 남깁니다. catalog/report storage authorization, provider 또는 grader 비용, human/LLM grader governance, explicit fresh-run 승인과 reconciliation은 application이 소유합니다.
+        </p>
+        <p>
+          <code>OpenAiBatchOutputExpiration</code>은 caller가 선택한 output/error file의 provider-side whole-second expiration(1시간~30일)만 batch creation에 전달합니다. input file, artifact ledger, domain copy, billing, <code>Pending</code> 또는 live qualification approval을 자동 변경하지 않습니다. 실제 spend 호출은 protected <code>openai-batch-qualification</code> Environment의 manual workflow로만 수행하고, completed/failed/cancelled/expired artifact의 domain reconciliation은 계속 application evidence가 필요합니다.
+        </p>
+        <p>
+          client는 negotiated <code>resources</code>/<code>prompts</code> capability에서만 HTTP와 stdio에 동일한 bounded
+          <code>resources/list</code>, <code>resources/templates/list</code>, <code>resources/read</code>, <code>prompts/list</code>,
+          <code>prompts/get</code> API를 제공합니다. typed resource/prompt metadata, text/blob, image/audio, embedded resource와 resource link는
+          모두 untrusted data이며 <code>ChatRequest</code>, advisor, provider 또는 tool registry에 자동 전달하지 않습니다. application은 explicit
+          URI/prompt selection, tenant authorization, user consent, classification, secret/PII redaction, modality compatibility와 tighter
+          context/token budget을 거친 뒤에만 자체 renderer/advisor input으로 채택합니다. resource link도 자동 fetch하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>현재 설계 기준 요약</h2>
+        <ul>
+          <li>Core는 작고 안정적으로 유지합니다.</li>
+          <li>Tokio, Hyper, Tower와의 호환성을 기본 축으로 삼습니다.</li>
+          <li>미들웨어는 Tower-compatible 구조를 우선합니다.</li>
+          <li><code>App::nest</code>는 static non-root prefix에 Tower service를 mount하고 child URI에서 prefix를 제거합니다. child Rustee app의 <code>RouteTemplate</code>은 외부 full path로 유지하며 child fallback/405가 prefix 아래를 소유합니다. direct parent route가 우선하고, 여러 nest는 longest prefix가 우선합니다. parent/child <code>StateStore</code>는 자동 병합하지 않습니다.</li>
+          <li>정적 파일은 선택적 <code>rustee-static</code> layer에서 explicit root와 URI prefix, weak <code>ETag</code>/<code>Last-Modified</code> conditional cache, normalized single/multipart byte-range response, opt-in precompressed Brotli/gzip variant와 bounded large-file streaming을 제공합니다. variant는 non-Range request에서만 quality negotiation으로 선택하고 Range는 identity representation으로 고정합니다. multipart input은 overlap/adjacent merge와 64 input/16 part limit를 적용합니다. streaming threshold는 maximum file admission limit를 대체하지 않으며 selected full/range representation에 적용합니다. cache policy, CDN/object storage 채택과 deployment exposure는 application 책임이며, raw filesystem path나 directory listing을 노출하지 않습니다.</li>
+          <li>response compression은 선택적 <code>CompressionLayer</code>에서 streaming gzip/Brotli negotiation으로 제공합니다. <code>Vary: Accept-Encoding</code>과 existing coding/no-transform/Range/HEAD bypass를 지키며, proxy/CDN가 compression을 소유하면 origin layer를 같이 켜지 않습니다.</li>
+          <li><code>rustee-test::TestApp</code>은 opt-in <code>with_cookie_jar()</code>에서만 session-style valid cookie name/value를 보존합니다. <code>Max-Age=0</code> deletion, fixed 64-entry/8 KiB bound, successful buffered response 뒤 atomic update와 explicit request <code>Cookie</code> override를 지키되, browser origin/path/secure/same-site/expiry/redirect 정책은 구현하지 않습니다. 이 경계를 넓힐 때에는 <a href="./adr/0042-test-cookie-jar-boundary.html">ADR 0042</a>와 wire/browser evidence를 함께 갱신합니다.</li>
+          <li><code>rustee-openapi</code>의 security component/requirement은 application-declared static metadata입니다. HTTP Basic/Bearer, API key, safe OpenID Connect discovery, Authorization Code/Client Credentials OAuth2 flow와 declared OAuth scope, static <code>mutualTLS</code>, document-wide default, anonymous alternative, explicit operation clear override를 render합니다. scheme은 requirement 전에 등록하고 header API-key name은 HTTP field-name grammar를 따라야 합니다. OAuth URL은 HTTPS 또는 loopback HTTP with no credential/query/fragment여야 하며 <code>mutualTLS</code> requirement는 scope를 받지 않습니다. route authentication, bearer/API-key parsing, OAuth token exchange/refresh/revocation, OIDC/session lifecycle, TLS termination, certificate validation/rotation/principal mapping 또는 tenant/scope authorization을 추론·생성하지 않습니다. runtime API-key authentication은 <code>rustee-auth::ApiKeyLayer</code>가 explicit header only boundary로 별도 제공하며 production provider의 hash lookup/rotation/audit policy를 추론하지 않습니다. legacy OAuth flow, runtime drift와 provider interoperability를 늘릴 때에는 <a href="./adr/0039-openapi-explicit-description-boundary.html">ADR 0039</a>, <a href="./adr/0043-openapi-security-metadata-boundary.html">ADR 0043</a>, <a href="./adr/0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>, <a href="./adr/0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>, <a href="./adr/0047-openapi-api-key-header-grammar.html">ADR 0047</a>, <a href="./adr/0048-api-key-header-authentication-boundary.html">ADR 0048</a>을 함께 갱신합니다.</li>
+          <li>매크로는 선택 기능이며, non-macro API가 먼저 존재해야 합니다. 현재 <code>rustee::routes!</code>는 existing <code>App</code> method chain만 만들고, <code>rustee-macros::FromHeader</code>는 explicit header name의 one-field tuple newtype <code>FromStr</code> parsing만 생성합니다. handler/schema/authorization은 생성하지 않습니다. 확장 전에는 <a href="./adr/0040-from-header-derive-boundary.html">ADR 0040</a>, <a href="./adr/0041-routes-builder-macro-boundary.html">ADR 0041</a>과 compile-fail contract를 갱신합니다.</li>
+          <li>엔터프라이즈 기능은 core에 밀어 넣기보다 별도 crate와 feature flag로 확장합니다.</li>
+          <li>데이터베이스는 core 추상화가 아니며, SQLx는 첫 선택적 공식 통합입니다. 풀은 <code>State&lt;AppState&gt;</code>로 전달합니다. <code>rustee-outbox-sqlx</code>는 PostgreSQL에서 event/job envelope을 같은 transaction에 stage하고 destination별 <code>SKIP LOCKED</code> lease relay로 전달하며, <code>PostgresInbox</code>는 database side effect와 receipt를 같은 transaction에 commit합니다. cross-store exactly-once, external side-effect idempotency, tenant authorization은 추상화하지 않습니다.</li>
+          <li>Redis는 선택적 상태 저장소 통합이며, redis-rs <code>ConnectionManager</code>를 기본 client 경로로 삼습니다. <code>rustee-rate-limit</code>은 trusted application key resolver, fixed-window 429 response와 explicit failure policy를 제공하고 <code>rustee-rate-limit-redis</code>은 Lua atomic store를 제공합니다. 역할별 장애 정책은 명시합니다.</li>
+          <li><code>RedisConfig</code>는 기본 5초의 bounded initial connect와 sanitized <code>RedisConnectError::Connection</code>만 제공합니다. URL과 credential은 Debug와 startup error에 노출하지 않으며, 이후 reconnect는 redis-rs <code>ConnectionManager</code>가 담당합니다. failover topology와 application-level retry supervisor는 deployment가 명시합니다.</li>
+          <li>MongoDB는 선택적 문서 database 통합이며, 공식 driver <code>Client</code>의 내장 pool을 사용합니다. BSON, schema evolution, change stream은 별도 운영 경계로 다룹니다. <code>ChangeStreamCheckpointStore</code>는 opaque resume token의 storage contract이고 <code>rustee-mongodb-checkpoint-sqlx</code>는 PostgreSQL <code>BYTEA</code> adapter, timeout-bound readiness와 opt-in database-clock writer lease를 제공합니다. durable handler success 뒤 <code>save_while_leased</code>로 저장하고 storage failure나 <code>LeaseLost</code>이면 worker를 종료합니다. owner identity, renewal scheduler, invalidation, restart/backoff와 outage policy는 자동화하지 않습니다. <code>MongoTenantScope</code>는 verified <code>TenantContext</code>를 outer-AND <code>tenant_id</code> filter, insert/replacement document, classic update validation과 target collection first-match aggregation pipeline에 연결합니다. 이는 MongoDB RLS가 아니므로 raw driver, aggregation의 <code>$lookup</code>/<code>$unionWith</code>, change-stream pipeline은 application의 explicit tenant condition과 access review가 필요합니다.</li>
+          <li>인증과 권한은 선택적 security integration입니다. static JWT와 HTTPS JWKS bearer token은 verified scope/role/permission을 포함한 <code>Principal</code>로 정규화하며, JWKS는 strict algorithm/key-use filtering, bounded cache refresh, provider-unavailable 503을 유지합니다. OIDC browser login은 discovery, Code+PKCE, one-time state, nonce-bound ID token, session bridge와 Redis TTL/GETDEL transaction store까지 구현됐습니다. opaque access token은 HTTPS introspection의 active/issuer/audience/time 검증과 exp-bound SHA-256 fingerprint cache로 처리합니다. JWKS/opaque adapter의 real loopback transport outage는 credential/provider detail 없는 503으로 고정했습니다. <code>rustee-tenant</code>는 trusted tenant context를 security/storage에 공유하고 PostgreSQL은 transaction-local RLS read/write isolation을 확인합니다. direct permission, server-configured role-to-permission policy, tenant-match guard와 configured-host <code>TenantResolutionLayer</code>, MongoDB BSON read/update/delete tenant boundary는 구현됐고 external IdP revocation, MongoDB raw-query review와 outage/recovery contract는 별도 release gate로 검증합니다.</li>
+          <li>Queue와 background job은 선택적 worker integration입니다. at-least-once 전달, idempotent handler, retry/DLQ와 PostgreSQL outbox/inbox를 명시적으로 설계합니다. <code>JobEnvelope::decode</code>와 <code>JobRegistry::register</code>는 strict current version이 기본이고, older job payload가 필요한 handler만 <code>JobUpcaster</code> 또는 <code>register_with_upcaster</code>를 명시합니다. newer version은 거부합니다. <code>JobTraceContext</code>는 bounded W3C carrier만 저장하고, <code>rustee-jobs-opentelemetry</code>는 current span capture와 valid carrier의 handler-parent 연결을 담당합니다. <code>JobRegistry</code>는 startup에 stable typed handler를 등록하고 duplicate/invalid name을 거부합니다. <code>NatsConfig</code>와 <code>RabbitMqConnectionConfig</code>는 bounded one-shot connect와 sanitized failure만 제공하며 reconnect/backoff supervisor는 application-owned입니다. <code>JetStreamWorker::run_registry_until</code>은 provider attempt를 typed context에 주입하며 unknown/malformed envelope은 retry 없이 acknowledged DLQ publish, handler failure만 retry policy로 처리합니다. <code>rustee-jobs-redis</code>는 deployment-provisioned Redis Streams source/group/DLQ를 확인하고 ownership-checked ack, Redis-clock durable delayed retry와 <code>XAUTOCLAIM</code>/<code>XPENDING</code> cumulative-attempt reclaim을 제공합니다. retry private storage와 source retention은 같은 deployment policy로 관리하고, heartbeat가 없으므로 <code>reclaim_idle</code>은 longest handler보다 길어야 합니다. <code>rustee-jobs-rabbitmq</code>는 RabbitMQ 4.3 quorum queue에서 publisher confirm, manual ack/reject, <code>x-acquired-count</code> attempt와 native <code>delayed-retry-type=failed</code> policy를 사용합니다. plugin/TTL-DLX retry는 금지하며, native linear backoff가 core policy와 정확히 일치하는 bounded range만 <code>RabbitMqNativeRetryConfig</code>으로 허용합니다. queue type/policy/delivery limit/broker-native DLX는 deployment-owned이고 passive readiness는 존재/ACL만 확인합니다. <code>rustee-jobs-sqs</code>는 MSRV-compatible AWS SDK 1.105.0 client injection, source/DLQ Standard/FIFO route, long polling, receive-time visibility lease와 heartbeat extension, success delete, whole-second retry visibility, direct DLQ를 제공합니다. <code>ApproximateReceiveCount</code>는 provider attempt지만 Standard delivery는 at-least-once이며, malformed/unknown/exhausted delivery는 DLQ send 성공 뒤 source delete하므로 delete failure가 DLQ duplicate를 만들 수 있습니다. source redrive DLQ ARN/max receive count와 queue mode는 deployment-owned이고 readiness가 읽기 전용으로 확인합니다. handler timeout은 first receive 뒤 SQS 12-hour visibility ceiling 안에 있어야 하며 heartbeat failure 때 delete하지 않습니다. <code>JobSchedule::after</code>와 <code>PostgresOutbox::stage_job_after</code>는 one-time job을 PostgreSQL clock 기준 durable <code>available_at</code>에 같은 business transaction으로 stage하고 existing <code>JobOutboxRelay</code> loop가 due row만 publish하게 합니다. <code>OutboxPriority</code>는 same kind/destination에서 only local claim order를 0-255로 정하며 broker priority, fairness 또는 global rate limit이 아닙니다. 0 delay와 cron/recurring/rate-limited schedule은 이 API 범위 밖입니다. broker acknowledgement 뒤 outbox confirmation이 실패하면 duplicate publish가 가능하며, <code>PostgresInbox</code>는 DB-bound side effect에만 receipt를 제공하므로 email/HTTP에는 provider idempotency key가 필수입니다. Queue priority 변경은 <a href="./adr/0028-durable-outbox-priority-boundary.html">ADR 0028</a>도 같은 change에서 갱신합니다.</li>
+          <li><code>rustee-jobs-cron-sqlx</code>는 위 one-time API와 분리된 PostgreSQL durable IANA-time-zone recurring scheduler입니다. <code>RecurringJob&lt;J&gt;</code>는 typed payload와 application-owned key로 registration하며 <code>RecurringJob::new</code>의 default는 <code>UTC</code>이고 <code>with_time_zone(RecurringJobTimeZone)</code>으로 validated IANA zone을 명시합니다. <code>PostgresRecurringJobs::fire_due</code>는 PostgreSQL clock, due-row <code>SKIP LOCKED</code>, fresh job ID/UTC occurrence idempotency key, outbox stage와 next occurrence update를 one transaction에서 처리합니다. forward DST gap은 skip하고 backward overlap은 earlier UTC occurrence만 materialize합니다. identical registration만 idempotent하고 time-zone change를 포함한 definition drift는 conflict입니다. <code>RecurringJobRateLimit</code>을 <code>with_rate_limit</code>으로 붙이면 shared key의 PostgreSQL-clock fixed-window capacity를 같은 transaction에서 consume합니다. capacity가 full이면 outbox를 만들지 않고 next window boundary로 defer하며, same rate key의 capacity/window drift는 <code>RateLimitPolicyConflict</code>로 registration에서 거부합니다. <code>pause</code>는 future schedule selection만 막고 <code>resume</code>는 paused tick을 replay하지 않은 채 current clock 다음 local occurrence로 다시 시작합니다. late schedule도 하나만 fire하고 current clock 다음 occurrence로 advance합니다. application은 base/governor migration 뒤 <code>RECURRING_JOB_TIME_ZONE_MIGRATION_SQL</code>을 forward-only로 적용하며 existing row는 UTC입니다. bundled tzdb dependency update는 affected schedule inventory, DST boundary test와 rollout/rollback review가 필요한 qualification gate입니다. framework-owned polling loop, holiday/business calendar, all-missed catch-up, tenant fairness, daily quota와 broker-level priority는 제공하지 않습니다. 이 policy는 <a href="./adr/0029-postgres-recurring-job-scheduler.html">ADR 0029</a>, <a href="./adr/0030-postgres-scheduler-rate-governor.html">ADR 0030</a>, <a href="./adr/0033-recurring-job-time-zone-calendar.html">ADR 0033</a> 및 <a href="./queues.html">Queue 문서</a>를 같은 change에서 갱신합니다.</li>
+          <li>scheduler governor는 HTTP/Redis <code>RateLimitStore</code>와 별도 product boundary입니다. application은 base <code>RECURRING_JOB_MIGRATION_SQL</code> 뒤 <code>RECURRING_JOB_TIME_ZONE_MIGRATION_SQL</code>을 적용하고 governor를 쓰면 <code>RECURRING_JOB_RATE_GOVERNOR_MIGRATION_SQL</code>을 그 사이에 둡니다. rate-state consume, outbox stage와 next-run update 또는 defer는 PostgreSQL 한 transaction이지만 broker publish, worker execution, tenant fairness와 external-provider quota는 그 atomicity 밖입니다.</li>
+          <li><code>PostgresRecurringJobs::with_fire_observer</code>는 opt-in <code>RecurringJobFireObserver</code>를 연결합니다. observer는 panic-isolated이며 pass drop/cancellation을 <code>abandoned</code>로 끝냅니다. <code>rustee-jobs-cron-observability</code>는 started/in-flight/completed, fixed succeeded/failed/abandoned outcome, claimed/staged/rate-limited aggregate와 global duration만 집계하고, separate Prometheus helper는 explicit text 0.0.4 <code>no-store</code> response만 만듭니다. schedule key, expression, destination, job/payload, tenant, rate key, endpoint/credential와 raw error는 수집하거나 label로 내보내지 않습니다. route, scrape isolation, alert threshold/owner, polling supervisor와 automatic pause/retry는 application/deployment가 소유합니다. 이 policy는 <a href="./adr/0031-postgres-scheduler-observability.html">ADR 0031</a>과 <a href="./operations.html">운영 문서</a>를 같은 change에서 갱신합니다.</li>
+          <li><code>rustee-jobs-observability-prometheus</code>는 <code>JobMetrics</code>의 optional exporter입니다. collector가 제한한 provider와 fixed delivery outcome, in-flight/global duration만 escaped Prometheus text 0.0.4로 바꾸고 explicit <code>no-store</code> response를 돌려줍니다. job ID/type/version/attempt, payload, queue route, receipt handle, idempotency key, trace carrier, tenant와 raw broker/handler error는 내보내지 않습니다. global registry, listener, automatic scrape route, broker probe, alert threshold나 DLQ replay authority는 application/deployment가 소유합니다. 이 policy는 <a href="./adr/0032-job-delivery-prometheus-exporter.html">ADR 0032</a>와 <a href="./queues.html">Queue 문서</a>를 같은 change에서 갱신합니다.</li>
+          <li>PostgreSQL outbox relay는 background task를 자동 생성하지 않습니다. application은 one-pass <code>relay_once</code> 또는 explicit <code>run_until(RelayLoopConfig, shutdown)</code> future를 자기 supervisor에서 await합니다. <code>run_until</code>은 empty pass만 bounded idle delay로 wait하고 shutdown 신호 뒤에는 새 lease를 잡지 않지만, 이미 lease한 bounded pass는 완료합니다. every pass는 panic-isolated, cancellation-safe <code>OutboxRelayObserver</code> lifecycle을 emit하고 optional <code>rustee-outbox-observability::OutboxRelayMetrics</code>가 fixed event/job kind, succeeded/failed/abandoned outcome, claimed/published/retry_scheduled/lease_lost, in-flight/global duration을 live 집계합니다. final <code>RelayLoopReport</code>는 drain result를 확인하는 별도 aggregate입니다. destination, job/event ID, payload, broker endpoint, error text를 label로 넣지 않습니다. forced task abort, broker acknowledgement 뒤 confirmation failure, lease loss는 at-least-once duplicate publish를 만들 수 있으므로 consumer idempotency와 graceful shutdown은 application release gate입니다.</li>
+          <li>Job observability는 <code>rustee-jobs</code>의 <code>JobDeliveryObserver</code> contract와 <code>rustee-jobs-observability::JobMetrics</code>로 관리합니다. NATS/Redis Streams/RabbitMQ/SQS worker는 start/finish를 동일한 observer에 전달하며 durable settlement 뒤 acknowledged/retried/dead-lettered를, broker settlement failure 또는 cancellation은 unsettled를 기록합니다. collector label은 bounded provider/outcome과 global duration뿐이며 job ID/type, payload, queue route, receipt handle, idempotency key, trace carrier, raw error는 제외합니다. job ID/type/version/attempt correlation은 <code>rustee-jobs-opentelemetry</code> handler span에만 기록합니다.</li>
+          <li>RabbitMQ 4.3 CI fixture는 durable quorum source queue에 <code>delayed-retry-type=failed</code>, min/max, delivery limit과 broker-native DLX exchange/routing key를 explicit arguments로 provision합니다. contract는 success/retry-DLQ/unknown-registry DLQ뿐 아니라 isolated first worker connection을 abort한 뒤 replacement worker가 same unacknowledged job을 attempt 2로 받는지 확인합니다. AMQP passive readiness는 존재와 ACL만 확인합니다. optional <code>rustee-jobs-rabbitmq-management</code>의 separate monitor-only Management HTTP client는 encoded vhost/queue snapshot을 read-only로 fetch하고 quorum/durable/effective retry+delivery-limit+DLX route를 audit하며 URL/credential을 Debug에 노출하지 않습니다. production HTTPS/TLS/ACL qualification은 deployment release gate입니다.</li>
+          <li>Kafka는 선택적 event-stream integration입니다. topic/key, partition, consumer group, post-success offset commit, rebalance, retry/DLQ, replay, schema compatibility를 job queue와 별도로 설계합니다. <code>rustee-events</code>는 bounded W3C carrier, strict current-version decode와 explicit older-payload <code>EventUpcaster</code>를 제공하며 newer version은 거부합니다. <code>rustee-events-schema</code>는 typed JSON Schema artifact, format-plus-exact-source fingerprint와 stable subject/version catalog를 만들고 application-owned registry adapter acknowledgement가 local artifact와 정확히 같은지만 확인합니다. remote compatibility semantics, credential, schema-ID wire header, topic mapping, registry publication timing과 consumer-first rollout은 application deployment가 결정합니다. <code>rustee-events-opentelemetry</code>는 current span capture와 valid carrier의 handler-parent 연결을 제공합니다. <code>rustee-outbox-sqlx</code> event relay는 DB mutation과 Kafka publish 사이의 dual-write gap을 줄이고 <code>PostgresInbox</code>는 transactional projection deduplication을 제공하지만, external consumer idempotency를 대신하지 않습니다. <code>KafkaRetryConfig</code>, <code>KafkaFailurePublisher</code>, <code>KafkaEventConsumer::run_with_failure_routing</code>은 decode/handler failure를 immediate retry 또는 bounded terminal DLQ로 route하고, failure publish broker acknowledgement 뒤에만 source offset을 commit합니다. optional <code>rustee-events-kafka-sqlx</code>는 retry 가능한 failure를 source offset commit 전에 PostgreSQL database clock의 durable row로 stage하고 due <code>SKIP LOCKED</code> lease relay가 stored retry destination/header를 Kafka acknowledgement 뒤 confirm합니다. <code>KafkaDelayedRetryReadinessConfig</code>과 relay <code>readiness</code>는 retry table select와 retry/DLQ topic metadata를 bounded하게 확인하고, <code>KafkaDelayedRetryRelayLoopConfig</code>과 <code>run_until</code>은 batch/empty-pass delay와 shutdown을 explicit application supervisor에 남깁니다. <code>KafkaDelayedRetryRelayObserver</code>는 panic-isolated, cancellation-safe pass lifecycle을 emit하며 optional collector/Prometheus adapter는 fixed outcome, confirmed successful-pass count, global duration와 explicit application-recorded unpublished/due/leased/oldest-due aggregate만 export합니다. application이 backlog query cadence/timeout, scrape route/isolation, alert/backoff와 owner를 결정하며 topic, row ID, key, payload, endpoint와 raw error는 label이 아닙니다. acknowledgement 뒤 PostgreSQL confirmation failure에는 duplicate publish가 가능하며 migration, delay/lease와 consumer idempotency는 application deployment 책임입니다. framework는 source group offset을 자동으로 옮기거나 DLQ를 자동 재발행하지 않습니다. documented operator procedure는 explicit replay group, admin-tool dry-run, idempotency, lag/rate monitoring과 reconciliation을 요구합니다. <code>KafkaEventConsumer</code>는 bounded group-member/partition-lag diagnostic snapshot을 제공하고, CI Kafka+PostgreSQL contract는 successful handler commit 뒤 no-replay, failed handler record redelivery, staged delayed retry의 due-before-relay/confirmation, relay readiness/backlog, active handler drain/commit, quiescent member handoff, in-flight handler rebalance 뒤 commit failure/duplicate redelivery, committed lag-zero와 three-delivery terminal DLQ arrival을 확인합니다. 상세 경계는 ADR 0034, ADR 0035와 ADR 0036입니다.</li>
+          <li><code>rustee-events-schema-confluent</code>는 optional Confluent Schema Registry deployment adapter입니다. non-loopback endpoint는 HTTPS여야 하며 Basic, bearer 또는 injected mTLS client authentication을 redacted configuration으로 보유합니다. catalog verification은 effective policy가 declared <code>BACKWARD</code>/<code>FORWARD</code>/<code>FULL</code>/<code>NONE</code>과 정확히 같은지 read-only 확인하고 exact JSON artifact를 lookup한 뒤 absent일 때만 register, 다시 lookup해 subject/version/source identity를 확인합니다. adapter는 registry policy를 바꾸지 않고 Kafka header/serializer/topic/offset을 만지지 않으며 request retry, credential rotation, registry provider/version/ACL/outage evidence와 consumer-first rollout은 application deployment가 소유합니다.</li>
+          <li><code>rustee-events-schema-confluent</code>의 ignored live qualification은 <code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE=1</code>, HTTPS registry URL과 Basic key/secret 또는 bearer token을 모두 명시해야만 실행됩니다. unique retained subject를 만들고 effective <code>BACKWARD</code> policy를 요구하므로, approved non-production account에서만 run하며 provider/version, ACL scope, retained-subject cleanup/retention owner와 result를 release evidence로 남깁니다. credential, URL, raw schema source를 log나 metric label에 넣지 않습니다.</li>
+          <li><code>KafkaConfig</code>는 <code>message.timeout.ms</code>를 기본 5초로 강제해 broker delivery 전체를 bounded하게 만들고 0 또는 librdkafka millisecond range 밖 값을 거부합니다. stopped broker publish는 sanitized <code>KafkaError::Delivery</code>로 끝나며 CI는 restart 뒤 full Kafka contract recovery를 확인합니다. transaction-enabled producer는 broker의 transaction deadline이 이 delivery deadline을 조정할 수 있으므로 application이 별도 capability review를 수행합니다.</li>
+          <li>AI는 선택적 application integration입니다. <code>rustee-ai</code>는 chat/stream, typed output, final-request policy, request/response/stream <code>AiAdvisor</code>, tool, RAG를 제공합니다. <code>AiExecutionContext</code>는 application이 verified principal/server-resolved tenant에서 만들며, <code>BudgetAdvisor</code>가 provider 호출 전 content-free admission을 받고 manual tool approval에도 공유됩니다. durable provider attempt는 application-defined stable key의 <code>AiUsageReservation</code>과 <code>AiUsageLedger</code>로 reserve한 뒤에만 시작합니다. response 또는 stream <code>Completed(Usage)</code>만 terminal usage를 settle하고 same key의 pending/settled retry는 provider 전에 차단합니다. <code>complete_with_advisor_and_usage_ledger</code>/<code>stream_with_advisor_and_usage_ledger</code>는 advisor final request를 reserve하며 stream raw usage를 advisor event hook 전에 settle합니다. transport error, incomplete stream, HTTP body drop에는 refund나 usage를 추측하지 않아 pending reconciliation으로 남습니다. <code>ToolExecutionContext</code>는 application-defined idempotency key를 typed handler와 audit event에 공유합니다. <code>ToolApprovalAuditSink</code>는 approved handler보다 먼저 성공해야 하며 실패 시 side effect를 시작하지 않습니다. <code>ToolExecutionAuditSink</code>는 handler 뒤 terminal <code>Succeeded</code>/<code>Failed</code> outcome을 기록하고, 그 기록이 실패하면 rollback을 약속하지 않은 redacted reconciliation event를 반환합니다. <code>rustee-ai-audit-sqlx</code>는 PostgreSQL migration과 tenant + idempotency key의 replay-safe tool approval/outcome 및 provider usage ledger, bounded pending reconciliation query를 제공하고 changed identity/terminal value는 거부합니다. quota admission pricing, retention/retry worker, provider lookup/refund은 application이 운영합니다. <code>AiPipeline</code>/<code>ToolRegistry</code>는 aggregate request/usage, fixed outcome, tool risk, latency만 가진 tracing span을 만들고 prompt/completion, model alias, identity, provider/call ID, idempotency key, tool name/argument/result는 제외합니다. 기존 OpenTelemetry subscriber layer가 이를 export하되 sampling/exporter/retention, provider trace propagation은 application이 명시합니다. <code>rustee-ai-rag</code>의 <code>DocumentReference</code>/<code>RagIngestionRequest</code>는 tenant/document/revision/checksum/model만 durable payload에 넣고, worker가 source URI/citation/text를 읽어 chunk/embedding/vector upsert validation을 수행합니다. <code>rustee-ai-rag-jobs</code>는 이를 typed job으로 전달하고 <code>rustee-ai-openai</code>의 <code>OpenAiEmbeddingsProvider</code>는 provider <code>index</code>를 검증해 batch input 순서를 보존합니다. <code>rustee-ai-rag-advisor</code>는 application query builder와 context renderer를 명시적으로 받아 ACL-revalidated context만 request에 추가하며 prompt role/delimiter를 자동 결정하지 않습니다. MCP resources/prompts도 model context로 자동 주입하지 않으며 application/user selection, resource-specific authorization, content inspection/redaction과 tighter context budget이 계약으로 증명된 뒤에만 advisor input이 될 수 있습니다. model output은 신뢰하지 않고 tenant 권한과 provider usage를 application policy로 명시합니다. advisor order는 application-owned composite에 명시하며 framework가 자동 조합하지 않습니다.</li>
+          <li>테스트는 unit, in-process, real TCP, container contract, compile/docs, property/fuzz로 나눕니다. mock만으로 실제 transport/backend 검증을 대체하지 않고, time/resource를 결정론적으로 제어합니다. <code>rustee-router</code> parser/parameter/static-precedence와 <code>rustee-openapi</code> Rustee-to-OpenAPI route conversion <code>proptest</code>는 PR workspace test에 포함되고, isolated <code>route_pattern</code>/<code>openapi_route</code>/<code>openapi_security_scheme</code> libFuzzer corpus는 pinned nightly Linux에서 weekly/manual bounded sanitizer run을 수행합니다. target은 route/nest construction, OpenAPI conversion과 API-key header-name metadata parser만 다루며 query/cookie runtime, body/range/state machine과 external I/O는 자동 포함하지 않습니다. 현재 CI는 Redis 7의 cache/rate-limit/session/OIDC consume과 Streams job success ack/retry-DLQ/reclaim/unknown-registry DLQ, RabbitMQ 4.3 quorum queue의 publisher confirm/manual ack/native delayed retry-DLQ/unknown-registry DLQ, LocalStack SQS의 Standard delete/retry-direct-DLQ/unknown-registry-DLQ와 FIFO route, PostgreSQL 16의 SQLx connect/readiness/query와 outbox transaction visibility/deduplication/delayed-job due release/release-redelivery 및 MongoDB checkpoint, MongoDB 8의 connect/ping/isolated collection I/O와 trusted tenant BSON scope, NATS JetStream worker contract와 Apache Kafka의 success-commit/no-replay, failure-redelivery, active-handler drain, quiescent handoff, in-flight rebalance, committed lag-zero, terminal DLQ arrival consumer contract를 opt-in backend suite로 실행합니다. 실행 경계와 corpus/artifact policy는 <a href="./adr/0044-router-property-fuzz-boundary.html">ADR 0044</a>에 기록합니다.</li>
+          <li>Redis 7 CI는 server 중지 뒤 <code>RedisConfig</code>의 500ms initial connection deadline이 endpoint 없는 failure로 끝나는지 확인하고, 재시작 뒤 cache/rate-limit/session/OIDC/Streams contracts를 다시 실행합니다. Cluster/Sentinel failover와 existing in-flight command recovery는 별도 release gate입니다.</li>
+          <li>MongoDB 8 CI는 replica set에서 isolated collection I/O뿐 아니라 explicit transaction commit/abort, change-stream event/resume-token checkpoint, already-ready shutdown priority, trusted tenant A/B의 cross-tenant read/update/delete exclusion, first-match aggregation exclusion과 tenant-field mutation rejection을 확인합니다. PostgreSQL checkpoint CI는 opaque resume token의 first load, consumer-scoped upsert/replace와 corrupt bytes rejection, database-clock lease의 contention/renewal/expiry/stale-writer rejection, stopped store의 timeout-bound sanitized readiness failure와 restart recovery를 확인하고 combined MongoDB/PostgreSQL CI는 checkpoint를 읽은 new client/stream이 next event에서 재개하는지 확인합니다. CI는 replica set을 중지했을 때 configured deadline 안에 readiness가 실패하고 restart 뒤 full contract가 회복되는지도 확인합니다. <code>begin_transaction</code>은 session만 시작하고 complete transaction callback 재시도, external side effect, lease owner identity/renewal scheduler, durable token invalidation과 restart/backoff는 application이 책임집니다. raw driver, aggregation의 <code>$lookup</code>/<code>$unionWith</code>와 change-stream pipeline의 tenant policy는 자동 적용하지 않습니다.</li>
+          <li>운영 기반은 Stage 3에서 먼저 구현합니다. configuration/secret, health/lifecycle, observability, TLS 종료와 proxy trust를 storage/auth/broker보다 앞서 명시합니다. 현재 observability는 tracing bootstrap과 generated request ID/response correlation/completion trace, configured route template 또는 reserved router outcome을 쓰는 exporter-neutral bounded request metrics, global latency histogram과 explicit Prometheus text response helper를 제공하고 server는 actual peer <code>ConnectionInfo</code>를 주입합니다. <code>rustee-observability-opentelemetry</code>는 server span을 tracing subscriber layer로 export하며 <code>TraceContextLayer</code>로 bounded W3C inbound parent와 explicit outbound child injection을 제공합니다. pinned OTLP/HTTP Collector contract는 batch flush와 Collector receipt를 CI에서 확인합니다. provider/exporter, resource, sampling, shutdown, production endpoint/TLS/auth metadata는 application 책임이고 response header에는 propagation data를 쓰지 않습니다. trusted proxy는 CIDR allowlist와 single-hop default/opt-in bounded chain을 사용하며 RFC 7239 <code>Forwarded</code>가 기본 family, legacy <code>X-Forwarded-*</code>는 explicit mode입니다. 두 family는 혼합 복원하지 않습니다. proxy/CDN deployment integration은 별도 release gate입니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Kafka event delivery observability</h2>
+        <ul>
+          <li><code>rustee-events</code>의 <code>EventDeliveryObserver</code>는 provider-neutral, synchronous non-blocking, panic-isolated lifecycle contract입니다. <code>EventDeliveryObservation</code>은 received source delivery 뒤 start하고 provider source settlement가 성공한 뒤에만 finish합니다. drop/cancellation, decode/handler/route/commit failure는 <code>unsettled</code>이며 Kafka adapter의 fixed provider는 <code>apache_kafka</code>입니다.</li>
+          <li><code>KafkaEventConsumer::with_delivery_observer</code>는 normal consumer success에서 source synchronous commit 뒤 <code>acknowledged</code>, failure-routing consumer에서 retry/DLQ durable route와 source commit 뒤 <code>retried</code>/<code>dead_lettered</code>를 기록합니다. observer는 offset commit, failure route, shutdown, rebalance, retry policy, source group offset과 replay를 바꾸지 않습니다. observer outcome은 external side effect exactly-once, consumer lag-zero 또는 replay safety 증명이 아닙니다.</li>
+          <li><code>rustee-events-observability::EventMetrics</code>와 <code>rustee-events-observability-prometheus</code>는 optional exporter-neutral collector/text helper입니다. bounded provider/outcome, in-flight/global duration과 explicit <code>no-store</code> response만 제공하며 event ID/type/version, topic, partition, group, offset, key, payload, trace carrier, tenant, endpoint, credential와 raw error를 label/response에 넣지 않습니다. global registry/listener/automatic route, broker or lag probe, scrape authentication/isolation, alert/retention/incident owner, retry/backoff와 DLQ replay authority는 application/deployment가 소유합니다. Kafka lifecycle/metrics 변경은 <a href="./events.html">Event 문서</a>, <a href="./operations.html">운영 문서</a>, <a href="./testing.html">테스트 문서</a>, <a href="./adr/0037-kafka-event-delivery-observability.html">ADR 0037</a>을 같은 change에서 갱신합니다.</li>
+          <li><code>KafkaEventConsumer::readiness(timeout)</code>는 subscribed source/retry topic이 broker metadata에 있고 error가 없는지 확인하는 bounded read-only operation입니다. <code>connect</code>를 blocking broker startup으로 바꾸지 않고 topic creation, partition mutation, group assignment/member count, lag-zero, handler/downstream readiness, offset movement나 poll loop를 수행하지 않습니다. application startup/readiness policy가 timeout, topic provisioning/ACL, health aggregation, alert/backoff와 recovery supervisor를 소유합니다. stopped-broker native contract는 timeout 안의 sanitized <code>KafkaError::Readiness</code>와 endpoint redaction을 확인합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Queue 요청 경계</h2>
+        <p>
+          <code>rustee-jobs-sqs</code>의 <code>SqsPublisher</code>와 <code>SqsWorkerConfig</code>는 기본 25초의 설정 가능한 요청 deadline을 사용합니다. worker deadline은 SQS long poll보다 반드시 길어야 하며, receive, readiness, visibility heartbeat, retry visibility, direct DLQ, delete 모두 이 deadline 안에서 endpoint/credential을 포함하지 않는 <code>SqsError</code>로 끝납니다. AWS SDK retry policy와 IAM/KMS/real AWS qualification은 application/deployment의 별도 release gate입니다. CI는 stopped LocalStack의 500ms failure와 restart 뒤 full recovery를 실행합니다.
+        </p>
+        <p>
+          <code>rustee-jobs-redis</code>의 publisher와 worker도 기본 5초의 command deadline을 사용하며, worker deadline은 Redis blocking read보다 길어야 합니다. readiness, publish, receive, reclaim, retry promotion, ack/retry/DLQ settlement가 모두 같은 sanitized <code>RedisStreamsError</code>로 종료됩니다. Redis 7 CI는 intentional <code>CLIENT PAUSE</code>로 500ms deadline과 endpoint redaction을 확인합니다. connection manager reconnect, retention/replay, Cluster/Sentinel failover는 application/deployment release gate입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>PostgreSQL 연결 경계</h2>
+        <p>
+          <code>rustee-sqlx::connect</code>는 <code>PoolConfig</code>의 기본 5초 initial-pool deadline을 적용합니다. SQLx의
+          low-level error model은 유지하지만, CI는 stopped PostgreSQL에서 500ms 연결 failure가 URL credential과 endpoint를
+          render하지 않는지 확인하고 restart 뒤 SQLx, outbox, AI audit/usage ledger, checkpoint contracts를 재실행합니다. application이
+          HTTP error mapping, migration, transaction retry, external side-effect idempotency와 database recovery supervisor를
+          명시적으로 소유합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>최근 운영 경계</h2>
+        <p>
+          <code>rustee-outbox-observability-prometheus</code>는 application-owned <code>OutboxRelayMetrics</code>를 bounded Prometheus text로
+          노출하는 optional adapter입니다. application이 protected scrape route와 alert owner/threshold를 정하며, destination, message ID,
+          payload, endpoint, credential와 raw error는 metric label로 내보내지 않습니다. 상세 운영 규칙은 <a href="./queues.html">Queue 문서</a>와
+          <a href="./testing.html">테스트 전략</a>을 함께 확인합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>External qualification</h2>
+        <p>
+          release tag/publish, named edge topology, live AI provider spend/retention, real cloud/provider credential evidence는 code task와 다른 owner action입니다.
+          AI agent는 이를 completed로 추측하지 않고 <a href="./qualification-register.html">qualification register</a>에서 owner와 required evidence를
+          확인합니다. approval 전에는 deterministic/local/container contract만 갱신하고 credential, tenant data, prompt/completion, endpoint와 billing detail을
+          문서나 test output에 기록하지 않습니다.
+        </p>
+        <p>
+          first release의 local path dependency는 publish 전 registry에서 해석할 수 없습니다. 따라서
+          <code>package-release-candidates.mjs</code>가 inventory-approved source archive 집합을 확인하는 것과,
+          publish 뒤 <code>verify-published-release-candidates.mjs</code>가 registry source consumer compile을 확인하는 것은 서로 다른 gate입니다.
+          AI agent는 archive assembly만으로 registry release를 완료로 기록하거나, 아직 publish되지 않은 상태에서 consumer verifier를 실행하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>작업 종료 체크리스트</h2>
+        <ol>
+          <li>관련 테스트나 검증 명령을 실행합니다. 실행하지 못했다면 이유를 기록합니다.</li>
+          <li>변경한 코드와 문서가 같은 방향을 말하는지 확인합니다.</li>
+          <li>새로운 설계 결정이 생겼다면 ADR을 추가하거나 기존 ADR에 후속 결정을 연결합니다.</li>
+          <li>최종 응답에서 변경한 HTML 문서와 검증 결과를 짧게 보고합니다.</li>
+        </ol>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this document when AI collaboration, implementation context, or documentation maintenance rules change.</p>
+      </footer>
+    </main>
+  </body>
+</html>

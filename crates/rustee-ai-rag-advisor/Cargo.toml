@@ -1,0 +1,20 @@
+[package]
+name = "rustee-ai-rag-advisor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Explicit ACL-revalidated RAG advisor integration for Rustee AI"
+
+[dependencies]
+futures-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+rustee-ai-rag = { path = "../rustee-ai-rag", version = "0.1.0" }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

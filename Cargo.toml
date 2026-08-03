@@ -1,0 +1,219 @@
+[workspace]
+members = [
+  "crates/rustee",
+  "crates/rustee-core",
+  "crates/rustee-router",
+  "crates/rustee-server",
+  "crates/rustee-middleware",
+  "crates/rustee-config",
+  "crates/rustee-observability",
+  "crates/rustee-observability-prometheus",
+  "crates/rustee-observability-opentelemetry",
+  "crates/rustee-static",
+  "crates/rustee-tenant",
+  "crates/rustee-rate-limit",
+  "crates/rustee-rate-limit-redis",
+  "crates/rustee-auth",
+  "crates/rustee-auth-jwt",
+  "crates/rustee-auth-oidc",
+  "crates/rustee-auth-oidc-redis",
+  "crates/rustee-auth-session",
+  "crates/rustee-auth-session-redis",
+  "crates/rustee-jobs",
+  "crates/rustee-jobs-observability",
+  "crates/rustee-jobs-observability-prometheus",
+  "crates/rustee-jobs-nats",
+  "crates/rustee-jobs-opentelemetry",
+  "crates/rustee-jobs-redis",
+  "crates/rustee-jobs-rabbitmq",
+  "crates/rustee-jobs-rabbitmq-management",
+  "crates/rustee-jobs-sqs",
+  "crates/rustee-jobs-cron-sqlx",
+  "crates/rustee-jobs-cron-observability",
+  "crates/rustee-jobs-cron-observability-prometheus",
+  "crates/rustee-events",
+  "crates/rustee-events-observability",
+  "crates/rustee-events-observability-prometheus",
+  "crates/rustee-events-schema",
+  "crates/rustee-events-schema-confluent",
+  "crates/rustee-events-kafka",
+  "crates/rustee-events-kafka-sqlx",
+  "crates/rustee-events-kafka-sqlx-observability",
+  "crates/rustee-events-kafka-sqlx-observability-prometheus",
+  "crates/rustee-events-opentelemetry",
+  "crates/rustee-outbox-sqlx",
+  "crates/rustee-outbox-observability",
+  "crates/rustee-outbox-observability-prometheus",
+  "crates/rustee-ai",
+  "crates/rustee-ai-audit-sqlx",
+  "crates/rustee-ai-mcp",
+  "crates/rustee-ai-mcp-oauth",
+  "crates/rustee-ai-mcp-oauth-redis",
+  "crates/rustee-mcp",
+  "crates/rustee-mcp-oauth",
+  "crates/rustee-ai-openai",
+  "crates/rustee-ai-web",
+  "crates/rustee-ai-rag",
+  "crates/rustee-ai-rag-jobs",
+  "crates/rustee-ai-rag-advisor",
+  "crates/rustee-ai-test",
+  "crates/rustee-ai-eval",
+  "crates/rustee-ai-eval-jobs",
+  "crates/rustee-ai-eval-sqlx",
+  "crates/rustee-ai-cache",
+  "crates/rustee-ai-cache-redis",
+  "crates/rustee-ai-batch",
+  "crates/rustee-ai-batch-jobs",
+  "crates/rustee-ai-batch-sqlx",
+  "crates/rustee-mongodb",
+  "crates/rustee-mongodb-checkpoint-sqlx",
+  "crates/rustee-redis",
+  "crates/rustee-sqlx",
+  "crates/rustee-test",
+  "crates/rustee-openapi",
+  "crates/rustee-macros",
+  "crates/rustee-test-support",
+  "tests/macro-alias-fixture",
+  "examples/hello-world",
+]
+default-members = [
+  "crates/rustee",
+  "crates/rustee-core",
+  "crates/rustee-router",
+  "crates/rustee-server",
+  "crates/rustee-middleware",
+  "crates/rustee-config",
+  "crates/rustee-observability",
+  "crates/rustee-observability-prometheus",
+  "crates/rustee-observability-opentelemetry",
+  "crates/rustee-static",
+  "crates/rustee-tenant",
+  "crates/rustee-rate-limit",
+  "crates/rustee-rate-limit-redis",
+  "crates/rustee-auth",
+  "crates/rustee-auth-jwt",
+  "crates/rustee-auth-oidc",
+  "crates/rustee-auth-oidc-redis",
+  "crates/rustee-auth-session",
+  "crates/rustee-auth-session-redis",
+  "crates/rustee-jobs",
+  "crates/rustee-jobs-observability",
+  "crates/rustee-jobs-observability-prometheus",
+  "crates/rustee-jobs-nats",
+  "crates/rustee-jobs-opentelemetry",
+  "crates/rustee-jobs-redis",
+  "crates/rustee-jobs-rabbitmq",
+  "crates/rustee-jobs-rabbitmq-management",
+  "crates/rustee-jobs-sqs",
+  "crates/rustee-jobs-cron-sqlx",
+  "crates/rustee-jobs-cron-observability",
+  "crates/rustee-jobs-cron-observability-prometheus",
+  "crates/rustee-events",
+  "crates/rustee-events-observability",
+  "crates/rustee-events-observability-prometheus",
+  "crates/rustee-events-schema",
+  "crates/rustee-events-schema-confluent",
+  "crates/rustee-events-kafka",
+  "crates/rustee-events-kafka-sqlx",
+  "crates/rustee-events-kafka-sqlx-observability",
+  "crates/rustee-events-kafka-sqlx-observability-prometheus",
+  "crates/rustee-events-opentelemetry",
+  "crates/rustee-outbox-sqlx",
+  "crates/rustee-outbox-observability",
+  "crates/rustee-outbox-observability-prometheus",
+  "crates/rustee-ai",
+  "crates/rustee-ai-audit-sqlx",
+  "crates/rustee-ai-mcp",
+  "crates/rustee-ai-mcp-oauth",
+  "crates/rustee-ai-mcp-oauth-redis",
+  "crates/rustee-mcp",
+  "crates/rustee-mcp-oauth",
+  "crates/rustee-ai-openai",
+  "crates/rustee-ai-web",
+  "crates/rustee-ai-rag",
+  "crates/rustee-ai-rag-jobs",
+  "crates/rustee-ai-rag-advisor",
+  "crates/rustee-ai-test",
+  "crates/rustee-ai-eval",
+  "crates/rustee-ai-eval-jobs",
+  "crates/rustee-ai-eval-sqlx",
+  "crates/rustee-ai-cache",
+  "crates/rustee-ai-cache-redis",
+  "crates/rustee-ai-batch",
+  "crates/rustee-ai-batch-jobs",
+  "crates/rustee-ai-batch-sqlx",
+  "crates/rustee-mongodb",
+  "crates/rustee-mongodb-checkpoint-sqlx",
+  "crates/rustee-redis",
+  "crates/rustee-sqlx",
+  "crates/rustee-test",
+  "crates/rustee-openapi",
+  "crates/rustee-macros",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rustee-rs/rustee"
+
+[workspace.dependencies]
+bytes = "1.10"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.10.4"
+cron = "0.16"
+futures-util = "0.3"
+http = "1.2"
+httpdate = "1.0"
+http-body = "1.0"
+http-body-util = "0.1"
+jsonwebtoken = { version = "=11.0.0", features = ["aws_lc_rs"] }
+hyper = { version = "1.6", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["server", "server-auto", "tokio", "http1"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_urlencoded = "0.7"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["migrate", "postgres", "runtime-tokio-rustls", "uuid"] }
+thiserror = "2.0"
+tokio = { version = "1.43", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tower = { version = "0.5", features = ["limit", "timeout", "util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+opentelemetry = { version = "=0.32.0", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "=0.32.1", default-features = false, features = ["trace"] }
+proc-macro-crate = "=3.5.0"
+proc-macro2 = "=1.0.107"
+proptest = "1.11.0"
+quote = "=1.0.47"
+syn = { version = "=2.0.119", features = ["full"] }
+tracing-opentelemetry = { version = "=0.33.0", default-features = false }
+url = { version = "2.5", features = ["serde"] }
+redis = { version = "=1.5.0", default-features = false, features = ["aio", "connection-manager", "script", "streams", "tokio-comp"] }
+mongodb = "=3.8.0"
+uuid = { version = "1.12", features = ["serde", "v4"] }
+async-nats = { version = "=0.50.0", default-features = false, features = ["jetstream"] }
+lapin = { version = "=4.10.0", default-features = false, features = ["rustls", "rustls--ring", "tokio"] }
+aws-sdk-sqs = { version = "=1.105.0", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
+async-stream = "0.3"
+async-compression = { version = "0.4", default-features = false, features = ["brotli", "gzip", "tokio"] }
+rdkafka = { version = "=0.39.0", default-features = false, features = ["cmake-build", "tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+ring = "0.17.14"
+tokio-util = { version = "0.7", features = ["io"] }
+zeroize = "1.9"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+
+[profile.dev]
+debug = 1

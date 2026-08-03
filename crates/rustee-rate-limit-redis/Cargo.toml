@@ -1,0 +1,22 @@
+[package]
+name = "rustee-rate-limit-redis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Redis Lua fixed-window rate-limit adapter for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+redis.workspace = true
+rustee-rate-limit = { path = "../rustee-rate-limit", version = "0.1.0" }
+rustee-redis = { path = "../rustee-redis", version = "0.1.0" }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "rustee-jobs-cron-observability-prometheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prometheus text exporter for Rustee PostgreSQL recurring-scheduler metrics"
+
+[dependencies]
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-jobs-cron-observability = { path = "../rustee-jobs-cron-observability", version = "0.1.0" }
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-jobs-cron-sqlx = { path = "../rustee-jobs-cron-sqlx", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0040: FromHeader Derive Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../macros.html">매크로</a>
+          <a href="../testing.html">Test</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0040 · Accepted · 2026-08-04</div>
+        <h1>FromHeader derive boundary</h1>
+        <p class="lead">선택적 derive는 existing extractor trait을 구현할 뿐, HTTP semantics나 route metadata를 추론하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          typed header extractor에는 header name 선언, text decoding, <code>FromStr</code> parsing과 safe bad-request mapping이 반복됩니다.
+          macro가 handler signature를 해석하거나 route를 등록하기 시작하면 extractor, authorization, error status와 public API stability의 ownership이
+          서로 섞입니다. Rustee의 macro-free API는 이미 이 경계를 명시적으로 표현합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>rustee-macros</code>는 candidate crate이며 facade <code>macros</code> feature를 통해 opt-in re-export합니다.</li>
+          <li><code>#[derive(FromHeader)]</code>는 explicit <code>#[rustee(header = &quot;...&quot;)]</code> attribute가 있는 one-field tuple newtype만 받습니다.</li>
+          <li>field는 <code>FromStr</code>를 구현해야 하고 generated implementation은 existing <code>rustee::FromHeader</code>, <code>Error</code>, <code>Result</code>와 <code>http::HeaderValue</code> path를 통해 parse failure를 <code>bad_request</code>로 매핑합니다.</li>
+          <li>header name은 macro expansion 전에 검증합니다. missing attribute, invalid name과 unsupported type shape는 stable <code>trybuild</code> compile-fail fixture로 관리합니다.</li>
+          <li>macro output은 facade crate rename을 해석하며 workspace-only consumer fixture가 이 contract를 검증합니다. hidden re-export는 generated code 전용이고 normal application code는 documented Rustee facade API를 사용합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>manual <code>FromHeader</code> implementation이 canonical contract로 유지되어 custom validation과 domain-specific error mapping을 막지 않습니다.</li>
+          <li>derive input grammar와 diagnostic text/span은 developer experience의 compatibility surface가 됩니다. 변경에는 fixture review와 release note가 필요합니다.</li>
+          <li>route registration, handler/extractor inference, authorization, OpenAPI/schema generation, multi-value header policy와 custom parsing trait은 이 결정의 범위 밖입니다.</li>
+          <li>runtime regression은 valid numeric parse와 invalid value의 <code>400</code> mapping을, compile regression은 valid/misuse fixture를 확인합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>route attribute와 handler registration을 같은 macro crate에 추가</td><td>routing/error/authorization semantics를 early lock-in하고 non-macro API보다 더 넓은 behavior를 만들므로 채택하지 않습니다.</td></tr>
+            <tr><td>struct name에서 header name을 자동 유도</td><td>public wire name의 surprise와 rename drift를 만들므로 explicit attribute를 선택합니다.</td></tr>
+            <tr><td>all struct shapes와 custom parser attribute를 처음부터 지원</td><td>error ownership과 generic bound surface를 불필요하게 넓히므로 minimal newtype boundary부터 검증합니다.</td></tr>
+            <tr><td>runtime reflection으로 header mapping을 구현</td><td>Rust compile diagnostics와 zero-cost typed extractor contract를 잃으므로 채택하지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          future macro proposal은 target user workflow, macro-free parity, generated code hygiene, feature/dependency cost,
+          diagnostic compatibility, security/HTTP ownership과 migration plan을 포함한 ADR을 추가합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="../macros.html">매크로 경계</a>, <a href="../testing.html">테스트 전략</a>, and <a href="./0001-framework-foundation.html">ADR 0001</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

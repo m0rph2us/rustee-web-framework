@@ -1,0 +1,34 @@
+[package]
+name = "rustee-auth-oidc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Remote JWKS OIDC resource-server authentication for Rustee"
+
+[dependencies]
+base64.workspace = true
+futures-util.workspace = true
+http.workspace = true
+jsonwebtoken.workspace = true
+reqwest.workspace = true
+rustee-auth = { path = "../rustee-auth", version = "0.1.0" }
+rustee-auth-session = { path = "../rustee-auth-session", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

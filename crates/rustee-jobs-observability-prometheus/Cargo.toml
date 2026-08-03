@@ -1,0 +1,21 @@
+[package]
+name = "rustee-jobs-observability-prometheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prometheus text exporter for Rustee durable job delivery metrics"
+
+[dependencies]
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-jobs-observability = { path = "../rustee-jobs-observability", version = "0.1.0" }
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

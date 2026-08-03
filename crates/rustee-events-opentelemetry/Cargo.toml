@@ -1,0 +1,25 @@
+[package]
+name = "rustee-events-opentelemetry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Optional OpenTelemetry W3C trace propagation for Rustee events"
+
+[dependencies]
+futures-util.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+rustee-events = { path = "../rustee-events", version = "0.1.0" }
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+
+[dev-dependencies]
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+serde.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

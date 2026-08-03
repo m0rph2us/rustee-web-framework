@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Migration Guide</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./ai.html">AI</a>
+          <a href="./support-matrix.html">지원 현황</a>
+          <a href="./release-plan.html">출하 계획</a>
+          <a href="./release-notes.html">Release notes</a>
+          <a href="./release-checklist.html">Release checklist</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Migration Guide</div>
+        <h1>호환성 변경은 code diff가 아니라 운영 절차까지 설명합니다</h1>
+        <p class="lead">
+          Rustee는 첫 public baseline 이후 API, configuration, schema, provider lifecycle이 바뀌는 release마다
+          실행 순서와 rollback limit을 여기에 기록합니다. release note는 변경 목록이고, 이 문서는 사용자가 실제로 이동하는 방법입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Initial baseline: v0.1.0</h2>
+        <p class="meta">Status: Draft / Unreleased.</p>
+        <div class="warning">
+          <p>
+            이전 Rustee release가 없으므로 <code>v0.1.0</code>에는 source version 간 migration path가 없습니다.
+            첫 tag와 publish record가 만들어진 뒤에만 이 항목은 public compatibility baseline이 됩니다.
+            현재 사용자는 unpublished workspace source를 stable API로 가정해서는 안 됩니다.
+          </p>
+        </div>
+        <p>
+          baseline의 supported scope, optional provider status와 initial limitations은
+          <a href="./release-notes.html">v0.1.0 release note draft</a> 및
+          <a href="./support-matrix.html">지원 현황 매트릭스</a>를 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>후속 release의 필수 migration 정보</h2>
+        <table>
+          <thead><tr><th>변경 종류</th><th>guide에 반드시 포함할 내용</th></tr></thead>
+          <tbody>
+            <tr><td>public Rust API</td><td>영향 crate/type/feature, before/after compile example, deprecation 기간과 replacement API, pre-1.0 semver 판단</td></tr>
+            <tr><td>configuration 또는 secret</td><td>old/new key, precedence/default 변화, startup validation effect, secret rotation 순서, failure/rollback behavior</td></tr>
+            <tr><td>database schema 또는 outbox/scheduler</td><td>migration order, lock/backfill/restore plan, mixed-version compatibility, rollback boundary, recurring schedule pause/catch-up effect와 external side-effect idempotency</td></tr>
+            <tr><td>queue/event</td><td>envelope version/upcaster, producer-consumer deploy order, DLQ/replay decision, duplicate/ack-loss reconciliation, retention impact</td></tr>
+            <tr><td>auth/tenant policy</td><td>issuer/key/session/role/tenant rule transition, rotation/revocation order, fail-closed expectation, credential redaction</td></tr>
+            <tr><td>AI/provider</td><td>model/provider/catalog change, authorization and spend effect, row/usage/audit reconciliation, retention/erase change, no-auto-replay limit</td></tr>
+            <tr><td>edge/deployment</td><td>trusted CIDR/header family, TLS/CDN cache/compression/purge change, drain/rollback sequence, chosen topology evidence</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>작성과 검증 순서</h2>
+        <ol>
+          <li>release owner가 affected surface와 no-downtime 가능 여부를 먼저 분류합니다. 불가능하면 maintenance window 또는 explicit stop-the-world requirement를 적습니다.</li>
+          <li>new reader/consumer 또는 compatibility code를 먼저 배포하고, data/config/producer를 다음에 바꾸며, old path 제거는 rollback window 뒤의 separate release로 둡니다.</li>
+          <li>migration은 test fixture와 real backend/provider contract에서 verify합니다. credential, production tenant data, billable provider call이 필요한 step은 explicit approval을 받아 별도 qualification으로 기록합니다.</li>
+          <li>rollback이 unsafe하거나 provider-side side effect를 되돌릴 수 없으면 그 사실을 숨기지 않고 reconciliation procedure와 operator owner를 적습니다.</li>
+          <li>final guide link와 known limitation을 <a href="./release-notes.html">release note</a>, support-level delta와 <a href="./release-checklist.html">release checklist</a>에 대조합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>비목표</h2>
+        <p>
+          framework는 application의 business-data backfill, credential issuance, cloud IAM/KMS update, CDN purge 또는 external side-effect rollback을 자동 실행하지 않습니다.
+          migration guide는 이 책임을 감추는 convenience API 대신 required operator action과 검증 evidence를 공개합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Add a versioned section before publishing every user-visible compatibility change.</p>
+      </footer>
+    </main>
+  </body>
+</html>

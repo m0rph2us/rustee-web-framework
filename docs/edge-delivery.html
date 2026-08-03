@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Edge Delivery Policy</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./architecture.html">구조</a>
+          <a href="./static-files.html">Static</a>
+          <a href="./compression.html">Compression</a>
+          <a href="./operations.html">운영</a>
+          <a href="./testing.html">Test</a>
+          <a href="./release-plan.html">출하 계획</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Edge Delivery Policy</div>
+        <h1>CDN은 Rustee의 transport가 아니라 명시적 배포 계약입니다</h1>
+        <p class="lead">
+          Rustee origin은 cleartext HTTP/1.1과 explicit proxy trust를 제공합니다. TLS, WAF, edge cache, purge와
+          origin shielding은 chosen CDN 또는 reverse proxy가 소유하며, application은 그 구성을 검증 가능한 deployment artifact로 남깁니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>기본 결정</h2>
+        <div class="decision">
+          <p>
+            framework는 CDN SDK, global purge API, certificate manager 또는 generic cache facade를 제공하지 않습니다.
+            배포는 하나의 named edge vendor와 versioned configuration을 선택하고, Rustee에는 edge의 direct peer CIDR만 trusted proxy로
+            설정합니다. client에서 온 <code>Forwarded</code>/<code>X-Forwarded-*</code> header는 edge가 선택한 하나의 family로 overwrite한 값만
+            origin에 전달합니다.
+          </p>
+        </div>
+        <p>
+          이 정책은 <a href="./operations.html">운영 계약</a>의 reverse-proxy trust와
+          <a href="./adr/0010-platform-foundation-and-deployment-trust.html">ADR 0010</a>을 구체화합니다.
+          local Nginx contract는 framework-origin interoperability 증거이며, vendor CDN의 TLS, purge, IAM 또는 cache behavior를 보증하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>책임 분리</h2>
+        <table>
+          <thead><tr><th>영역</th><th>Rustee / application</th><th>edge deployment</th></tr></thead>
+          <tbody>
+            <tr><td>TLS와 public ingress</td><td>origin listener, trusted proxy CIDR, restored scheme를 사용하는 application policy</td><td>certificate issuance/rotation, TLS version/cipher, HSTS, WAF, public DNS, origin network isolation</td></tr>
+            <tr><td>cache policy</td><td>route와 asset의 intended <code>Cache-Control</code>, validator, <code>Vary</code>, authenticated response exclusion</td><td>cache key, TTL cap, stale/error behavior, cookie/query/authorization forwarding, cache invalidation and audit</td></tr>
+            <tr><td>compression</td><td>origin <code>CompressionLayer</code> 또는 precompressed asset 선택 여부</td><td>edge compression 선택, coding-aware cache behavior, origin response passthrough</td></tr>
+            <tr><td>lifecycle</td><td>readiness false, graceful request drain, origin shutdown</td><td>health probe, traffic drain, origin removal/rollback, edge error-page policy</td></tr>
+            <tr><td>observability</td><td>redacted request correlation, route/status/duration metrics</td><td>edge request/cache/purge/certificate events, vendor credential audit, query and header redaction</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>캐시와 압축 규칙</h2>
+        <table>
+          <thead><tr><th>응답 종류</th><th>origin 의도</th><th>edge 요구 사항</th></tr></thead>
+          <tbody>
+            <tr><td>fingerprinted public asset</td><td>application이 explicit long-lived public policy를 선택합니다. <code>rustee-static</code>의 default는 여전히 <code>no-store</code>입니다.</td><td>URL version이 바뀌면 새 object로 취급합니다. release rollback 시에도 오래된 fingerprint를 유지하며 routine global purge를 정상 경로로 삼지 않습니다.</td></tr>
+            <tr><td>mutable asset 또는 public document</td><td>short TTL/revalidation과 validator를 application이 의도적으로 선택합니다.</td><td>chosen cache key가 method, host, path, allowed query와 <code>Vary</code>를 보존하는지 검증합니다. stale serving과 cached error는 explicit policy 없이는 켜지지 않습니다.</td></tr>
+            <tr><td>HTML, authenticated API, tenant data</td><td><code>private</code> 또는 <code>no-store</code>를 기본으로 하며 cookie, authorization, tenant identity에 따라 public cache를 허용하지 않습니다.</td><td>cache bypass와 origin forwarding을 테스트합니다. cache key에 secret 또는 raw authorization 값을 넣지 않고, personalized response를 shared cache에 저장하지 않습니다.</td></tr>
+            <tr><td>metrics, health, error response</td><td>metrics는 <code>no-store</code>입니다. health와 error의 cacheability는 route별로 명시합니다.</td><td>origin 장애를 숨기는 generic cached 5xx나 health response cache를 기본으로 사용하지 않습니다.</td></tr>
+            <tr><td>compressed response</td><td>origin compression은 opt-in이며 transform 가능한 response에 <code>Vary: Accept-Encoding</code>을 냅니다.</td><td>edge와 origin 중 한 곳만 dynamic compression을 수행합니다. shared cache는 identity/gzip/Brotli 표현을 <code>Vary</code>에 따라 분리하고 Range/HEAD/no-transform 동작을 확인합니다.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          static precompressed sibling, conditional response와 byte range는 <a href="./static-files.html">정적 파일 계약</a>을,
+          dynamic gzip/Brotli와 <code>Vary</code>는 <a href="./compression.html">compression 계약</a>을 따릅니다.
+          CDN이 header를 rewrite하거나 content coding을 바꾸면 그 변경은 edge configuration version과 함께 review합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Purge와 변경 절차</h2>
+        <ol>
+          <li>asset은 content-addressed 또는 fingerprinted URL을 우선합니다. mutable URL purge는 application의 release workflow가 vendor API를 직접 호출하며 Rustee crate가 호출하지 않습니다.</li>
+          <li>purge request는 named scope, operator identity, reason, deployment version과 result를 audit합니다. wildcard 또는 whole-zone purge는 incident procedure에서만 별도 승인으로 허용합니다.</li>
+          <li>cache header, compression owner, key rule, origin route, certificate 또는 proxy CIDR을 바꾸면 canary URL에서 hit/miss, representation, authorization bypass, rollback을 먼저 검증합니다.</li>
+          <li>origin drain은 edge가 새 request를 해당 origin으로 보내지 않게 만든 뒤 시작합니다. Rustee readiness false와 graceful timeout은 edge health/removal timeout보다 짧아지지 않게 deployment에서 조정합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Supported 승격 증거</h2>
+        <p>vendor를 선택한 deployment가 edge-delivered production support를 주장하려면 다음 evidence를 release record에 연결합니다.</p>
+        <ul>
+          <li>vendor, region/topology, configuration revision, public hostname, certificate renewal owner와 origin firewall/CIDR allowlist를 식별합니다. secret과 private endpoint는 기록하지 않습니다.</li>
+          <li>untrusted direct client header가 edge에서 overwrite되고, edge만 origin에 도달할 수 있으며 Rustee가 그 peer만 trust하는 integration test를 수행합니다.</li>
+          <li>public asset의 miss/hit/revalidation, identity/gzip/Brotli representation separation, authenticated/cache-bypass response, Range/HEAD/no-transform과 cache purge 또는 fingerprint rollout을 실제 edge에서 확인합니다.</li>
+          <li>certificate failure/renewal alert, origin outage, health probe, traffic drain, rollback, edge cached error behavior와 alert owner를 game day 또는 equivalent failure test로 확인합니다.</li>
+          <li>edge request/cache/purge/certificate telemetry에서 token, cookie, authorization header, raw query, prompt/body가 retention 대상이 아님을 확인합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>명시적 비목표</h2>
+        <p>
+          이 문서는 CloudFront, Cloudflare, Fastly, Akamai, Nginx 또는 특정 load balancer를 Supported로 선언하지 않습니다.
+          multi-CDN failover, universal surrogate-key API, direct TLS/HTTP/2 origin server, automatic certificate renewal과 framework-driven cache purge는 별도 topology ADR과 provider evidence 없이는 범위 밖입니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this policy when edge ownership, proxy trust, cache keys, compression, purge, or TLS evidence changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

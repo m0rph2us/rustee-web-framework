@@ -1,0 +1,5 @@
+error: `routes!` requires at least one route registration
+ --> tests/ui/routes/no_routes.rs:2:32
+  |
+2 |     let _app = rustee::routes!(rustee::App::new(););
+  |                                ^^^^^^^^^^^^^^^^^^

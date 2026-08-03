@@ -1,0 +1,22 @@
+[package]
+name = "rustee-observability-prometheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prometheus text exporter for Rustee request metrics"
+
+[dependencies]
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-observability = { path = "../rustee-observability", version = "0.1.0" }
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

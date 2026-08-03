@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0030 PostgreSQL Scheduler Rate Governor</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../database.html">데이터베이스</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0030</div>
+        <h1>PostgreSQL scheduler rate governor</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          <code>rustee-rate-limit</code>와 Redis adapter는 trusted HTTP identity를 위한 atomic fixed-window check입니다.
+          recurring scheduler는 PostgreSQL row lock, fresh outbox stage, next-run update를 한 transaction으로 처리합니다. scheduler가
+          Redis check를 그 transaction 안에서 호출하면 Redis permit은 사용됐지만 PostgreSQL transaction은 rollback될 수 있고, 반대로
+          external store outage/fail-open policy가 durable job release를 예측하기 어렵게 만듭니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-jobs-cron-sqlx</code>는 forward-only PostgreSQL migration으로
+            schedule rate key와 fixed-window policy, key당 one-row current-window state를 추가합니다. due row와 rate state의 consume,
+            fresh outbox stage, next occurrence update 또는 window-boundary defer를 한 PostgreSQL transaction에서 수행합니다.
+          </p>
+        </div>
+        <p>
+          permit이 없으면 scheduler는 same cron occurrence를 무한 busy-loop하지 않고 next eligible window boundary로 defer합니다.
+          policy key와 fixed-window parameters가 같은 schedule만 capacity를 공유하며, mismatched policy는 explicit registration conflict가
+          되어야 합니다. 이 결정은 broker publish, worker execution, tenant fairness, daily quota 또는 external API quota를 globally
+          exactly-once로 만들지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>HTTP/Redis rate limit과 scheduler governor는 failure와 atomicity boundary가 다른 별도 product로 유지합니다.</li>
+          <li>current window state는 key당 one row로 보관해 per-window history accumulation을 만들지 않습니다. retention/audit history는 application data model의 별도 책임입니다.</li>
+          <li>initial policy는 PostgreSQL-clock fixed window로 한정합니다. sliding window, token bucket, GCRA, weighted cost, calendar quota와 fairness는 explicit future ADR 없이는 추가하지 않습니다.</li>
+          <li>application은 shared key topology, defer latency SLO, alert, pause/resume procedure와 downstream idempotency/capacity를 운영해야 합니다.</li>
+          <li><code>RecurringJobRateLimit</code>, <code>with_rate_limit</code>, <code>RECURRING_JOB_RATE_GOVERNOR_MIGRATION_SQL</code>과 PostgreSQL 16 contract는 implemented입니다. baseline scheduler migration 다음에 governor migration을 deployment migration set에 추가해야 합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>existing Redis <code>RateLimitStore</code>를 <code>fire_due</code>에서 호출</td><td>cross-store permit leak, uncertain retry semantics와 storage failure policy를 scheduler atomicity에 숨기므로 채택하지 않습니다.</td></tr>
+            <tr><td>process-local token bucket</td><td>replica, restart와 deployment scale-out에서 global capacity가 달라지므로 채택하지 않습니다.</td></tr>
+            <tr><td>broker queue quota로 대신 제한</td><td>outbox materialization 이전의 cron occurrence defer와 provider-neutral semantics를 제공하지 못하므로 채택하지 않습니다.</td></tr>
+            <tr><td>generic multi-algorithm distributed governor를 먼저 제공</td><td>quota, fairness와 persistence guarantees를 과도하게 약속하므로 fixed-window PostgreSQL first path 뒤 별도 contract로 확장합니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. The crate and PostgreSQL contract implement the migration, exact policy-conflict behavior, and atomic defer/stage boundary. Deployment owners still provide alert thresholds and an operational runbook.</p>
+      </footer>
+    </main>
+  </body>
+</html>

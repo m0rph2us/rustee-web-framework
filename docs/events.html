@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Kafka Event Stream</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Kafka and Event Streaming</div>
+        <h1>이벤트 로그는 job queue와 다른 계약으로 다룹니다</h1>
+        <p class="lead">
+          Kafka는 한 작업을 worker 하나가 끝내는 queue가 아니라, partitioned and retained event log입니다.
+          Rustee는 Kafka를 <code>rustee-jobs</code> provider로 감추지 않고, topic, key, partition, consumer group,
+          offset, rebalance, replay를 드러내는 별도 event-stream integration으로 지원합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>결정 요약</h2>
+        <div class="decision">
+          <p>
+            Stage 9B에서 선택적 <code>rustee-events-kafka</code> crate를 제공합니다. 현재 <code>rustee-events</code>는 versioned JSON envelope, event ID, explicit partition key, correlation/causation metadata, typed publish와 provider-neutral handler/context/dispatch contract를 구현합니다. envelope의 bounded W3C carrier와 선택적 <code>rustee-events-opentelemetry</code>는 current span capture와 consumer handler parent span을 제공하며, <code>rustee-outbox-sqlx</code>는 same-transaction stage, destination별 PostgreSQL lease relay와 database-side-effect inbox deduplication을 제공합니다. <code>rustee-events-kafka</code>의 opt-in <code>rdkafka</code> feature는 <code>acks=all</code> producer, delivery acknowledgement, producer/consumer read-only readiness, serial manual-commit consumer와 bounded immediate retry/DLQ routing을 구현합니다. CI의 실제 Kafka broker contract는 성공한 handler record가 재전달되지 않고, 실패한 handler record는 commit되지 않아 다음 consumer가 재전달받으며, 종료 중인 active handler는 drain 후 commit되고 quiescent partition은 남은 group member로 재분배되는지 확인합니다. handler가 poll interval을 넘겨 revoke된 경우에는 original commit failure와 remaining member의 duplicate redelivery를 확인하고, failed record가 configured delivery budget 뒤 DLQ에 도달하는지 확인합니다. Rust client는
+            <code>rdkafka</code>를 기반으로 하되, <code>rustee-core</code>와 <code>rustee-jobs</code>는 Kafka에 의존하지 않습니다.
+            공식 event API는 typed envelope, 명시적 topic과 partition key, consumer group, 처리 후 offset commit을 중심으로 설계합니다.
+          </p>
+        </div>
+        <p>
+          <code>KafkaConfig</code>는 기본 5초 <code>message.timeout.ms</code> delivery deadline을 native option 뒤에 적용합니다.
+          따라서 stopped broker publish는 bounded, endpoint 없는 <code>KafkaError::Delivery</code>로 끝나며, reconnect/backoff supervisor와
+          retry relay supervisor는 application deployment가 명시적으로 소유합니다. 선택적
+          <code>rustee-events-kafka-sqlx</code>의 opt-in <code>rdkafka</code> feature는 Kafka failure retry intent를 source offset commit 전에 PostgreSQL에 durable stage하고,
+          due row만 explicit relay가 retry topic으로 publish하는 integration입니다. <code>KafkaDelayedRetryReadinessConfig</code>과 relay <code>readiness</code>는 retry table의 select 권한과 retry/DLQ topic metadata를 bounded timeout으로 확인합니다. optional <code>rustee-events-kafka-sqlx-observability</code>와 Prometheus adapter는 pass outcome/global duration 및 application-polled aggregate backlog를 export할 수 있습니다. 이 adapter의 at-least-once/duplicate 경계는
+          <a href="./adr/0034-kafka-postgres-delayed-retry.html">ADR 0034</a>에서 관리합니다.
+        </p>
+        <p>
+          RabbitMQ와 SQS는 <a href="./queues.html">durable background job</a> provider가 될 수 있지만,
+          Kafka event는 여러 독립 consumer가 같은 기록을 읽고 필요하면 과거 offset부터 replay하는 것이 정상적인 사용 방식입니다.
+          따라서 하나의 <code>Queue&lt;T&gt;</code> 또는 <code>Event&lt;T&gt;</code> facade로 세 모델을 평준화하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Event 계약</h2>
+        <pre><code>events.publish(OrderPaid {
+    order_id,
+    account_id,
+})
+.topic("orders.paid.v1")
+.key(account_id.to_string())
+.await?;
+
+consumer_group("billing-projection.v1")
+    .topic("orders.paid.v1")
+    .handle(project_paid_order)
+    .run_until_shutdown()
+    .await?;</code></pre>
+        <p>
+          현재 handler는 event ID, type/version, partition key, correlation/causation metadata와 optional W3C trace carrier만 받으며 Kafka offset과 partition handle을 직접 받지 않습니다. <code>KafkaEventConsumer</code>는 automatic commit과 automatic offset store를 끈 뒤, 한 record를 dispatch하고 성공했을 때만 synchronous commit합니다. handler/decode/commit 실패는 current offset을 남기고 worker를 종료해 supervisor recovery 또는 rebalance에서 재전달되게 합니다. optional <code>EventDeliveryObserver</code>는 source settlement 뒤 <code>acknowledged</code>, <code>retried</code>, <code>dead_lettered</code>만 기록하고, cancellation 또는 settlement failure는 <code>unsettled</code>로 기록합니다. envelope에는 event ID, type, version, occurred-at, key, correlation ID,
+          causation ID, bounded ASCII <code>traceparent</code>/<code>tracestate</code>, payload를 넣습니다. <code>rustee-events</code>는 carrier를 보관할 뿐 telemetry SDK에 의존하지 않으며, <code>rustee-events-opentelemetry</code>는 valid carrier만 remote parent로 쓰고 invalid/absent carrier에서는 새 root event span을 시작합니다. topic 이름, compatibility policy, retention, partition 수는 application의
+          versioned deployment configuration입니다. payload와 observability attribute에는 credential, raw token, 불필요한 개인정보를 넣지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consumer delivery observability</h2>
+        <pre><code>use std::{sync::Arc, time::Duration};
+use rustee_events_observability::EventMetrics;
+use rustee_events_observability_prometheus::metrics_response;
+use rustee_events_kafka::KafkaEventConsumer;
+
+let metrics = EventMetrics::new();
+let consumer = KafkaEventConsumer::connect(&amp;consumer_config)?;
+consumer.readiness(Duration::from_secs(5))?;
+let consumer = consumer
+    .with_delivery_observer(Arc::new(metrics.clone()));
+
+// application router에서 인증된 scrape endpoint를 명시적으로 mount
+let response = metrics_response(&amp;metrics);</code></pre>
+        <p>
+          <code>KafkaEventConsumer::readiness(timeout)</code>는 모든 source/retry subscription이 broker metadata에 존재하고 broker error가 없는지
+          bounded read-only로 확인합니다. topic을 만들지 않고 group assignment, lag-zero, handler readiness, offset 이동이나 poll loop 시작을 보장하지
+          않습니다. <code>rustee-events::EventDeliveryObserver</code>는 provider-neutral lifecycle contract이고,
+          <code>rustee-events-observability::EventMetrics</code>는 bounded provider/outcome, in-flight와 global duration만
+          수집합니다. <code>rustee-events-observability-prometheus</code>는 이를 escaped provider label의 Prometheus text 0.0.4와
+          <code>Cache-Control: no-store</code> response로 바꿉니다. observer panic은 consumer settlement에서 격리되고 unfinished
+          observation은 cancellation을 포함해 <code>unsettled</code>가 됩니다.
+        </p>
+        <p>
+          event ID/type/version, topic, partition, consumer group, offset, key, payload, trace carrier, tenant, endpoint와 raw error는
+          label이나 response에 넣지 않습니다. global registry, listener, automatic scrape route, broker probe, alert threshold, retry
+          policy와 DLQ replay authority는 application deployment가 소유합니다. <code>acknowledged</code> 등 settlement observation은
+          external side effect의 exactly-once 증명이 아니므로 event-id/domain-key idempotency와 reconciliation 절차가 계속 필요합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Trace propagation</h2>
+        <pre><code>use rustee_events::EventEnvelope;
+use rustee_events_opentelemetry::{TraceContextHandler, with_current_trace_context};
+
+let envelope = with_current_trace_context(EventEnvelope::new(order_paid, account_id)?);
+events.publish(&amp;envelope).await?;
+
+consumer.run_until(
+    TraceContextHandler::new(project_paid_order),
+    shutdown,
+).await?;</code></pre>
+        <p>
+          application은 tracer provider, sampling, exporter와 shutdown을 소유한 뒤 이 opt-in helper를 호출합니다. carrier는 512 byte 이하 ASCII로 제한되지만 provider-neutral envelope는 traceparent syntax나 remote sampling decision을 신뢰하지 않습니다. OpenTelemetry wrapper가 propagator로 유효성을 확인해 handler의 <code>Rustee event</code> span만 parent에 연결합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Kafka 처리 규칙</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>영역</th>
+              <th>Rustee 정책</th>
+              <th>애플리케이션 책임</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>partition key와 순서</td>
+              <td>key를 명시적으로 전달하고 순서는 같은 partition 안에서만 기대하게 합니다.</td>
+              <td>순서가 필요한 aggregate key를 정하고, cross-partition 순서를 가정하지 않습니다.</td>
+            </tr>
+            <tr>
+              <td>offset commit</td>
+              <td>handler의 side effect가 성공한 뒤 offset을 commit합니다. commit 실패나 rebalance 뒤에는 event가 다시 전달될 수 있습니다.</td>
+              <td>event ID 또는 domain key 기반 idempotency와 재처리 안전성을 구현합니다.</td>
+            </tr>
+            <tr>
+              <td>consumer group</td>
+              <td>group ID, assignment, rebalance, lag를 운영 contract로 노출하고 broker-reported group member 수 및 assigned partition의 position/watermark/lag bounded diagnostic snapshot을 제공합니다.</td>
+              <td>독립 projection 또는 integration마다 group을 분리하고, 처리 시간이 poll/heartbeat 한계를 넘지 않게 구성합니다. exporter, alert threshold와 lag-based autoscaling은 운영 정책으로 결정합니다.</td>
+            </tr>
+            <tr>
+              <td>retry와 DLQ</td>
+              <td><code>KafkaRetryConfig</code>, <code>KafkaFailurePublisher</code>, <code>run_with_failure_routing</code>은 immediate retry와 max delivery 뒤 DLQ 전송을 제공합니다. optional <code>rustee-events-kafka-sqlx</code>는 retry intent를 PostgreSQL에 stage한 뒤에만 source offset을 commit하고 due row를 retry topic으로 relay합니다.</td>
+              <td>source/retry/DLQ topic provisioning, delivery budget, migration/relay supervisor, DLQ 접근 제어와 승인된 replay 절차를 정합니다.</td>
+            </tr>
+            <tr>
+              <td>replay</td>
+              <td>retention 안의 과거 offset 재처리를 명시적 운영 작업으로 지원합니다.</td>
+              <td>projection rebuild, duplicate, 비용, downstream rate limit 영향을 검토하고 승인된 절차로 실행합니다.</td>
+            </tr>
+            <tr>
+              <td>schema evolution</td>
+              <td><code>EventEnvelope::decode</code>는 exact version만 받고, <code>decode_compatible</code>는 이전 payload version만 explicit <code>EventUpcaster</code>로 current type으로 변환합니다. newer version은 거부합니다. <code>rustee-events-schema</code>는 typed JSON Schema artifact, exact fingerprint와 subject/version catalog를 제공하며, optional <code>rustee-events-schema-confluent</code>는 effective policy/exact artifact register-or-verify를 제공합니다.</td>
+              <td>source-version별 upcast, registry adapter/credential, remote provider/version/ACL/outage evidence와 consumer-first topic rollout 순서를 결정합니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Failure routing</h2>
+        <pre><code>use std::num::NonZeroU16;
+use rustee_events_kafka::{
+    KafkaConfig, KafkaConsumerConfig, KafkaEventConsumer, KafkaFailurePublisher,
+    KafkaRetryConfig,
+};
+
+let retry = KafkaRetryConfig::new(
+    "orders.paid.retry.v1",
+    "orders.paid.dlq.v1",
+    NonZeroU16::new(3).unwrap(),
+)?;
+let producer = KafkaConfig::new(brokers, "orders.paid.v1")?;
+let failures = KafkaFailurePublisher::connect(&amp;producer, retry)?;
+let consumer = KafkaEventConsumer::connect(
+    &amp;KafkaConsumerConfig::new(brokers, "orders.paid.v1", "billing.v1")?
+        .with_retry_topic("orders.paid.retry.v1")?,
+)?;
+
+consumer
+    .run_with_failure_routing(project_paid_order, &amp;failures, shutdown)
+    .await?;</code></pre>
+        <pre><code>use std::{num::NonZeroU16, time::Duration};
+use rustee_events_kafka_sqlx::{
+    KafkaDelayedRetryDelay, KafkaDelayedRetryReadinessConfig, KafkaDelayedRetryRelayConfig,
+    KafkaDelayedRetryRelayLoopConfig,
+    PostgresKafkaDelayedRetryRelay, PostgresKafkaDelayedRetryRouter,
+};
+
+let retry_delay = KafkaDelayedRetryDelay::new(Duration::from_secs(30))?;
+let router = PostgresKafkaDelayedRetryRouter::new(pool.clone(), failures.clone(), retry_delay);
+consumer.run_with_failure_routing(project_paid_order, &amp;router, shutdown).await?;
+
+let relay = PostgresKafkaDelayedRetryRelay::new(
+    pool,
+    failures,
+    KafkaDelayedRetryRelayConfig::new(
+        KafkaDelayedRetryDelay::new(Duration::from_secs(30))?,
+        KafkaDelayedRetryDelay::new(Duration::from_secs(1))?,
+    ),
+);
+relay.readiness(KafkaDelayedRetryReadinessConfig::default()).await?;
+let report = relay.run_until(
+    KafkaDelayedRetryRelayLoopConfig::new(
+        NonZeroU16::new(64).unwrap(),
+        Duration::from_secs(1),
+    )?,
+    relay_shutdown,
+).await?;</code></pre>
+        <ul>
+          <li>source record에 retry header가 없으면 delivery attempt는 1입니다. handler 또는 strict envelope decode가 실패하면 budget보다 작은 attempt는 retry topic으로 <code>attempt + 1</code> header와 함께 전송하고, 마지막 attempt는 DLQ로 전송합니다.</li>
+          <li>native TLS/SASL 등의 client option은 설정할 수 있지만, typed bootstrap server, producer <code>acks=all</code>, consumer group, <code>enable.auto.commit=false</code>, <code>enable.auto.offset.store=false</code>는 framework가 마지막에 적용해 retry/commit contract를 유지합니다.</li>
+          <li>retry/DLQ record는 original envelope payload/key, sanitized failure kind, 최초 source topic/partition/offset을 header에 유지합니다. raw handler error, credential, payload는 framework log나 header에 복사하지 않습니다.</li>
+          <li>failure route가 broker acknowledgement를 받은 뒤에만 source 또는 retry record offset을 synchronous commit합니다. acknowledgement 뒤 commit 전에 worker가 죽으면 retry/DLQ record가 중복될 수 있으므로 handler와 DLQ projection은 idempotent해야 합니다.</li>
+          <li>malformed 또는 duplicate retry-attempt header는 offset을 commit하지 않고 worker를 종료합니다. topic ACL을 producer와 worker identity에 맞게 제한합니다.</li>
+          <li>plain Kafka topic은 delay queue가 아닙니다. <code>rustee-events-kafka-sqlx</code>의 <code>PostgresKafkaDelayedRetryRouter</code>는 retry 가능한 failure를 PostgreSQL database clock으로 stage하고 성공한 stage 뒤에만 source offset을 commit합니다. <code>PostgresKafkaDelayedRetryRelay</code>는 due row를 <code>SKIP LOCKED</code> lease로 claim하여 stored retry topic 및 retry-attempt/failure/origin headers를 유지한 Kafka publish acknowledgement 뒤에만 confirmed로 기록합니다. source tuple과 next attempt unique key는 commit 재시도 중 duplicate stage를 억제합니다.</li>
+          <li>Kafka acknowledgement 뒤 PostgreSQL confirmation이 실패하거나 relay process가 죽으면 same retry event가 다시 publish될 수 있습니다. relay <code>readiness</code>는 retry table과 retry/DLQ topic metadata만 확인하며 migration 실행, topic 생성, lag/drain 판단은 하지 않습니다. <code>relay_once</code>는 one-pass API이고, <code>run_until(KafkaDelayedRetryRelayLoopConfig, shutdown)</code>은 empty pass 뒤에만 bounded idle delay를 기다리며 shutdown 뒤 새 lease를 잡지 않습니다. 이미 lease한 pass는 끝낸 뒤 멈춥니다. optional observer/collector는 fixed pass outcome, confirmed successful-pass count, global duration만 집계하고 <code>relay.backlog()</code>가 준 aggregate unpublished/due/leased/oldest-due snapshot만 application이 명시적으로 record합니다. task supervision, alert/backoff, lease/delivery delay, graceful shutdown과 consumer idempotency는 application deployment가 소유합니다. <code>EventSchedule::after</code>와 <code>PostgresOutbox::stage_event_after</code>는 generic database-to-event delay이며 Kafka source offset/retry header contract를 대신하지 않습니다. DLQ replay는 자동 수행하지 않고 <a href="./kafka-delayed-retry-operations.html">Kafka delayed retry runbook</a>의 source topic, consumer group, offset range, idempotency 검토가 포함된 승인 절차로 운영합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>DLQ와 replay runbook</h2>
+        <div class="warning">
+          <p>
+            framework에는 source consumer group의 offset을 자동으로 reset하거나 DLQ payload를 source topic에 자동 복사하는 기능이 없습니다.
+            둘 다 정상 처리 record까지 중복시키거나, 같은 poison record를 즉시 재발행할 수 있는 운영 변경이기 때문입니다.
+          </p>
+        </div>
+        <ol>
+          <li>DLQ alert를 event type, failure kind, retry/DLQ backlog, oldest age, source topic/partition/offset으로 분류합니다. raw payload와 raw handler error는 alert나 ticket에 복사하지 않습니다.</li>
+          <li>원인을 수정하기 전에 current producer/consumer version, schema compatibility, downstream idempotency key, <code>PostgresInbox</code> scope 또는 external provider idempotency 상태를 확인합니다. schema mismatch나 malformed payload는 재전송보다 compatibility/producer 수정이 우선입니다.</li>
+          <li>replay 범위를 topic, partition, offset 또는 timestamp, 목적, 예상 event 수, approver, 실행자, rollback/stop 조건으로 기록합니다. production consumer group은 첫 실행 대상으로 쓰지 않습니다.</li>
+          <li>새롭고 명시적인 replay consumer group을 만들고, underlying Kafka admin tooling에서 offset/timestamp reset은 반드시 dry-run 결과를 검토한 뒤 적용합니다. Rustee는 이 admin command를 감싸거나 실행하지 않습니다.</li>
+          <li>replay handler는 DB projection receipt와 external idempotency key를 사용합니다. email/HTTP/payment 같은 external side effect는 provider가 중복을 거부한다는 증거 없이 replay하지 않습니다.</li>
+          <li>replay group의 lag, throughput, handler failure, retry/DLQ backlog, oldest age와 downstream rate limit을 관찰합니다. stop condition에 도달하면 group을 멈추고 offset을 추가로 이동하지 않습니다.</li>
+          <li>domain reconciliation이 완료된 뒤에만 replay 결과를 production projection과 비교하고, 실행 기록과 retained DLQ record의 보존/삭제 정책을 승인 절차에 따라 마감합니다. DLQ 원본은 임의로 삭제하지 않습니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Schema compatibility</h2>
+        <pre><code>let envelope = EventEnvelope::&lt;OrderPaidV2&gt;::decode_compatible(
+    bytes,
+    &amp;|source_version, payload| -&gt; Result&lt;OrderPaidV2, UpcastError&gt; {
+        match source_version {
+            1 =&gt; Ok(OrderPaidV2 {
+                order_id: payload["order_id"].as_u64().ok_or(UpcastError::InvalidV1)?,
+                currency: "KRW".to_owned(),
+            }),
+            _ =&gt; Err(UpcastError::UnsupportedSource),
+        }
+    },
+)?;</code></pre>
+        <pre><code>use rustee_events_schema::{
+    EventSchema, EventSchemaCatalog, SchemaCompatibility, SchemaSubject,
+};
+
+let catalog = EventSchemaCatalog::new([EventSchema::json::&lt;OrderPaidV2&gt;(
+    SchemaSubject::new("orders.paid-value")?,
+    SchemaCompatibility::Backward,
+    include_str!("../schemas/orders-paid-v2.json"),
+)?])?;
+
+// Registry endpoint, credentials, remote compatibility check, and startup/release timing are owned by the application.
+catalog.verify(&amp;registry).await?;</code></pre>
+        <pre><code>use rustee_events_schema_confluent::{
+    ConfluentSchemaRegistry, ConfluentSchemaRegistryAuth, ConfluentSchemaRegistryConfig,
+};
+use url::Url;
+
+let registry = ConfluentSchemaRegistry::new(ConfluentSchemaRegistryConfig::new(
+    Url::parse("https://registry.example.test/")?,
+    ConfluentSchemaRegistryAuth::Basic {
+        api_key: std::env::var("SCHEMA_REGISTRY_API_KEY")?,
+        api_secret: std::env::var("SCHEMA_REGISTRY_API_SECRET")?,
+    },
+)?)?;
+
+// An explicit deployment step: effective compatibility policy, exact lookup, optional registration, then exact relookup.
+registry.verify_catalog(&amp;catalog).await?;</code></pre>
+        <ul>
+          <li>strict <code>decode</code>는 default입니다. consumer가 older producer contract를 계속 읽어야 할 때만 <code>decode_compatible</code>를 선택합니다.</li>
+          <li>upcaster는 envelope metadata가 아니라 older JSON payload와 source version만 받습니다. event type, partition key, correlation/causation ID, trace carrier는 framework가 먼저 validate합니다.</li>
+          <li>current consumer보다 newer version은 compatibility 추측 없이 거부합니다. producer-first rollout과 forward compatibility는 topic별 deployment rule 또는 separate consumer version으로 관리합니다.</li>
+          <li><code>rustee-events-schema</code>는 1 MiB 이하 top-level JSON object artifact를 typed <code>Event::TYPE</code>/<code>VERSION</code>에 묶고, format-plus-exact-source fingerprint와 stable subject/version catalog를 만듭니다. 같은 subject는 event type과 declared compatibility policy를 바꿀 수 없으며 duplicate version을 거부합니다.</li>
+          <li><code>EventSchemaRegistry</code> adapter는 application이 구현할 수 있습니다. optional <code>rustee-events-schema-confluent</code>는 external endpoint에 HTTPS(또는 loopback test), bounded request와 redacted Basic/bearer credential을 적용하고 effective compatibility policy를 local declaration과 비교한 뒤 exact lookup, absent artifact registration, exact relookup을 수행합니다. 어떤 adapter도 JSON Schema 두 개의 의미적 compatibility를 추측하지 않고 Kafka publish, header injection, topic 생성이나 consumer offset 변경을 수행하지 않습니다.</li>
+          <li>registry가 있어도 upcast test, rollback window, retention/replay policy와 consumer-first rollout을 대체하지 않습니다. 상세 배포 순서는 <a href="./event-schema-operations.html">event schema runbook</a>과 <a href="./adr/0036-event-schema-registry-boundary.html">ADR 0036</a>에서 관리합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Outbox와 exactly-once의 경계</h2>
+        <div class="warning">
+          <p>
+            Kafka producer transaction 또는 exactly-once feature가 있어도 database write, HTTP call, email 같은 외부 side effect까지
+            한 번만 일어난다고 보장하지는 않습니다. Rustee는 일반적인 exactly-once business effect를 약속하지 않습니다.
+          </p>
+        </div>
+        <ul>
+          <li>PostgreSQL에서는 <code>OutboxMessage::event</code>를 business mutation과 같은 transaction에 <code>PostgresOutbox::stage</code>하고, <code>EventOutboxRelay</code>가 explicit destination의 leased row를 Kafka publisher에 넘깁니다. migration, relay loop, shutdown과 metric은 application이 소유합니다.</li>
+          <li>consumer는 저장소 write와 offset commit 사이의 실패를 전제로 idempotent하게 구현합니다. PostgreSQL projection은 <code>PostgresInbox::register</code>를 event ID와 stable consumer scope로 같은 transaction에 기록해 committed duplicate를 skip할 수 있습니다.</li>
+          <li>Kafka read-process-write만으로 닫힌 경로는 provider capability로 별도 검토할 수 있지만, Rustee의 기본 application contract는 at-least-once 처리입니다.</li>
+          <li>retry topic과 dead-letter topic은 immediate routing API와 real-broker contract가 있습니다. PostgreSQL delayed retry adapter는 Kafka+PostgreSQL container contract에서 stage-before-commit, due-before-relay, retry publish acknowledgement와 confirmation을 확인합니다. replay는 원 event metadata와 원인을 보존하되 민감한 payload를 운영 로그에 복사하지 않으며, 별도 승인 runbook으로 운영합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>운영과 provisioning</h2>
+        <ul>
+          <li>topic, partition, replication, retention, ACL, encryption, schema compatibility 설정은 배포 provisioning 단계에서 관리합니다. JSON Schema artifact와 subject compatibility는 source-controlled catalog에서 review하고, remote registry publication/verification, credential/ACL, consumer-first rollout과 rollback window는 deployment가 소유합니다.</li>
+          <li>production application startup에서 topic을 자동 생성하거나 partition 수를 변경하지 않습니다.</li>
+          <li><code>KafkaEventConsumer::readiness</code>는 source/retry topic metadata만 bounded read-only로 확인하고 group assignment, lag, handler or side-effect readiness를 뜻하지 않습니다. <code>lag_snapshot</code>은 assigned partition의 current position, low/high watermark와 non-negative lag를 timeout-bound diagnostic snapshot으로 제공합니다. rebalances와 retention 때문에 즉시 stale해질 수 있습니다. <code>EventDeliveryObserver</code>는 actual source settlement lifecycle만 aggregate하고 topic/offset/error 정보를 export하지 않으므로, lag snapshot polling, scrape isolation, rebalance/commit failure alert와 retry/dead-letter backlog 정책은 application이 연결합니다.</li>
+          <li>worker shutdown은 새 poll을 중단하고 실행 중 handler를 drain한 뒤, 안전하게 commit 가능한 offset만 commit합니다. 실제 broker suite는 종료 신호 뒤 active handler가 끝나기 전 worker가 반환하지 않고, 성공 record가 재전달되지 않는지 확인합니다.</li>
+          <li>consumer group, topic, partition key, schema/version, retention 또는 replay 정책 변경은 이 문서와 ADR을 함께 갱신합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>구현 순서</h2>
+        <ol>
+          <li>Stage 9B에서 versioned event envelope, producer, provider-neutral handler/context, consumer lifecycle, trace propagation을 구현합니다. envelope, handler/context/dispatch, bounded W3C carrier와 OpenTelemetry capture/handler-parent wrapper, acknowledged producer와 serial manual-commit consumer, immediate retry/DLQ route, PostgreSQL durable delayed retry router/relay, 실제 broker의 post-success commit/no-replay, handler-failure redelivery, active-handler graceful drain, quiescent handoff, in-flight rebalance commit-failure/duplicate-redelivery, committed record lag-zero contract는 구현됐습니다.</li>
+          <li><code>rustee-events-kafka</code>는 unique topic/group을 쓰는 실제 Kafka CI suite에서 explicit key, consumer group, source-topic metadata readiness, post-success commit, uncommitted record redelivery, active-handler graceful drain, two-member group의 quiescent handoff, poll interval을 넘긴 in-flight handler의 commit failure/duplicate redelivery, committed record의 lag-zero snapshot과 three-delivery failure의 DLQ arrival을 검증합니다. 같은 suite는 consumer observer가 source commit 뒤 <code>acknowledged</code>를, retry/DLQ route와 source commit 뒤 각각 <code>retried</code>/<code>dead_lettered</code>를, in-flight rebalance 뒤 source commit failure에서 <code>unsettled</code>을 기록하는지도 확인합니다. CI는 stopped broker에서 consumer readiness와 producer 500ms delivery deadline, delayed-retry readiness의 endpoint-free failure를 확인하고 restart 뒤 full suite를 다시 실행합니다. <code>rustee-events-kafka-sqlx</code>는 같은 Kafka+PostgreSQL CI lane에서 failure stage, retry table plus retry/DLQ readiness, aggregate backlog, database-clock delay, due relay, stored retry destination과 confirmation을 검증합니다. observer collector와 Prometheus adapter unit suite는 fixed label/redaction, cancellation-safe abandonment, aggregate backlog text output을 검증합니다. <code>group_member_count</code>와 <code>lag_snapshot</code>은 bounded diagnostic snapshot이며 work coordination API가 아닙니다. <code>rustee-events-opentelemetry</code>는 valid W3C carrier가 event handler span의 parent가 되는 in-process contract를 검증합니다. native feature와 Kafka suite는 CMake/librdkafka가 있는 CI lane에서 실행합니다.</li>
+          <li>PostgreSQL event/job outbox stage, <code>SKIP LOCKED</code> lease, release/redelivery, database-side-effect inbox receipt/duplicate suppression과 CI contract는 구현됐습니다. <code>rustee-events-schema</code>는 typed JSON Schema catalog와 adapter-acknowledgement mismatch contract를, <code>rustee-events-schema-confluent</code>는 local HTTP effective-policy/lookup/register/relookup contract를 제공합니다. real provider version/credential/ACL/outage, consumer-first rollout rehearsal, external side-effect idempotency와 approved replay evidence는 여전히 별도 release gate입니다. DLQ/replay는 automatic command가 아닌 documented operator procedure로 관리합니다.</li>
+          <li>core의 strict current-version decode와 explicit old-version <code>EventUpcaster</code> contract는 구현됐습니다. provider-neutral schema registry adapter와 compatibility rollout runbook은 명시적 deployment contract이며, Kafka transaction capability는 schema와 external side-effect 경계가 검증된 뒤에만 검토합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>외부 문서</h2>
+        <ul>
+          <li><a href="https://kafka.apache.org/40/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html">Apache Kafka consumer offsets and groups</a></li>
+          <li><a href="https://kafka.apache.org/41/design/design/">Apache Kafka design: partitions and replay</a></li>
+          <li><a href="https://docs.rs/rdkafka/latest/rdkafka/">rdkafka Rust client</a></li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this document when Kafka topic, event envelope, partition key, offset, consumer group, schema, replay, or event delivery policy changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

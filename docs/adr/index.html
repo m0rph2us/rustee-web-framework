@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee ADR Index</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Architecture Decision Records</div>
+        <h1>설계 결정 기록</h1>
+        <p class="lead">
+          ADR은 나중에 왜 이런 구조가 되었는지 추적하기 위한 기록입니다. 되돌리기 어렵거나 프레임워크 방향에
+          영향을 주는 결정은 HTML ADR로 남깁니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>기록 목록</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>제목</th>
+              <th>상태</th>
+              <th>날짜</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>0001</td>
+              <td><a href="./0001-framework-foundation.html">프레임워크 기반 선택</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0002</td>
+              <td><a href="./0002-database-integration-boundary.html">데이터베이스 통합 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0003</td>
+              <td><a href="./0003-redis-integration-boundary.html">Redis 통합 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0004</td>
+              <td><a href="./0004-mongodb-integration-boundary.html">MongoDB 통합 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0005</td>
+              <td><a href="./0005-authentication-and-authorization.html">인증과 권한 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0006</td>
+              <td><a href="./0006-background-jobs-and-queues.html">background job과 queue 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0007</td>
+              <td><a href="./0007-event-stream-integration-boundary.html">Kafka event stream 통합 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0008</td>
+              <td><a href="./0008-ai-application-integration-boundary.html">AI application 통합 경계</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0009</td>
+              <td><a href="./0009-testing-and-verification-strategy.html">테스트와 검증 전략</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0010</td>
+              <td><a href="./0010-platform-foundation-and-deployment-trust.html">platform foundation과 배포 trust boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-01</td>
+            </tr>
+            <tr>
+              <td>0011</td>
+              <td><a href="./0011-msrv-and-integration-support-line.html">MSRV와 통합 지원선</a></td>
+              <td>Accepted</td>
+              <td>2026-08-02</td>
+            </tr>
+            <tr>
+              <td>0012</td>
+              <td><a href="./0012-tenant-persistence-isolation.html">tenant persistence isolation</a></td>
+              <td>Accepted</td>
+              <td>2026-08-02</td>
+            </tr>
+            <tr>
+              <td>0013</td>
+              <td><a href="./0013-release-tracks-and-support-policy.html">출하 트랙과 지원 정책</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0014</td>
+              <td><a href="./0014-ai-provider-usage-reservation.html">AI provider usage reservation</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0015</td>
+              <td><a href="./0015-mcp-remote-tool-boundary.html">MCP remote tool boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0016</td>
+              <td><a href="./0016-mcp-tool-server-boundary.html">MCP server boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0017</td>
+              <td><a href="./0017-mcp-context-boundary.html">MCP context boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0018</td>
+              <td><a href="./0018-mcp-oauth-client-boundary.html">MCP OAuth client boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0019</td>
+              <td><a href="./0019-mcp-oauth-resource-server-boundary.html">MCP OAuth resource-server boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0020</td>
+              <td><a href="./0020-ai-evaluation-cache-batch-boundary.html">AI evaluation, cache, and batch boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0021</td>
+              <td><a href="./0021-ai-response-cache-boundary.html">AI response-cache isolation boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0022</td>
+              <td><a href="./0022-ai-provider-batch-submission-boundary.html">AI provider batch submission boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0023</td>
+              <td><a href="./0023-openai-batch-lifecycle-adapter.html">OpenAI Batch lifecycle adapter</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0024</td>
+              <td><a href="./0024-ai-batch-artifact-reconciliation-boundary.html">AI Batch artifact reconciliation boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0025</td>
+              <td><a href="./0025-ai-batch-postgres-artifact-ledger.html">AI Batch PostgreSQL artifact ledger</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0026</td>
+              <td><a href="./0026-panic-response-boundary.html">Panic response boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0027</td>
+              <td><a href="./0027-edge-delivery-boundary.html">Edge delivery boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0028</td>
+              <td><a href="./0028-durable-outbox-priority-boundary.html">Durable outbox priority boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0029</td>
+              <td><a href="./0029-postgres-recurring-job-scheduler.html">PostgreSQL recurring job scheduler boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0030</td>
+              <td><a href="./0030-postgres-scheduler-rate-governor.html">PostgreSQL scheduler rate governor</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0031</td>
+              <td><a href="./0031-postgres-scheduler-observability.html">PostgreSQL scheduler observability boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0032</td>
+              <td><a href="./0032-job-delivery-prometheus-exporter.html">Job delivery Prometheus exporter boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-03</td>
+            </tr>
+            <tr>
+              <td>0033</td>
+              <td><a href="./0033-recurring-job-time-zone-calendar.html">Recurring job IANA time-zone calendar</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0034</td>
+              <td><a href="./0034-kafka-postgres-delayed-retry.html">Kafka PostgreSQL delayed retry</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0035</td>
+              <td><a href="./0035-kafka-delayed-retry-observability.html">Kafka delayed-retry observability</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0036</td>
+              <td><a href="./0036-event-schema-registry-boundary.html">Event schema registry boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0037</td>
+              <td><a href="./0037-kafka-event-delivery-observability.html">Kafka event-delivery observability</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0038</td>
+              <td><a href="./0038-ai-evaluation-durable-run-boundary.html">AI evaluation durable run boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0039</td>
+              <td><a href="./0039-openapi-explicit-description-boundary.html">OpenAPI explicit description boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0040</td>
+              <td><a href="./0040-from-header-derive-boundary.html">FromHeader derive boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0041</td>
+              <td><a href="./0041-routes-builder-macro-boundary.html">routes builder macro boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0042</td>
+              <td><a href="./0042-test-cookie-jar-boundary.html">TestApp cookie jar boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0043</td>
+              <td><a href="./0043-openapi-security-metadata-boundary.html">OpenAPI security metadata boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0044</td>
+              <td><a href="./0044-router-property-fuzz-boundary.html">Route and OpenAPI parser property and fuzz boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0045</td>
+              <td><a href="./0045-openapi-oauth2-global-security-boundary.html">OpenAPI OAuth2 and global security boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0046</td>
+              <td><a href="./0046-openapi-mutual-tls-metadata-boundary.html">OpenAPI mutual TLS metadata boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0047</td>
+              <td><a href="./0047-openapi-api-key-header-grammar.html">OpenAPI API-key header grammar boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+            <tr>
+              <td>0048</td>
+              <td><a href="./0048-api-key-header-authentication-boundary.html">API-key header authentication boundary</a></td>
+              <td>Accepted</td>
+              <td>2026-08-04</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>ADR 작성 규칙</h2>
+        <ul>
+          <li>파일명은 <code>NNNN-short-title.html</code> 형식을 사용합니다.</li>
+          <li>상태는 Proposed, Accepted, Superseded 중 하나로 시작합니다.</li>
+          <li>Context, Decision, Consequences, Alternatives 섹션을 포함합니다.</li>
+          <li>새 ADR을 추가하면 이 인덱스도 갱신합니다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this index whenever an ADR is added or superseded.</p>
+      </footer>
+    </main>
+  </body>
+</html>

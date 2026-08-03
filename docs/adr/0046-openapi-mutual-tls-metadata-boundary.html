@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0046: OpenAPI Mutual TLS Metadata Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../openapi.html">OpenAPI</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../operations.html">운영</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0046 · Accepted · 2026-08-04</div>
+        <h1>OpenAPI mutual TLS metadata boundary</h1>
+        <p class="lead">OpenAPI의 <code>mutualTLS</code> scheme을 정확한 public metadata로 렌더링하되, Rustee transport가 mTLS를 제공한다고 주장하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          service-to-service API는 client certificate를 요구할 수 있고, client generator와 reviewer는 이를 OpenAPI contract에서 알아야 합니다.
+          하지만 Rustee의 production baseline은 trusted reverse proxy 또는 load balancer에서 TLS를 종료하는 HTTP/1.1 origin입니다.
+          OpenAPI component 선언만으로 TLS handshake, trust store, revocation, proxy-header provenance, certificate subject/SAN에서 application principal로의
+          mapping을 안전하게 만들 수는 없습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>OpenApiSecurityScheme::mutual_tls()</code>는 OpenAPI 3.1 <code>{ &quot;type&quot;: &quot;mutualTLS&quot; }</code> component만 렌더링합니다.</li>
+          <li>mutual-TLS requirement는 다른 scheme과 AND/OR로 조합할 수 있지만 OAuth/OIDC scope를 받지 않습니다. nonempty scope는 fail-closed error로 거부합니다.</li>
+          <li>이 metadata는 explicit application declaration이며 route middleware, TLS listener, certificate parser, identity extractor 또는 authorization policy를 구성하지 않습니다.</li>
+          <li>deployment owner는 TLS termination, client-CA/trust-store rotation, allowed certificate policy, revocation/expiry handling, verified identity header/connection context integrity와 audit retention을 소유합니다. application은 trusted proxy boundary를 명시하고 그 identity mapping을 별도로 검증합니다.</li>
+          <li>Rustee가 direct TLS, HTTP/2 또는 certificate-to-principal feature를 지원한다는 claim은 하지 않습니다. 그런 runtime scope는 transport, proxy interoperability, outage/rotation/revocation test와 release matrix를 갖는 별도 ADR이 필요합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>OpenAPI consumer는 certificate requirement를 static contract에서 발견할 수 있고, matching proxy/client-certificate procedure를 deployment review에서 확인할 수 있습니다.</li>
+          <li>component가 존재해도 matching TLS termination과 authenticated integration evidence 없이 deployment를 Supported로 승격할 수 없습니다.</li>
+          <li>scope와 token lifecycle의 ownership이 OAuth metadata와 섞이지 않고, certificate validation failure를 HTTP auth semantics으로 단정하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>mTLS component를 전혀 문서화하지 않음</td><td>application이 raw JSON을 넣거나 client requirement를 숨기게 되므로 채택하지 않습니다.</td></tr>
+            <tr><td>OpenAPI declaration이 TLS listener와 client-certificate verifier를 자동 구성</td><td>proxy topology, CA/rotation/revocation, identity mapping의 security owner를 숨기므로 채택하지 않습니다.</td></tr>
+            <tr><td>mutual-TLS requirement에 arbitrary scope 허용</td><td>OAuth/OIDC authorization semantics와 transport authentication을 혼동하므로 채택하지 않습니다.</td></tr>
+            <tr><td>forwarded certificate header를 default identity로 신뢰</td><td>direct peer validation과 proxy sanitization 없이는 spoofing boundary가 되므로 채택하지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          direct TLS/HTTP2 listener, client certificate verifier/extractor, certificate-to-tenant or principal mapping, proxy certificate header contract,
+          revocation/rotation outage behavior, chosen load balancer/CDN qualification은 separate security and transport ADR로 검토합니다.
+          OpenAPI component가 필요한 application은 matching deployment runbook과 authenticated integration test를 같은 change evidence로 유지합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="../openapi.html">OpenAPI</a>, <a href="../operations.html">운영과 배포</a>, <a href="./0043-openapi-security-metadata-boundary.html">ADR 0043</a>, and <a href="./0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

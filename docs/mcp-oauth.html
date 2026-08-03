@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MCP OAuth</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">AI / MCP</div>
+        <h1>MCP OAuth</h1>
+        <p class="lead">MCP Streamable HTTP protected resource의 OAuth 2.1 client lifecycle과 resource-server bearer authorization을 분리한 optional adapter 집합입니다.</p>
+      </section>
+
+      <section>
+        <h2>OAuth Client</h2>
+        <p>
+          optional <code>rustee-ai-mcp-oauth</code> crate는 2025-11-25 MCP authorization discovery 순서와 public-client PKCE handoff를 제공합니다. 401 Bearer challenge의 bounded <code>resource_metadata</code>를 우선 사용하고, 없으면 path-specific 및 root protected-resource metadata URI를 조회합니다. 선택한 authorization server는 OAuth metadata와 OIDC discovery fallback에서 issuer, authorization/token endpoint와 PKCE <code>S256</code> declaration을 검증해야 합니다.
+        </p>
+        <ul>
+          <li><code>McpOAuthClientConfig</code>은 exact MCP resource URI, pre-registered client ID, exact redirect URI, selected scope, bounded HTTP timeout과 state/PKCE TTL을 묶습니다.</li>
+          <li><code>McpOAuthAuthorizationFlow::begin()</code>은 high-entropy state와 verifier를 atomic transaction store에 저장한 뒤 <code>response_type=code</code>, <code>resource</code>, <code>state</code>, <code>code_challenge</code>/<code>S256</code>를 포함한 redirect를 반환합니다.</li>
+          <li><code>complete()</code>는 state를 token exchange 전에 원자적으로 소비합니다. callback error, expired/replayed state, malformed code는 sanitized error로 끝나며 authorization code나 실패한 MCP action을 재시도하지 않습니다.</li>
+          <li><code>HttpMcpOAuthTokenExchanger</code>는 bounded JSON Bearer response만 받아 authorization-code와 explicit refresh grant에 client ID, PKCE verifier 및 canonical <code>resource</code>를 보냅니다. published revocation endpoint가 있으면 <code>revoke_and_remove()</code>는 refresh token을 우선 revoke한 뒤 local record를 삭제합니다.</li>
+          <li><code>McpOAuthTokenStore</code>는 application-owned tenant/user/connection key 아래 token set을 저장하는 contract입니다. <code>rustee-ai-mcp-oauth-redis</code>는 Redis에 AES-256-GCM versioned envelope만 저장하고 record kind/full key를 authenticated data로 결속합니다. active/retired key ring은 read-time rotation을 지원하며 in-memory store는 계속 test/local development 전용입니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Application Flow</h2>
+        <ol>
+          <li>application은 MCP 401 challenge 또는 configured resource에서 <code>HttpMcpOAuthDiscovery</code>로 metadata를 발견하고, allowed authorization server와 scope를 명시적으로 선택합니다.</li>
+          <li>application callback route는 <code>begin()</code>의 location으로 사용자 agent를 redirect합니다. <code>RedisMcpOAuthTransactionStore</code>는 state/verifier record의 encrypt-at-rest, Redis TTL, atomic <code>GETDEL</code> consume를 제공하며 multi-region deployment는 동일한 atomicity를 보장하는 application store를 선택해야 합니다.</li>
+          <li>callback은 <code>McpOAuthAuthorizationCallback</code>으로 <code>complete()</code>에 전달합니다. 결과 <code>McpOAuthTokenSet</code>은 encrypted durable store에 저장하고 ordinary session cookie, URL, log, audit attribute에 넣지 않습니다. Redis adapter의 retention TTL, tenant/user key construction과 KMS/secret delivery는 application deployment가 결정합니다.</li>
+          <li>application은 token set을 exact MCP endpoint용 <code>McpHttpConfig</code>에 명시적으로 적용해 새 client를 만듭니다. tool approval, tenant/data authorization, context adoption은 그대로 별도 경계입니다.</li>
+          <li>expiry 또는 provider 401/403을 어떻게 처리할지는 application policy가 결정합니다. <code>refresh()</code>와 <code>revoke_and_remove()</code>는 explicit call이며 original tool/read/prompt request를 replay하지 않습니다. remote revoke failure는 local record를 보존해 application이 retry/disconnect policy를 결정하게 합니다. new scope가 필요하면 automatic step-up 대신 새 authorization flow를 시작합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Security Boundary</h2>
+        <div class="warning">
+          <p>access token, refresh token, authorization code, state와 PKCE verifier는 Debug, Rustee error, audit attribute, URL 및 ordinary session cookie에 노출하지 않습니다. <code>into_secrets()</code>와 raw secret getters는 dedicated encrypted-store adapter만 사용합니다. Redis adapter의 envelope ciphertext는 AES-256-GCM으로 full Redis key와 record purpose에 결속됩니다.</p>
+        </div>
+        <ul>
+          <li>stdio credential은 deployment environment가 소유하므로 이 browser OAuth flow 대상이 아닙니다.</li>
+          <li>dynamic client registration과 client metadata publishing은 자동으로 수행하지 않습니다. 첫 release는 pre-registered public client만 허용합니다.</li>
+          <li>OAuth access token은 remote tool approval, resource/prompt access policy, tenant isolation 또는 model-context consent를 대체하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>OAuth Resource Server</h2>
+        <p>
+          optional <code>rustee-mcp-oauth</code>는 mounted <code>rustee-mcp</code> service 앞에 붙는 protected-resource
+          metadata service와 bearer layer를 제공합니다. token 발급, refresh, dynamic registration, consent UI와 token persistence는
+          server가 소유하지 않습니다. signature/JWKS/introspection, issuer와 exact audience 검증도 application이 구성한
+          <code>rustee-auth::BearerAuthenticator</code>가 담당합니다.
+        </p>
+        <ul>
+          <li><code>McpOAuthResourceServerConfig</code>은 externally visible canonical MCP resource URL, public protected-resource metadata URL, bounded authorization-server issuer allowlist와 optional required scope를 묶습니다. HTTPS가 기본이며 local contract를 위한 loopback HTTP만 허용합니다.</li>
+          <li><code>McpOAuthProtectedResourceMetadata</code>는 unauthenticated GET에서 <code>resource</code>, <code>authorization_servers</code>, <code>scopes_supported</code>, header bearer method만 JSON으로 반환합니다. tool/context inventory, tenant mapping, principal과 token은 노출하지 않습니다.</li>
+          <li><code>McpOAuthResourceServerLayer</code>는 missing/invalid bearer token에 401 <code>resource_metadata</code> challenge를, verified principal의 missing scope에 403 <code>insufficient_scope</code> challenge를 반환합니다. validated principal의 issuer도 normalized authorization-server allowlist와 다시 대조합니다. verifier outage는 identity/provider detail 없는 503으로 끝납니다.</li>
+          <li>성공한 request에는 검증된 <code>Principal</code>만 삽입됩니다. 기존 <code>McpToolAccessPolicy</code>, <code>McpContextProvider</code>, tenant resolver, tool approval와 terminal audit은 그대로 application-owned policy입니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Server Mount</h2>
+        <pre><code>let oauth = McpOAuthResourceServerConfig::new(
+    Url::parse("https://api.example.com/mcp")?,
+    Url::parse("https://api.example.com/.well-known/oauth-protected-resource/mcp")?,
+    [Url::parse("https://login.example.com")?],
+)?
+.with_required_scopes(["mcp:tools"])?;
+
+let verifier = JwtAuthenticator::from_rsa_pem(
+    JwtConfig::new(Algorithm::RS256, "https://login.example.com", oauth.resource().as_str())?,
+    public_key_pem,
+)?;
+let mcp = McpOAuthResourceServerLayer::new(oauth.clone(), verifier).layer(mcp_server);
+let app = App::new()
+    .nest("/.well-known/oauth-protected-resource/mcp", McpOAuthProtectedResourceMetadata::new(oauth))
+    .nest("/mcp", mcp);</code></pre>
+        <div class="warning"><p>resource와 metadata URL은 proxy 밖에서 client가 실제로 보는 canonical HTTPS URL이어야 합니다. incoming <code>Host</code> 또는 untrusted forwarded header에서 추론하지 않습니다. verifier의 issuer/key-source allowlist와 metadata의 authorization-server allowlist를 deployment review에서 일치시켜야 합니다. verifier는 issuer를 가진 <code>Principal</code>을 반환해야 하며 layer는 그 issuer를 metadata allowlist와 다시 대조합니다.</p></div>
+      </section>
+
+      <section>
+        <h2>Verification</h2>
+        <p>
+          client package contract tests는 discovery URL priority, token redaction/resource binding/expiry, PKCE redirect query, one-time callback state consumption, provider rejection without exchange, explicit refresh replacement, implicit refresh prohibition과 loopback HTTP token form의 <code>code_verifier</code>/<code>resource</code> 전달을 검증합니다. published revocation endpoint의 refresh-token form과 success 뒤 local deletion/unsupported endpoint의 no deletion도 고정합니다. Redis contract는 encrypted state/token envelope의 no-plaintext persistence, atomic state consume, token load/delete를 Redis 7 container에서 검증합니다. resource-server package contract는 metadata GET/method gate, missing/invalid token challenge, required-scope 403, verified principal handoff와 verifier outage 503을 in-process로 확인합니다. 전체 release에는 representative authorization-server interoperability matrix, live opt-in credential test, JWKS/introspection outage and key rotation, reverse-proxy canonical URL, revoke/rotation/consent rollback runbook과 multi-instance refresh coordination evidence가 추가로 필요합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Related Decisions</h2>
+        <p>
+          transport and remote-tool approval boundary는 <a href="./adr/0015-mcp-remote-tool-boundary.html">ADR 0015</a>, read-only MCP context boundary는 <a href="./adr/0017-mcp-context-boundary.html">ADR 0017</a>, client OAuth ownership/no-replay policy는 <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018</a>, resource-server metadata/challenge/audience boundary는 <a href="./adr/0019-mcp-oauth-resource-server-boundary.html">ADR 0019</a>를 기준으로 합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this page whenever MCP OAuth discovery, transaction/token lifecycle, resource metadata/challenge, validation ownership, replay policy, or release evidence changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

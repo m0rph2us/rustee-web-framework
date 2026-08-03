@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0017: MCP Context Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0017</div>
+        <h1>MCP context boundary</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          MCP resource는 application-controlled contextual data이고 prompt는 user-controlled template이다. 둘 다 model이 선택해
+          실행하는 tool과 다른 trust model을 가진다. remote resource URI, prompt text, embedded binary, annotation과 template argument는
+          authorization, tenant scope, safe provider context 또는 user consent를 증명하지 않는다.
+        </p>
+        <p>
+          raw MCP context를 <code>ChatRequest</code>로 자동 변환하면 remote server가 system-like instruction, secret 또는 과도한 binary를
+          provider에 넣는 confused-deputy path가 된다. 반대로 client가 discovery/read/get을 전혀 제공하지 않으면 application이 MCP의
+          읽기 전용 context primitive를 bounded하게 채택할 수 없다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-ai-mcp</code>은 initialized HTTP 및 stdio connection에서 negotiated server capability를 확인한 뒤
+            <code>resources/list</code>, <code>resources/templates/list</code>, <code>resources/read</code>,
+            <code>prompts/list</code>, <code>prompts/get</code>의 bounded read-only client API를 제공한다. 반환값은
+            typed하지만 untrusted MCP context record이며 <code>ChatRequest</code>, advisor 또는 provider에 자동 연결하지 않는다.
+            <code>rustee-mcp</code>은 optional application-owned <code>McpContextProvider</code>로 같은 read-only method를 server-side에
+            제공할 수 있지만, provider는 authenticated request를 받아 data authorization을 직접 수행한다.
+          </p>
+        </div>
+        <ul>
+          <li>resource discovery/read는 application이 선택한 URI와 access policy 뒤에서만 호출한다. prompt get은 user 또는 application의 explicit selection과 explicit string argument를 요구한다.</li>
+          <li>list pagination, total item count, prompt message/resource content item count와 decoded text/blob byte 수는 configuration으로 제한한다. malformed URI, invalid base64, duplicate name/cursor, unsupported content type와 limit 초과는 raw remote detail 없이 실패한다.</li>
+          <li>HTTP와 stdio는 같은 typed model과 capability gate를 사용한다. stdio transport failure는 existing connection-discard/reinitialize contract를 적용하며 tool call 또는 context read를 자동 replay하지 않는다.</li>
+          <li>server context provider는 concrete resource URI와 prompt declaration을 application policy로 선택한다. server는 provider capability를 명시적으로 광고하고, no-pagination list, item/response bound, duplicate identifier와 resource read URI equality를 검증하며 raw provider error를 노출하지 않는다.</li>
+          <li>prompt text, resource text/blob, image/audio, embedded resource와 resource link는 remote input이다. application은 tenant authorization, selection consent, data classification, secret/PII filtering, modality/provider compatibility와 tighter context/token budget을 확인한 뒤에만 자체 advisor 또는 renderer로 전달한다.</li>
+          <li>remote icon URL, annotation, title, description은 discovery metadata일 뿐 fetch, HTML rendering, authorization 또는 model instruction으로 해석하지 않는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>MCP context API는 AI core의 작은 optional adapter에 머물며 provider SDK, router, tool approval 또는 persistence layer에 protocol type을 넣지 않는다.</li>
+          <li>application은 resource/prompt 결과를 저장, audit, redaction 또는 provider context로 채택하는 독립 policy를 구현해야 한다.</li>
+          <li>server context가 application-owned라는 사실만으로 remote MCP client의 identity, user consent 또는 model-safe input이 보장되지는 않는다. endpoint authentication과 client disclosure policy는 application이 소유한다.</li>
+          <li>server capability가 없는 endpoint는 generic malformed result가 아니라 sanitized unsupported-capability failure로 끝난다. discovery result가 바뀌어도 automatic context expansion이 되지 않는다.</li>
+          <li>Supported 승격에는 representative HTTP/stdio server version matrix, resource authorization/tenant-isolation evidence, size/modality/redaction policy, user-consent UX와 recovery/interoperability contract가 필요하다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>discovered resource/prompt를 자동으로 every chat request에 추가</td><td>remote metadata가 authorization, consent와 context budget을 대체하게 되므로 채택하지 않는다.</td></tr>
+            <tr><td>resource/prompt를 tool registry로 표현</td><td>model-controlled action과 application/user-controlled context의 trust model을 섞으므로 채택하지 않는다.</td></tr>
+            <tr><td>text만 지원하고 binary/embedded resource를 raw JSON으로 흘림</td><td>multimodal contract를 잃거나 validation 없는 raw data path가 되므로 bounded typed content로 처리한다.</td></tr>
+            <tr><td>subscription, list-changed, completion, roots와 OAuth를 first context release에 포함</td><td>notification lifecycle, user consent, credential rotation과 server callback trust가 추가되므로 discovery/read/get 경계와 분리한다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li><code>resources/subscribe</code>, list-changed notification, resource/prompt completion, roots, sampling/elicitation과 OAuth authorization은 별도 lifecycle/authorization ADR로 검토한다.</li>
+          <li>context adoption advisor는 explicit tenant/user selection, classification/redaction, model modality compatibility와 total input budget을 contract test로 증명할 때만 추가한다.</li>
+          <li>bounded opt-in HTTP session/stdio automatic recovery와 received event ID만 사용하는 SSE resumption, explicit standalone GET notification stream은 ADR 0015에서 구현했고 macOS/Windows CI matrix는 Rust fixture로 stdio 기본 lifecycle을 검증하도록 구성한다. notification은 context adoption을 일으키지 않으며 server request, Windows의 timeout/restart/context lifecycle과 supported-server evidence는 그 transport release gate로 유지한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes MCP context discovery, automatic context adoption, capability handling, or authorization ownership.</p>
+      </footer>
+    </main>
+  </body>
+</html>

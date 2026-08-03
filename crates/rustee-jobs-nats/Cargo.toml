@@ -1,0 +1,23 @@
+[package]
+name = "rustee-jobs-nats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "NATS JetStream publisher and delivery helpers for Rustee durable jobs"
+
+[dependencies]
+async-nats.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+rustee-jobs-observability = { path = "../rustee-jobs-observability", version = "0.1.0" }
+serde.workspace = true
+
+[lints]
+workspace = true

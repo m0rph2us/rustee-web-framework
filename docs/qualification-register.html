@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Qualification Register</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./architecture.html">구조</a>
+          <a href="./testing.html">Test</a>
+          <a href="./support-matrix.html">지원 현황</a>
+          <a href="./release-plan.html">출하 계획</a>
+          <a href="./release-checklist.html">Release checklist</a>
+          <a href="./edge-delivery.html">Edge policy</a>
+          <a href="./ai-batch-operations.html">AI Batch</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Qualification Register</div>
+        <h1>외부 증거가 필요한 gate를 코드 완료와 분리해 추적합니다</h1>
+        <p class="lead">
+          이 register는 credential, billing, named deployment topology 또는 publish authority가 필요한 항목의 작업 기준입니다.
+          CI, package dry-run, local adapter test가 통과해도 여기의 required evidence가 없으면 support level이나 release status를 올리지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>현재 상태</h2>
+        <div class="warning">
+          <p>
+            2026-08-04 현재 첫 intentional source baseline commit은 존재하지만, source tag/publish baseline과 chosen CDN 또는 live-provider deployment qualification은 기록되지 않았습니다.
+            이 표의 모든 항목은 <strong>Needs explicit owner action</strong>입니다. Draft 문서, ignored test 또는 local package diagnostic은 완료 record가 아닙니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Framework와 release gate</h2>
+        <table>
+          <thead><tr><th>gate</th><th>owner</th><th>required evidence</th><th>완료 후 갱신할 문서</th></tr></thead>
+          <tbody>
+            <tr><td>P0: first source baseline</td><td>release owner</td><td>clean intended commit, accepted human API review, <code>v0.1.0</code> tag, qualification workflow, candidate archive checksum/SBOM/provenance, registry publication/checksum and registry-source consumer compile verification</td><td><a href="./release-notes.html">release notes</a>, <a href="./migration-guide.html">migration guide</a>, <a href="./release-checklist.html">release checklist</a>, support matrix</td></tr>
+            <tr><td>F1: chosen edge deployment</td><td>deployment owner</td><td>named vendor/topology/configuration revision, certificate renewal owner, origin isolation and trusted CIDR, cache/authorization/compression/purge/drain/rollback failure evidence</td><td><a href="./edge-delivery.html">edge delivery policy</a>, operations, testing, support matrix</td></tr>
+            <tr><td>F1: runtime recovery</td><td>service owner</td><td>redacted panic hook, restart supervisor, post-response failure behavior, alert route and recovery drill for the deployed process model</td><td>operations, <a href="./adr/0026-panic-response-boundary.html">ADR 0026</a>, testing</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Provider qualification gate</h2>
+        <table>
+          <thead><tr><th>범위</th><th>owner</th><th>required evidence</th><th>release 관계</th></tr></thead>
+          <tbody>
+            <tr><td>PostgreSQL/Redis/MongoDB</td><td>data platform owner</td><td>migration/restore, alert response, intended failover/recovery topology, tenant/security review and provider version record</td><td>I1 independent; F1 release를 막지 않음</td></tr>
+            <tr><td>PostgreSQL recurring jobs</td><td>messaging and data platform owner</td><td>outbox/schedule/governor/time-zone migration order, IANA zone and shared rate-key inventory, tzdb dependency update impact review, DST gap/overlap exercise, scheduler polling/pause/defer/alert runbook, bounded observer scrape isolation and alert ownership, late-run capacity and downstream idempotency exercise</td><td>I2 independent; PostgreSQL fixed-window governor, durable IANA zone and scheduler pass observer/exporter are contract-verified, while holiday calendar, tenant fairness, daily quota and external provider quota remain deployment policy</td></tr>
+            <tr><td>OIDC/session</td><td>identity owner</td><td>real IdP issuer/key rotation/revocation/outage exercise, credential rotation and tenant-policy integration evidence</td><td>I1 independent; no generic IdP support claim before evidence</td></tr>
+            <tr><td>NATS/Redis Streams/RabbitMQ/Kafka</td><td>messaging owner</td><td>chosen broker version/topology, outage/duplicate/drain/replay/DLQ procedure and monitored alert path; Kafka consumer delivery metrics require protected scrape ownership and acknowledged/retried/dead-lettered source-settlement interpretation; Kafka delayed retry uses PostgreSQL migration, relay lease/delivery delay, alert/backoff and restore procedure; Confluent Schema Registry uses named provider/version, HTTPS credential/ACL/rotation, effective compatibility policy, exact artifact lookup/register evidence and consumer-first rollback drill; RabbitMQ Management TLS/ACL evidence</td><td>I2 independent; provider-specific semantics stay visible</td></tr>
+            <tr><td>Amazon SQS</td><td>AWS account owner</td><td>explicit real-AWS opt-in, IAM/KMS failure, Standard duplicate/receive-count variation, redrive/replay procedure and spend/account isolation</td><td>I2 Experimental until the record exists</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>AI production gate</h2>
+        <table>
+          <thead><tr><th>gate</th><th>owner</th><th>required evidence</th></tr></thead>
+          <tbody>
+            <tr><td>OpenAI Batch lifecycle</td><td>AI application owner with spend approver</td><td>isolated tenant/test data, explicit spending and retention approval, unique run key, protected <code>openai-batch-qualification</code> Environment approval, manual workflow run ID, upload/submit/retrieve/cancel result, provider version and failure record</td></tr>
+            <tr><td>Batch artifact/domain reconciliation</td><td>AI application and data owner</td><td>authorized catalog/artifact lifecycle, domain row-idempotency ledger, partial-result routing, billing/reconciliation procedure, queue retry/DLQ and PostgreSQL outage/recovery exercise</td></tr>
+            <tr><td>RAG/evaluation/cache</td><td>AI/security/data owner</td><td>real source/vector provider, ACL/erase/retention, grader/catalog authorization and spend governance, evaluation report retention/fresh-run reconciliation, cache salt/rotation/outage and tenant authorization evidence</td></tr>
+          </tbody>
+        </table>
+        <p>
+          provider credentials, prompts, completion content, tenant identity, raw endpoint and billing amount are not copied into this document.
+          Link a redacted qualification record or CI/run identifier instead. The AI Batch operational procedure is maintained in
+          <a href="./ai-batch-operations.html">AI Batch operations</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>완료 record의 최소 필드</h2>
+        <ul>
+          <li>gate ID, date, responsible owner, reviewed Rustee/source version과 environment classification</li>
+          <li>redacted configuration revision or immutable deployment identifier, exact test/workflow/runbook reference와 result</li>
+          <li>observed failure/recovery or explicit non-applicability, rollback/reconciliation decision과 alert owner</li>
+          <li>expiration or requalification trigger: provider version, topology, credential trust, cache policy, public API 또는 recovery procedure가 바뀌면 record를 다시 검토합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>갱신 규칙</h2>
+        <p>
+          owner가 required evidence를 승인한 뒤에만 이 register의 상태를 completed로 바꾸고, 같은 change에서
+          <a href="./support-matrix.html">support matrix</a>, release notes, relevant ADR/testing/operations document를 갱신합니다.
+          evidence가 만료되거나 topology가 달라지면 prior Supported claim을 유지한 채 방치하지 않고 해당 integration을 재검토 상태로 내립니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this register whenever a pending external gate receives new evidence, expires, or changes owner.</p>
+      </footer>
+    </main>
+  </body>
+</html>

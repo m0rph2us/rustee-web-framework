@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Release Notes</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./architecture.html">구조</a>
+          <a href="./testing.html">Test</a>
+          <a href="./support-matrix.html">지원 현황</a>
+          <a href="./release-plan.html">출하 계획</a>
+          <a href="./release-inventory.html">Release inventory</a>
+          <a href="./release-checklist.html">Release checklist</a>
+          <a href="./migration-guide.html">Migration guide</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Release Notes</div>
+        <h1>공개된 변경과 지원 약속을 같은 기록에 남깁니다</h1>
+        <p class="lead">
+          이 문서는 tag와 registry publication 이후의 사용자 대상 release record입니다. repository의 현재 구현 상태나 CI 통과만으로
+          release가 만들어졌다고 해석하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>v0.1.0</h2>
+        <p class="meta">Status: Draft / Unreleased. Date: not assigned.</p>
+        <div class="warning">
+          <p>
+            2026-08-04 현재 첫 intentional source baseline commit은 존재하지만 <code>v0.1.0</code> source tag와 registry publish record는 없습니다.
+            이 항목은 initial release의 review template이며 published artifact나 Supported declaration이 아닙니다.
+          </p>
+        </div>
+        <h3>Planned baseline</h3>
+        <ul>
+          <li>HTTP/1.1 origin, router, typed extractor, Tower middleware, timeout/body/concurrency limit, graceful shutdown과 cleartext origin deployment boundary를 제공합니다.</li>
+          <li>trusted reverse proxy CIDR, default <code>Forwarded</code>/explicit <code>X-Forwarded-*</code> restoration, static delivery, conditional/range response와 opt-in compression은 framework candidate surface입니다.</li>
+          <li>typed configuration/redaction, request correlation, bounded metrics, Prometheus helper, optional OpenTelemetry bridge와 opt-in panic-to-redacted-500 boundary는 application-owned deployment policy와 함께 사용합니다.</li>
+          <li><code>rustee-openapi</code>는 선택 feature로 explicit OpenAPI 3.1 document, JSON route와 HTTP Basic/Bearer, API key, OpenID Connect, Authorization Code/Client Credentials OAuth2 및 <code>mutualTLS</code> security metadata, document-wide default/anonymous/clear operation override를 제공합니다. <code>mutualTLS</code>는 deployment의 client-certificate contract를 문서화할 뿐이며 Rustee가 TLS를 종료하거나 인증서를 검증하지 않습니다. route handler, token lifecycle, runtime authorization, error semantics 또는 schema derive를 자동 추론하지 않습니다.</li>
+          <li><code>rustee-auth</code>는 explicit header-only <code>ApiKeyLayer</code>와 application-owned <code>ApiKeyAuthenticator</code>를 제공합니다. missing/repeated/malformed key는 provider 전에 401로 거부하고 provider outage는 sanitized 503으로 처리합니다. static mapping은 local/test only이며 production hash lookup, rotation/revocation, audit와 tenant/permission mapping은 application integration이 소유합니다.</li>
+          <li><code>rustee-macros</code>는 facade <code>macros</code> feature에서 explicit header name의 single-field tuple newtype에만 <code>FromHeader</code> implementation을 생성합니다. route/handler/authorization/schema를 생성하거나 추론하지 않습니다.</li>
+          <li><code>rustee::routes!</code>는 standard HTTP method registration을 existing <code>App</code> builder chain으로 확장합니다. handler signature, route validity, custom method, authorization과 schema는 기존 application API가 계속 소유합니다.</li>
+          <li><code>rustee-jobs-cron-sqlx</code>는 PostgreSQL outbox를 통해 IANA time-zone recurring job을 materialize하는 optional candidate입니다. <code>UTC</code> default와 durable <code>RecurringJobTimeZone</code>, DST forward-gap skip/overlap-earlier-once policy, forward migration과 definition-drift conflict를 제공합니다. optional shared-key PostgreSQL fixed-window governor는 capacity consume 또는 no-outbox defer를 same transaction으로 처리하고, optional pass observer와 separate Prometheus helper는 fixed outcome/aggregate count/global duration만 export합니다. tzdb update qualification, holiday calendar, catch-up, tenant fairness/daily quota, external-provider quota와 worker/alert runtime은 deployment policy로 남습니다.</li>
+          <li>database, auth, queue, event, AI crate는 independent optional integrations입니다. 현재 release status와 provider-specific limitation은 <a href="./support-matrix.html">지원 현황 매트릭스</a>가 단일 기준입니다.</li>
+        </ul>
+        <h3>Support statement</h3>
+        <p>
+          first source baseline 전에는 어떤 crate도 <strong>Supported</strong> 또는 <strong>Enterprise-qualified</strong>로 선언하지 않습니다.
+          F1 candidate, Experimental, Contract-verified는 implementation과 contract evidence의 상태이며 public production adoption promise가 아닙니다.
+          tag가 만들어질 때 대상 crate, supported Rust version, platform evidence와 support level을 이 항목에 명시합니다.
+        </p>
+        <h3>Known limitations to retain at release</h3>
+        <ul>
+          <li>direct TLS, HTTP/2, WebSocket/protocol upgrade, generic ORM, universal queue facade와 automatic schema migration은 initial framework scope 밖입니다.</li>
+          <li>TLS certificate, CDN cache/purge, edge compression, origin isolation과 panic restart는 framework가 아니라 application/deployment 책임입니다.</li>
+          <li>external provider credential, billable AI invocation, production IAM/KMS/ACL topology는 CI green check만으로 qualification되지 않습니다.</li>
+        </ul>
+        <h3>Release evidence to attach</h3>
+        <p>
+          final note는 exact source tag, published crate version/checksum, qualification workflow, SBOM/provenance artifact,
+          dependency advisory result, support-matrix delta와 <a href="./migration-guide.html">migration guidance</a>를 연결합니다.
+          exact procedure는 <a href="./release-checklist.html">release checklist</a>를 따릅니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>후속 release 작성 규칙</h2>
+        <ul>
+          <li>각 version에는 release date, source tag, publish 대상 crate와 checksum verification result를 씁니다.</li>
+          <li>Added, Changed, Fixed, Security, Deprecated, Removed, Known limitations와 support-level delta를 독립 항목으로 기록합니다.</li>
+          <li>breaking change는 affected public type/feature/configuration, migration destination, rollback limit을 <a href="./migration-guide.html">migration guide</a>의 versioned section으로 연결합니다.</li>
+          <li>provider feature를 Supported 또는 Enterprise-qualified로 올릴 때는 real backend/topology evidence와 operator procedure를 함께 연결합니다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this document only for released changes or explicitly marked release drafts.</p>
+      </footer>
+    </main>
+  </body>
+</html>

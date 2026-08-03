@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0009 Testing and Verification Strategy</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0009</div>
+        <h1>테스트와 검증 전략</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Rustee는 router와 HTTP server뿐 아니라 async cancellation, optional feature, database/state store, broker, event stream,
+          identity, AI provider를 연결한다. unit test만으로 wire protocol, process lifecycle, real backend semantics를 증명할 수 없고,
+          모든 test를 container나 cloud에서 실행하면 개발 feedback이 너무 느리고 flaky해진다. 또한 macro와 type-safe public API는
+          compile error 자체가 사용자 경험의 일부다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            Rustee는 unit, in-process integration, real TCP end-to-end, Testcontainers dependency contract, compile/docs,
+            property/fuzz, scheduled performance/soak의 계층형 전략을 사용한다. 기본 runner는 stable <code>cargo test</code>이고,
+            fast workspace test binary는 <code>cargo-nextest</code>로 실행하며 doctest는 별도 Cargo 단계로 실행한다.
+          </p>
+        </div>
+        <ul>
+          <li><code>rustee-test</code>는 small published dev helper다. <code>TestApp</code>은 validated request/JSON/header, bounded buffered response와 redacted assertion을 in-process로 제공한다. opt-in <code>with_cookie_jar()</code>는 session-style valid name/value carry와 <code>Max-Age=0</code> deletion만 제공하고, fixed 64-entry/8 KiB bound와 successful buffered response 뒤 atomic update를 지킨다. browser origin/path/secure/same-site/expiry/redirect semantics, HTTP version, SSE와 cancellation은 wire/browser suite에 남긴다. <code>rustee-test-support</code>는 workspace-only fixture/container helper다.</li>
+          <li>실제 TCP/HTTP test와 실제 backend contract test는 in-process test를 보완하며, 둘 중 하나로 다른 하나를 없애지 않는다.</li>
+          <li>time-dependent behavior는 Tokio paused time 또는 explicit synchronization으로 검증하며 wall-clock sleep을 사용하지 않는다.</li>
+          <li>optional crate와 provider는 독립 feature profile 및 contract suite를 갖는다. <code>--all-features</code> 단일 성공으로 호환성을 주장하지 않는다.</li>
+          <li>Testcontainers dependency contract와 lifecycle/security regression은 영향을 받은 crate의 required Linux pull-request integration lane에서 실행한다. 비용이 드는 cloud provider test만 opt-in/scheduled로 분리한다.</li>
+          <li>macro/API misuse는 <code>trybuild</code> compile-fail test로, router/parser/state machine은 property/fuzz test로 확장한다.</li>
+          <li>cloud credential, 비용 발생 provider, long soak/fuzz는 일반 pull request가 아닌 opt-in/scheduled environment에서 실행한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>일상 변경은 빠른 feedback을 받고, high-risk adapter와 lifecycle은 real system contract로 검증된다.</li>
+          <li>provider별 test setup과 CI 비용이 늘어나지만 실제 ack, visibility, offset, transaction, cancellation 차이가 숨겨지지 않는다.</li>
+          <li>public compile error와 example이 release 전 검증되어 Rust 사용자 경험이 더 안정적이다.</li>
+          <li>test fixture의 namespace, time, port, cleanup을 설계해야 하므로 초기 test code가 늘어난다.</li>
+          <li>coverage는 보조 지표가 되며, observable behavior와 failure mode가 주요 release 판단 기준이 된다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>대안</th>
+              <th>판단</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>unit test만 사용</td>
+              <td>socket, protocol, shutdown, driver/backend 상호운용성의 failure mode를 놓치므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>모든 test를 container/cloud에서 실행</td>
+              <td>feedback이 느리고 infrastructure flake가 개발 loop를 지배하므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>mock framework를 public core abstraction으로 제공</td>
+              <td>framework 내부 설계를 고정하고 user application test에 불필요한 DSL을 강요하므로 작은 helper와 explicit fake를 우선한다.</td>
+            </tr>
+            <tr>
+              <td>coverage percentage를 release gate로 사용</td>
+              <td>중요 failure path보다 구현 세부사항을 테스트하게 만들 수 있으므로 행동 contract와 risk-based matrix를 우선한다.</td>
+            </tr>
+            <tr>
+              <td>flaky test를 자동 retry로 통과</td>
+              <td>race와 resource leak을 숨기므로 infrastructure failure 진단을 제외하고 채택하지 않는다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>Stage 1에서 workspace test convention, fast CI profile, fixture support crate를 구성한다.</li>
+          <li>Stage 2에서 TCP fixture를, Stage 3에서 lifecycle/proxy deployment regression suite를, Stage 4에서 bounded <code>rustee-test::TestApp</code>과 opt-in session-style cookie jar, example/doctest와 <code>rustee-macros::FromHeader</code>의 valid/missing-attribute/wrong-shape/invalid-header-name <code>trybuild</code> suite를 추가했다. route macro와 broader derive는 별도 결정으로 추가한다.</li>
+          <li>각 integration crate가 추가될 때 canonical Testcontainers contract와 failure/cancellation test를 함께 추가한다.</li>
+          <li>Stage 9C에서 <code>rustee-ai-test</code>의 deterministic recorded-stream contract와 content-free invocation record를 구현했다. Stage 10에서 <code>rustee-router</code> parser/precedence property contract와 independent <code>route_pattern</code> libFuzzer target을 추가했다. header/query/body/range/state-machine target, soak/performance와 full platform/provider release matrix는 계속 확장한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Supersede this ADR if Rustee changes its public test helper boundary, verification layers, CI gate policy, or provider contract approach.</p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0026 Panic Response Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header"><div class="site-header-inner"><a class="brand" href="../index.html">Rustee</a><nav class="nav" aria-label="문서"><a href="../design-philosophy.html">철학</a><a href="../architecture.html">구조</a><a href="../database.html">데이터베이스</a><a href="../redis.html">Redis</a><a href="../mongodb.html">MongoDB</a><a href="../authentication.html">인증</a><a href="../queues.html">Queue</a><a href="../events.html">Event</a><a href="../ai.html">AI</a><a href="../testing.html">Test</a><a href="../operations.html">운영</a><a href="../roadmap.html">로드맵</a><a href="../ai-context.html">AI 유지관리</a><a href="./index.html">ADR</a></nav></div></header>
+    <main class="page">
+      <section class="hero"><div class="eyebrow">ADR 0026</div><h1>Panic response boundary</h1><p class="lead">Status: Accepted. Date: 2026-08-03.</p></section>
+      <section><h2>Context</h2><p>Rustee <code>Error</code>는 명시적인 handler/extractor 실패를 safe HTTP response로 렌더하지만, unhandled panic은 handler future를 중단하고 panic payload 또는 process 상태를 application logging/runtime에 맡긴다. HTTP client에는 private panic detail을 보내지 않아야 하지만, framework가 모든 panic을 보이지 않게 처리하거나 application의 global panic policy를 대체해서도 안 된다.</p></section>
+      <section><h2>Decision</h2><div class="decision"><p><code>rustee-middleware::PanicCatchLayer</code>를 opt-in Tower layer로 제공한다.</p></div><ul><li>layer는 inner <code>Service::call</code> future가 response를 만들기 전에 panic하면 fixed <code>internal_error</code> JSON 500으로 변환한다.</li><li>panic payload는 response 또는 tracing field에 넣지 않는다. layer는 payload 없는 error event만 남긴다.</li><li>layer는 기본 server stack에 자동 장착하지 않는다. application은 catch하려는 handler/middleware call future의 바깥에 명시적으로 놓는다.</li><li>response header가 이미 committed된 뒤 body stream에서 발생한 panic, <code>panic = &quot;abort&quot;</code>, process-wide panic hook, poisoned/global state recovery는 이 layer의 범위 밖이다.</li></ul></section>
+      <section><h2>Consequences</h2><ul><li>HTTP client는 opt-in boundary 안의 handler panic에서 private panic message 대신 stable 500 body를 받는다.</li><li>application은 crash reporting, panic hook redaction, restart/supervisor, alerting과 state recovery policy를 별도로 소유한다.</li><li>in-process middleware test와 real TCP server test가 response code/body redaction을 고정한다. panic payload의 process log 미노출은 deployment logger/panic-hook contract가 필요하다.</li></ul></section>
+      <section><h2>Alternatives</h2><table><thead><tr><th>대안</th><th>판단</th></tr></thead><tbody><tr><td>server가 모든 application에 자동으로 panic catch 적용</td><td>layer order, panic handling과 restart policy를 숨기며 abort build나 body-stream panic까지 해결한 것처럼 보이므로 채택하지 않는다.</td></tr><tr><td>panic payload를 response 또는 structured trace에 기록</td><td>secret, request body, provider detail이 섞일 수 있어 채택하지 않는다.</td></tr><tr><td>panic을 HTTP 500으로 바꾸지 않고 connection을 항상 종료</td><td>명시적으로 opted-in한 application의 stable client error contract를 제공하지 못하므로 채택하지 않는다.</td></tr></tbody></table></section>
+      <section><h2>Follow-up</h2><ul><li>production deployment는 redacted global panic hook, supervisor restart, alert owner와 state-recovery policy를 운영 runbook에 기록한다.</li><li>streaming body, direct TLS/HTTP2, protocol upgrade의 post-commit failure semantics는 각각의 transport ADR에서 다룬다.</li></ul></section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-03. Update this ADR whenever panic handling, error rendering, transport commitment, or runtime recovery ownership changes.</p></footer>
+    </main>
+  </body>
+</html>

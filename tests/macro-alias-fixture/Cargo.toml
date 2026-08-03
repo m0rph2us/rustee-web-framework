@@ -1,0 +1,15 @@
+[package]
+name = "rustee-macro-alias-fixture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+description = "Workspace-only consumer fixture for renamed Rustee macro expansion"
+
+[dependencies]
+app = { package = "rustee", path = "../../crates/rustee", version = "0.1.0", features = ["macros"] }
+
+[lints]
+workspace = true

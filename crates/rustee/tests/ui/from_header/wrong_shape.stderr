@@ -1,0 +1,8 @@
+error: `FromHeader` requires a tuple newtype with exactly one field
+ --> tests/ui/from_header/wrong_shape.rs:3:18
+  |
+3 |   struct RequestId {
+  |  __________________^
+4 | |     value: u64,
+5 | | }
+  | |_^

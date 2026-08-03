@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0042: TestApp Cookie Jar Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../testing.html">Test</a>
+          <a href="../authentication.html">인증</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0042 · Accepted · 2026-08-04</div>
+        <h1>TestApp cookie jar boundary</h1>
+        <p class="lead">in-process session test에는 작은 opt-in cookie jar를 제공하지만, browser semantics나 production session policy를 재구현하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Rustee session manager는 login/rotation에서 <code>Set-Cookie</code>를 append하고 logout에서 <code>Max-Age=0</code>을 반환합니다.
+          기존 <code>TestApp</code>은 request와 bounded response를 빠르게 검증하지만 response cookie를 보존하지 않아 login 뒤 protected route,
+          rotation, logout 흐름이 매번 raw <code>Cookie</code> header 조립을 요구했습니다. 반대로 in-process URI에는 browser origin과 transport가 없으므로
+          browser jar를 흉내 내면 잘못된 보안 보장을 만들 수 있습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>TestApp::with_cookie_jar()</code>로만 stateful jar를 켭니다. 기본 <code>TestApp</code>은 기존처럼 stateless이며 clone은 enabled jar를 공유합니다.</li>
+          <li>jar는 response <code>Set-Cookie</code>의 valid ASCII name/value first pair만 보존하고, <code>Max-Age=0</code>을 deletion으로 해석합니다.</li>
+          <li>한 jar는 최대 64 entries와 combined name/value 8 KiB로 고정합니다. malformed cookie와 bound 초과는 value를 render하지 않는 sanitized error로 반환합니다.</li>
+          <li>response body가 configured bound 안에서 완전히 read된 뒤에만 모든 cookie update를 한 번에 적용합니다. failed body read, oversized body, malformed cookie와 capacity error는 prior jar state를 유지합니다.</li>
+          <li>caller가 request <code>Cookie</code> header를 직접 넣으면 jar는 merge하거나 덮어쓰지 않습니다. explicit header가 test의 security/input intent를 소유합니다.</li>
+          <li>Domain, Path, Secure, HttpOnly, SameSite, Expires, nonzero <code>Max-Age</code>, redirect, origin, port와 cross-site policy는 평가하지 않습니다. production cookie/session implementation도 소유하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>session-style happy path와 logout/rotation test는 raw cookie parsing 없이 concise하게 유지되며, malformed response와 failed bounded response가 state를 남기지 않는 contract를 갖습니다.</li>
+          <li><code>TestCookieJar</code>은 clear/entry count만 public inspection으로 제공하고 stored name/value를 debug 또는 convenience API로 노출하지 않습니다.</li>
+          <li>secure transport, same-site CSRF behavior, cookie path/domain matching, expiration timing, redirect delivery와 browser interop은 real TCP/browser suite가 계속 증명합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>기본 TestApp에서 항상 cookie를 유지</td><td>기존 stateless request test에 보이지 않는 state를 추가하고, raw cookie security test의 의도를 흐립니다.</td></tr>
+            <tr><td>full browser cookie implementation</td><td>origin, TLS, clock, redirect와 same-site context가 없는 in-process client가 browser security behavior를 보장하는 것처럼 보이게 합니다.</td></tr>
+            <tr><td>session crate가 TestApp 전용 adapter를 제공</td><td>published test helper와 session policy를 결합시키고 generic cookie response test를 막습니다.</td></tr>
+            <tr><td>unbounded map과 public cookie value accessor</td><td>test helper가 resource/secret retention surface가 되는 것을 피할 수 없습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          browser-policy emulation, redirect-aware test client 또는 public cookie-value inspection을 검토할 때에는 HTTPS/origin model, deterministic clock,
+          security semantics, API compatibility와 real browser/wire evidence를 포함한 새 ADR이 필요합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="../testing.html">테스트 전략</a>, <a href="../authentication.html">인증</a>, and <a href="./0009-testing-and-verification-strategy.html">ADR 0009</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

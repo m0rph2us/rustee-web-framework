@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Response Compression</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./static-files.html">Static</a>
+          <a href="./compression.html">Compression</a>
+          <a href="./operations.html">운영</a>
+          <a href="./testing.html">Test</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">HTTP Response Compression</div>
+        <h1>응답 압축은 표현 협상과 cache 계약을 함께 지킵니다</h1>
+        <p class="lead">
+          <code>rustee-middleware::CompressionLayer</code>는 gzip과 Brotli를 명시적으로 협상하는 streaming
+          Tower layer입니다. 응답 전체를 메모리에 모으지 않고, 원래 body의 오류와 HTTP trailers를 끝까지 전달합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>적용</h2>
+        <pre><code>use rustee_middleware::{CompressionLayer, ServiceBuilder};
+
+let service = ServiceBuilder::new()
+    .layer(CompressionLayer::new())
+    .service(app);</code></pre>
+        <p>
+          기본값은 <code>br</code>와 <code>gzip</code> 모두를 사용하며 같은 quality에서는 Brotli를 고릅니다.
+          <code>with_brotli(false)</code> 또는 <code>with_gzip(false)</code>로 배포 환경에 맞춰 하나를 끌 수 있습니다.
+          <code>Accept-Encoding</code>가 없거나 두 coding의 quality가 0이면 응답은 원본 그대로입니다.
+        </p>
+        <pre><code>let service = ServiceBuilder::new()
+    .layer(CompressionLayer::new())
+    .layer(files.layer())
+    .service(app);</code></pre>
+        <p>
+          정적 파일도 origin에서 압축하려면 compression layer가 static layer의 바깥에 있어야 합니다. CDN 또는 reverse proxy가
+          이미 compression을 소유한다면 origin layer를 추가하지 않고, 해당 infrastructure의 <code>Vary</code>와 cache key 정책을 사용합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>응답 계약</h2>
+        <table>
+          <thead><tr><th>항목</th><th>동작</th><th>이유</th></tr></thead>
+          <tbody>
+            <tr><td>coding</td><td><code>br</code>, <code>gzip</code> quality negotiation</td><td>browser와 proxy가 허용한 표현만 보냅니다.</td></tr>
+            <tr><td>media type</td><td><code>text/*</code>, JavaScript, JSON, XML, SVG 및 <code>+json</code>/<code>+xml</code></td><td>이미 압축된 binary format을 기본으로 다시 압축하지 않습니다.</td></tr>
+            <tr><td>cache header</td><td>gzip/Brotli response는 <code>Content-Encoding</code>을 설정하고 <code>Content-Length</code>를 제거합니다. transform 가능한 identity response를 포함한 모든 negotiated representation에는 <code>Vary: Accept-Encoding</code>을 추가합니다.</td><td>중간 cache가 gzip/Brotli와 identity 표현을 섞지 않게 합니다.</td></tr>
+            <tr><td>stream</td><td>body frame을 compressor reader로 연결하고 trailers를 마지막 frame으로 전달합니다.</td><td>large/long-lived response를 통째로 buffer하지 않고 cancellation과 오류 전파를 보존합니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>의도적인 우회</h2>
+        <ul>
+          <li><code>HEAD</code>, request <code>Range</code>, informational/204/304 response, <code>Content-Range</code> response는 원본을 유지합니다.</li>
+          <li>이미 <code>Content-Encoding</code>이 있거나 <code>Cache-Control: no-transform</code>인 response는 다시 변환하지 않습니다.</li>
+          <li>content type이 없거나 allowlist 밖이면 압축하지 않습니다.</li>
+          <li>request body decompression, ETag/conditional representation 재계산, byte-range compression은 이 layer의 범위가 아닙니다. precompressed <code>.br</code>/<code>.gz</code> asset selection은 <a href="./static-files.html">static layer</a>의 명시적 opt-in입니다.</li>
+        </ul>
+        <p>
+          conditional static delivery, single/multipart byte range, precompressed asset selection과 opt-in large-file streaming은 <a href="./static-files.html">정적 파일 문서</a>에서 제공합니다.
+          compression layer는 모든 <code>Range</code> request를 bypass하므로 multipart body도 origin 그대로 전달합니다. Linux CI의 Nginx <code>proxy_cache</code> contract는 gzip과 identity response가 <code>Vary: Accept-Encoding</code>으로 분리되어 각각 cache hit가 되는지를 검증합니다. 실제 CDN vendor의 purge, TLS, cache-control policy와 metrics는 별도 deployment gate입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>검증 기준</h2>
+        <p>
+          layer contract는 Brotli/gzip 실제 복원, quality negotiation, 기존 coding 보존, <code>Range</code>/<code>HEAD</code>/<code>no-transform</code>
+          우회, <code>Vary</code>/<code>Content-Length</code> 정리, trailer 보존을 in-process test로 확인합니다.
+          Linux CI는 Nginx reverse-proxy cache에서 response coding과 cache key를 deployment integration test로 확인합니다. CDN vendor별 purge, edge compression과 cache-control policy도 별도 deployment test로 확인합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this document when content coding, cache variation, response streaming, or proxy/CDN ownership changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

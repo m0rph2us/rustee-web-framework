@@ -1,0 +1,22 @@
+[package]
+name = "rustee-events-schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provider-neutral JSON Schema declarations and registry verification for Rustee events"
+
+[dependencies]
+futures-util.workspace = true
+rustee-events = { path = "../rustee-events", version = "0.1.0" }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

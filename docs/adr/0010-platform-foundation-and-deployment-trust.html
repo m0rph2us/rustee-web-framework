@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0010 Platform Foundation and Deployment Trust</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0010</div>
+        <h1>Platform Foundation과 배포 trust boundary</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          database, Redis, MongoDB, auth, broker, AI integration은 configuration, secret handling, readiness, tracing, shutdown과
+          reverse proxy trust를 필요로 한다. 이를 나중 단계에 두면 integration마다 서로 다른 health, logging, timeout, forwarded-header
+          policy가 생긴다. 특히 internet client가 보낸 forwarded header를 검증 없이 신뢰하면 redirect, secure cookie, client IP based policy의
+          trust boundary가 깨진다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            platform foundation을 Stage 3으로 이동한다. <code>rustee-config</code>와 <code>rustee-observability</code>는 선택적 integration으로,
+            typed configuration validation/redaction, tracing bootstrap, server-generated request ID/response correlation과 configured route template 또는 framework-reserved outcome을 쓰는 exporter-neutral bounded request metrics naming baseline 및 global latency histogram을 제공한다. <code>rustee-observability-prometheus</code>는 global registry나 automatic route 없이 explicit text response helper와 histogram exposition을 제공한다. <code>rustee-observability-opentelemetry</code>는 application-owned provider/exporter/sampling/shutdown에 결합하는 optional tracing subscriber bridge와 bounded W3C inbound/explicit outbound propagation을 제공하며 response에 trace header를 쓰지 않는다. <code>rustee-server</code>는 graceful shutdown,
+            liveness/readiness, timeout/body/concurrency limit, prefix-bound static file delivery와 streaming gzip/Brotli response compression을 이 단계에서 확장한다.
+          </p>
+        </div>
+        <ul>
+          <li>Stage 2는 cleartext HTTP/1.1 origin server만 지원한다. production TLS는 trusted reverse proxy/load balancer에서 종료한다.</li>
+          <li>forwarded headers는 default-deny다. explicit proxy IP/network allowlist와 allowed header policy가 있을 때만 복원한다. <code>TrustedProxyLayer</code>는 non-/0 CIDR allowlist의 direct peer에 대해 single-hop RFC 7239 <code>Forwarded</code>를 기본으로 복원하며 malformed/duplicate header는 거부한다. multi-hop은 explicit bounded hop count로만 opt-in한다.</li>
+          <li>legacy header는 <code>with_x_forwarded()</code> opt-in에서만 복원한다. 이 mode는 <code>X-Forwarded-For</code>의 bare-IP chain, optional single <code>X-Forwarded-Proto</code>/<code>X-Forwarded-Host</code>를 같은 bound로 해석하며 RFC 7239 family와 혼합하지 않는다. <code>rustee-server</code>는 accepted connection의 actual peer address만 <code>ConnectionInfo</code> request extension으로 주입한다. CIDR policy가 이 peer를 trusted proxy로 확인하기 전에는 어느 family도 복원하지 않는다. quoted/obfuscated identifier와 IP port form은 복원하지 않는다.</li>
+          <li><code>RequestIdLayer</code>는 client-provided ID를 재사용하지 않고 generated UUID를 request extension과 response header에 넣으며, method/status/duration completion trace를 남긴다. trusted proxy provenance가 구현되기 전 correlation ID를 external input으로 신뢰하지 않는다.</li>
+          <li>direct TLS와 HTTP/2는 initial scope 밖이며 protocol, shutdown, proxy interoperability, test matrix가 담긴 별도 ADR 없이는 지원하지 않는다.</li>
+          <li>liveness와 readiness를 분리하며 readiness dependency check는 application이 선택하고 timeout/redaction을 가진다.</li>
+          <li>secret, token, cookie, full body, AI prompt/completion은 default observability field가 아니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>모든 후속 integration이 같은 config, lifecycle, health, trace, proxy trust contract를 사용한다.</li>
+          <li>Stage 3 범위가 넓어지지만 storage/auth 구현 전에 production safety boundary를 검증할 수 있다.</li>
+          <li>직접 TLS/HTTP/2를 원하는 사용자는 초기 release에서 external proxy를 사용해야 한다.</li>
+          <li>application은 trusted proxy network, readiness dependency, config source/secret policy를 명시해야 한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>운영 기능을 DB/broker 뒤에 구현</td><td>각 integration이 자체 health/logging/shutdown 경계를 만들게 되므로 채택하지 않는다.</td></tr>
+            <tr><td>모든 forwarded header를 자동 신뢰</td><td>client spoofing으로 trust boundary가 깨지므로 채택하지 않는다.</td></tr>
+            <tr><td>첫 server release부터 direct TLS와 HTTP/2 제공</td><td>지원/test/운영 범위가 MVP를 크게 넓히므로 별도 결정까지 채택하지 않는다.</td></tr>
+            <tr><td>generic secret/config framework를 core에 포함</td><td>provider와 format 선택권을 해치므로 typed glue와 application injection으로 제한한다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>Stage 1에서 MSRV/stability policy와 deterministic fixture를 설정한다.</li>
+          <li>Stage 3에서 config, request correlation, router outcome metrics, latency histogram, Prometheus export, OpenTelemetry bridge/W3C propagation, pinned OTLP/HTTP Collector receipt contract, lifecycle, trusted proxy/TLS deployment contract, prefix-bound static file/weak validator 304/normalized single-multipart byte-range/opt-in precompressed variant/bounded streaming regression test와 <code>Vary</code>/trailer-safe gzip/Brotli response compression을 구현한다. production exporter policy와 proxy/CDN compression deployment test는 이후 explicit contract로 추가한다.</li>
+          <li>각 integration crate는 readiness, redaction, cancellation, tracing contract test를 이 foundation 위에서 추가한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-02. Supersede this ADR if Rustee changes its transport support, proxy trust default, configuration boundary, or operational lifecycle policy.</p>
+      </footer>
+    </main>
+  </body>
+</html>

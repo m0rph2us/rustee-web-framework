@@ -1,0 +1,31 @@
+name: Dependency policy
+
+on:
+  pull_request:
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - deny.toml
+      - "crates/**/Cargo.toml"
+      - "examples/**/Cargo.toml"
+  push:
+    branches: [main]
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - deny.toml
+      - "crates/**/Cargo.toml"
+      - "examples/**/Cargo.toml"
+  schedule:
+    - cron: "30 6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: License and source policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1

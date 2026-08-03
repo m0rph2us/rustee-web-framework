@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0006: Background Job과 Queue 경계</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0006</div>
+        <h1>Background Job과 Queue 경계</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          background task는 단순 channel이 아니라 persistent delivery, consumer failure, retry, duplicate processing, dead-letter,
+          delayed execution, database side effect를 다루는 운영 기능이다. broker마다 acknowledgment, ordering, retry, retention
+          의미가 다르므로 공통 queue trait가 이를 숨기면 잘못된 안전 가정을 만들기 쉽다. 그러나 HTTP handler에서 typed job을 enqueue하고
+          worker lifecycle을 일관되게 운영하는 경로는 framework 차원에서 제공할 가치가 있다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            queue는 Stage 9A의 선택적 <code>rustee-jobs</code> job client/worker runtime으로 제공한다. delivery guarantee는
+            at-least-once이며, handler 성공 후 ack, explicit retry/backoff/max attempts, DLQ, idempotency key를 기본 lifecycle으로 한다.
+          </p>
+        </div>
+        <ul>
+          <li>첫 durable provider는 NATS JetStream 기반 <code>rustee-jobs-nats</code>다. 이는 pre-provisioned durable pull consumer와 <code>AckPolicy::Explicit</code>을 요구하고 bounded concurrency/drain, delayed NAK retry, acknowledged DLQ relay를 제공한다.</li>
+          <li>Redis Streams는 Stage 10의 선택적 <code>rustee-jobs-redis</code> provider로 지원한다. deployment-provisioned source/group/DLQ를 확인하고, ownership-checked ack, Redis-clock durable delayed retry, pending reclaim과 Redis 7 contract를 제공한다. handler heartbeat와 Cluster/Sentinel policy는 별도 release gate다.</li>
+          <li>RabbitMQ 4.3 quorum queue는 Stage 10의 선택적 <code>rustee-jobs-rabbitmq</code> provider로 지원한다. publisher confirm, manual ack/reject, bounded prefetch, direct DLQ를 보존하고 native delayed-retry policy가 core retry policy와 정확히 일치할 때만 시작한다. archived delayed-message plugin과 TTL/DLX retry topology는 채택하지 않는다.</li>
+          <li>Amazon SQS는 Stage 10의 선택적 <code>rustee-jobs-sqs</code> provider로 지원한다. application-injected AWS SDK client와 deployment-owned source/DLQ/IAM/redrive policy를 사용하고 long polling, visibility heartbeat, success delete, whole-second retry visibility, direct DLQ를 보존한다. Standard와 FIFO를 같은 raw queue facade로 만들지 않으며 FIFO는 explicit message group과 job ID deduplication ID를 요구한다. SQS <code>ApproximateReceiveCount</code>는 typed attempt로 전달하지만 delivery는 at-least-once다.</li>
+          <li>Kafka는 job provider가 아니다. topic, partition key, consumer group, offset/replay를 가진 별도 <code>rustee-events-kafka</code> event-stream integration으로 관리한다.</li>
+          <li>public API는 typed, versioned job envelope와 worker lifecycle을 제공하며 raw broker API를 평준화하지 않는다.</li>
+          <li><code>JobTraceContext</code>에는 bounded W3C carrier만 넣고, optional <code>rustee-jobs-opentelemetry</code>가 current span capture와 valid carrier의 handler-parent 연결을 담당한다. exporter, sampling, shutdown은 application이 소유한다.</li>
+          <li>job handler는 idempotent해야 하며, exactly-once execution은 보장하지 않는다.</li>
+          <li>PostgreSQL DB 변경과 enqueue의 atomic handoff에는 <code>rustee-outbox-sqlx</code>를 사용한다. <code>PostgresInbox</code>는 consumer receipt와 database side effect를 같은 transaction에 기록한다. application은 destination별 relay scheduling, external consumer idempotency를 명시하고 framework는 cross-store transaction을 가장하지 않는다.</li>
+          <li>broker stream, consumer, DLQ provisioning은 deployment 단계에서 관리하고 production application startup에서 자동 생성하지 않는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>Rustee HTTP core와 broker dependency가 분리되어 queue를 쓰지 않는 서비스의 build와 API가 단순하다.</li>
+          <li>job type, attempt, idempotency, retry, DLQ가 code와 운영 문서에 드러나므로 failure behavior를 검토할 수 있다.</li>
+          <li>NATS JetStream의 durable consumer, explicit ack, backoff/max delivery를 첫 implementation에서 활용하며, handler에는 broker가 관찰한 실제 delivery attempt를 전달한다.</li>
+          <li>Redis를 가진 팀은 Redis Streams adapter를 선택할 수 있지만 Pub/Sub과 List를 durable queue로 오인하지 않는다. retry private storage와 source retention은 같은 Redis deployment policy로 관리하며 pending entry를 trim해 데이터 유실을 숨기지 않는다.</li>
+          <li>RabbitMQ 팀은 quorum queue type, native delayed-retry policy, delivery limit과 broker-native DLX exchange/routing key를 provisioning artifact로 검증해야 한다. delivery-limit route는 Rustee poison/exhausted delivery의 confirmed direct-DLQ route와 같아야 한다. passive readiness는 존재와 접근만 확인하며 queue type/policy를 자동 변경하지 않는다. CI의 optional Management audit는 실제 broker snapshot으로 이 drift를 읽기 전용으로 검증하며, loopback 외 plain HTTP URL을 거부하고 HTTPS monitor-only account를 요구한다.</li>
+          <li>SQS 팀은 source/DLQ가 같은 Standard/FIFO mode인지, source redrive policy가 expected DLQ ARN/max receive count를 가리키는지, IAM이 receive/change-visibility/delete/send-DLQ를 허용하는지 deployment artifact로 검증해야 한다. heartbeat 실패와 direct-DLQ send/delete 사이의 failure는 duplicate delivery를 만들 수 있으므로 DLQ consumer도 idempotent해야 한다.</li>
+          <li>PostgreSQL outbox의 stage/lease/confirmation과 DB-bound inbox receipt는 adapter가 제공하지만 application은 external idempotency와 retry/DLQ 운영 절차를 구현해야 하므로 side effect 유실/중복의 위험이 숨겨지지 않는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>대안</th>
+              <th>판단</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>queue를 core dependency로 포함</td>
+              <td>모든 HTTP 서비스에 필요하지 않고 broker 선택권을 해치므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>범용 <code>Queue&lt;T&gt;</code> trait를 public API로 즉시 안정화</td>
+              <td>provider의 ack, ordering, delay, retention 의미를 지우므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>Redis Pub/Sub 또는 List를 첫 durable queue로 사용</td>
+              <td>worker recovery, pending message, delivery semantics가 부족하거나 숨겨지므로 채택하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>RabbitMQ 또는 SQS를 첫 공식 job provider로 채택</td>
+              <td>유효한 후속 provider지만 Tokio/Rust 친화적 NATS JetStream의 durable consumer 모델로 먼저 job lifecycle을 검증한다.</td>
+            </tr>
+            <tr>
+              <td>Kafka를 job provider로 채택</td>
+              <td>partition, committed offset, consumer group, retention/replay가 work queue contract와 다르므로 별도 event-stream integration으로 분리한다.</td>
+            </tr>
+            <tr>
+              <td>exactly-once execution을 제공</td>
+              <td>external side effect와 broker failure까지 보장할 수 없으므로 채택하지 않는다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>Stage 3에서 worker에 필요한 shutdown, readiness, tracing, metric contract를 구현한다.</li>
+          <li>Stage 9A에서 <code>rustee-jobs</code> bounded W3C carrier, strict current-version decode와 explicit old-payload upcaster, immutable-after-startup typed registry와 <code>rustee-jobs-opentelemetry</code> handler-parent contract, NATS JetStream provider의 retry/DLQ/drain/registry runtime 및 <code>nats:2.10-alpine</code> CI contract suite를 구현했다. CI는 typed success ack, retry-to-DLQ, unknown registry job의 acknowledged DLQ, graceful drain을 검증하며 duplicate delivery와 broker outage case를 계속 확장한다.</li>
+          <li>PostgreSQL <code>rustee-outbox-sqlx</code> migration, same-transaction job stage, PostgreSQL-clock one-time delayed job availability, 0-255 durable local priority claim order, <code>SKIP LOCKED</code> lease/confirmation/release와 inbox rollback/committed-duplicate contract를 구현했고 CI가 이를 검증한다. <code>rustee-jobs-cron-sqlx</code>는 UTC default IANA recurring template의 due-row <code>SKIP LOCKED</code> claim, DST gap skip/overlap-earlier-once, fresh job outbox stage와 next-run advance를 same transaction으로 구현하며 shared-key fixed-window governor도 capacity consume 또는 no-outbox defer를 같은 transaction으로 처리한다. tzdb update qualification, missed-run catch-up, tenant fairness/daily quota와 external side-effect idempotency guidance는 계속 확장한다.</li>
+          <li>Stage 10에서 Redis Streams provider의 consumer group, ownership-checked ack, Redis-clock retry/DLQ, pending reclaim과 Redis 7 CI contract를 구현했다. handler heartbeat, Redis Cluster/Sentinel, retention/replay runbook은 별도 release gate로 확장한다.</li>
+          <li>Stage 10에서 RabbitMQ 4.3 provider와 CI contract를 구현했다. <code>rustee-jobs-sqs</code>는 MSRV-compatible AWS SDK 1.105.0 line에서 long polling, visibility heartbeat/delete, direct/redrive DLQ, Standard/FIFO route와 LocalStack contract를 구현했다. IAM/KMS outage, Standard duplicate/receive-count variation과 redrive replay runbook은 별도 release gate로 확장한다. Kafka event stream은 ADR 0007에서 별도로 관리한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-02. Supersede this ADR if Rustee changes its job delivery guarantee, first broker provider, or public queue abstraction direction.</p>
+      </footer>
+    </main>
+  </body>
+</html>

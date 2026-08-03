@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0045: OpenAPI OAuth2 and Global Security Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../openapi.html">OpenAPI</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../testing.html">Test</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0045 · Accepted · 2026-08-04</div>
+        <h1>OpenAPI OAuth2 and global security boundary</h1>
+        <p class="lead">권장 OAuth2 flow와 document-wide security override를 검증 가능한 OpenAPI metadata로 제공하되, runtime token lifecycle은 소유하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          HTTP Basic/Bearer, API key와 OpenID Connect discovery만으로는 authorization-code 또는 machine-to-machine client-credentials API를
+          정확히 문서화하기 어렵습니다. 또한 API 전체 기본 보안과 health/bootstrap endpoint의 예외를 operation마다 반복하면 review drift가
+          생깁니다. OpenAPI 3.1은 OAuth Flows Object, top-level security, operation-local override, empty requirement의 anonymous alternative를
+          정의하지만 이런 metadata를 Rustee runtime authentication으로 오해해서는 안 됩니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>OpenApiOAuthFlow</code>는 Authorization Code와 Client Credentials만 명시합니다. Implicit과 Resource Owner Password flow는 현재 API에 넣지 않습니다.</li>
+          <li><code>OpenApiSecurityScheme::oauth2</code>는 하나 이상의 unique flow를 요구합니다. authorization, token, optional refresh URL은 HTTPS 또는 loopback HTTP만 허용하며 credential, query, fragment를 거부합니다.</li>
+          <li>OAuth scope name은 validated token이고 description은 bounded public metadata입니다. operation/global requirement가 OAuth scope를 요구하면 declared flow 중 하나에 그 scope가 있어야 합니다. OpenID Connect scope는 remote discovery를 fetch하지 않으므로 token grammar만 확인합니다.</li>
+          <li><code>OpenApiDocument::global_security_requirement</code>는 top-level OR alternatives를 만듭니다. operation에 local security field가 없으면 이 default를 상속합니다. <code>anonymous_access()</code>는 local array에 <code>{}</code> alternative를 넣고, <code>clear_security_requirements()</code>는 top-level default를 제거하는 empty array를 렌더링합니다.</li>
+          <li>security scheme은 global requirement와 operation 전에 등록해야 하며 unknown scheme, duplicate flow/scope, unsafe URL, undeclared OAuth scope를 fail-closed 합니다.</li>
+          <li>OAuth client registration, PKCE/state/session, authorization redirect, client secret, token exchange/refresh/revocation, JWKS/introspection, principal/scope/tenant authorization, middleware attachment와 runtime-document drift detection은 application과 existing auth crate가 소유합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>client generator와 reviewer는 deterministic <code>oauth2.flows</code>, top-level default, explicit public override와 optional access alternative를 구분할 수 있습니다.</li>
+          <li>static URL policy는 uncommon provider query configuration을 표현하지 않습니다. 그런 deployment가 필요한 경우 query metadata exposure와 interoperability evidence를 포함한 후속 ADR이 필요합니다.</li>
+          <li>authorization-code/client-credentials document support는 Rustee가 IdP나 OAuth grant를 지원한다는 runtime claim이 아닙니다. application은 matching authenticated integration test와 operator procedure를 유지합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>OAuth2 값을 raw JSON으로 삽입</td><td>flow/scope/URL validation과 global override 의미가 application별로 달라지므로 채택하지 않습니다.</td></tr>
+            <tr><td>Implicit/password를 포함한 모든 legacy flow를 즉시 모델링</td><td>security best practice와 provider compatibility를 고정해야 하며 Rustee가 권장하지 않는 grant를 normal path로 보이게 하므로 채택하지 않습니다.</td></tr>
+            <tr><td>top-level security만 지원</td><td>anonymous endpoint와 explicit default removal을 정확히 표현할 수 없으므로 채택하지 않습니다.</td></tr>
+            <tr><td>OpenAPI declaration으로 auth middleware를 자동 구성</td><td>client metadata가 token validation/tenant/authorization policy의 source of truth가 되는 오해를 만들므로 채택하지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          OAuth endpoint query policy, legacy grant, server URL, external OpenAPI validator/client generation과
+          route/runtime drift detection은 supported provider/version matrix와 credentials/data exposure review를 포함한 별도 ADR 없이는 추가하지 않습니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="../openapi.html">OpenAPI</a>, <a href="../authentication.html">인증</a>, <a href="./0039-openapi-explicit-description-boundary.html">ADR 0039</a>, <a href="./0043-openapi-security-metadata-boundary.html">ADR 0043</a>, <a href="./0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>, and <a href="./0047-openapi-api-key-header-grammar.html">ADR 0047</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

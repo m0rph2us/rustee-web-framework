@@ -1,0 +1,10 @@
+target
+artifacts
+coverage
+corpus/*
+!corpus/route_pattern/
+!corpus/route_pattern/**
+!corpus/openapi_route/
+!corpus/openapi_route/**
+!corpus/openapi_security_scheme/
+!corpus/openapi_security_scheme/**

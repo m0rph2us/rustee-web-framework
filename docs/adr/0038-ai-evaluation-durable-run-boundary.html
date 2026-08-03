@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0038: AI Evaluation Durable Run Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0038</div>
+        <h1>AI Evaluation Durable Run Boundary</h1>
+        <p class="lead">AI evaluation을 durable worker로 전달하되, raw suite와 model result를 payload/ledger에 넣지 않고 ambiguous run을 자동 재실행하지 않습니다.</p>
+        <p class="meta">Status: Accepted | Date: 2026-08-04</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          <code>rustee-ai-eval</code>의 in-memory runner는 application-owned prompt, target, executor와 grader를 안전하게 순차 실행하지만,
+          long-running suite는 durable job과 restart-safe idempotency가 필요합니다. raw suite를 job JSON이나 shared ledger에 넣으면 prompt,
+          expected target, completion, grader metadata의 retention/tenant erase/access policy가 framework에 숨어듭니다. 반대로 failure 뒤
+          provider call을 다시 실행하면 usage charge, model nondeterminism과 report sink ambiguity를 만들 수 있습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>AiEvaluationReference</code>는 bounded <code>scope</code>, <code>catalog_id</code>, <code>run_key</code>만 보관합니다.
+            authorized application <code>AiEvaluationCatalog</code>가 worker 시작 뒤 raw suite를 load하고,
+            <code>AiEvaluationRunLedger</code>가 scoped run key를 atomic <code>reserved</code>, <code>completed</code>,
+            <code>pending</code> 상태로 관리합니다. <code>rustee-ai-eval-jobs</code>은 run key와 동일한 job idempotency key를 요구하고,
+            <code>rustee-ai-eval-sqlx</code>은 PostgreSQL에 reference/status만 durable하게 저장합니다.
+          </p>
+        </div>
+        <p>
+          <code>AiEvaluationSubmitter</code>는 prior completion이면 catalog/model/grader를 호출하지 않습니다. catalog load, executor,
+          grader 또는 completion record 단계의 failure는 reservation을 <code>pending</code>으로 남깁니다. automatic release/retry,
+          report persistence, provider usage refund, catalog authorization, human/LLM grader spend 및 report retention은 application이 소유합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>durable payload와 PostgreSQL ledger에는 prompt, target, completion, grader detail, provider endpoint, report body를 넣지 않습니다. pending query는 redacted reference만 reconciliation code에 돌려줍니다.</li>
+          <li>같은 <code>(scope, run_key)</code>를 다른 catalog ID에 재사용하면 fail-closed 합니다. completed run은 idempotent하게 acknowledge하지만 report를 다시 load하거나 model을 재호출하지 않습니다.</li>
+          <li>provider or grader failure 후 broker delivery가 재시도되어도 ledger가 pending을 반환하므로 second model call은 발생하지 않습니다. 재평가가 안전한 경우만 application이 audit/reconciliation 뒤 새 run key로 새 job을 enqueue합니다.</li>
+          <li>PostgreSQL CI는 pending preservation, completion reuse, exact identity conflict와 pending reference debug redaction을 검증합니다. local default test는 database container 없이 unit contract만 실행합니다.</li>
+          <li>이 경계는 comparative baseline, live provider qualification, human/LLM grader authorization/cost/redaction, report retention/erase, semantic cache와 batch partial-result reconciliation을 Supported로 올리지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>raw suite 또는 report를 job payload/ledger에 직렬화</td><td>retention, authorization, tenant erase와 provider-content exposure를 framework가 암묵적으로 소유하게 되므로 채택하지 않습니다.</td></tr>
+            <tr><td>failure 시 같은 run key로 model/grader를 자동 재실행</td><td>provider usage, nondeterministic output과 report completion ambiguity를 감추므로 채택하지 않습니다.</td></tr>
+            <tr><td>completed run에서 prior report를 generic ledger가 반환</td><td>report authorization/retention/data shape는 application마다 다르므로 ledger는 completion state만 보관합니다.</td></tr>
+            <tr><td>job idempotency와 run key를 독립적으로 둠</td><td>duplicate delivery가 다른 run identity로 model call을 반복할 수 있으므로 채택하지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="./0020-ai-evaluation-cache-batch-boundary.html">ADR 0020</a>, <a href="../ai.html">AI application integration</a>, and <a href="../testing.html">테스트와 검증 전략</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

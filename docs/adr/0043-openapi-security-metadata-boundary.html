@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0043: OpenAPI Security Metadata Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../architecture.html">구조</a>
+          <a href="../openapi.html">OpenAPI</a>
+          <a href="../authentication.html">인증</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0043 · Accepted · 2026-08-04</div>
+        <h1>OpenAPI security metadata boundary</h1>
+        <p class="lead">OpenAPI security component는 public API 문서의 명시적 metadata이며, Rustee runtime authentication 또는 authorization을 추론하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Rustee는 bearer, OIDC/session, scope/permission, tenant context와 API-key 기반 application policy를 조합할 수 있지만,
+          handler signature 또는 Tower layer만으로 어떤 operation의 public security requirement인지 정확히 결정할 수 없습니다. security scheme이
+          없으면 application은 raw JSON을 섞거나 document와 runtime policy가 다른 상태를 감수하게 됩니다. 반대로 OpenAPI builder가
+          middleware를 검사하거나 verifier를 자동 부착하면 문서와 runtime ownership이 섞입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <ul>
+          <li><code>OpenApiDocument::security_scheme</code>는 named HTTP Basic/Bearer, API key(header/query/cookie), OpenID Connect discovery component를 explicit하게 등록합니다. Authorization Code/Client Credentials OAuth2 flow는 ADR 0045에서, static <code>mutualTLS</code> component는 ADR 0046에서, API-key header field-name validation은 ADR 0047에서 추가합니다.</li>
+          <li>OpenID Connect discovery URL은 HTTPS 또는 loopback HTTP만 허용하고 embedded credential, query, fragment를 거부합니다. credential, token, tenant/user identifier는 document builder에 넣지 않습니다.</li>
+          <li><code>OpenApiOperation::security_requirement</code>는 each requirement를 OR alternative로, one requirement 안의 schemes를 AND set으로 렌더링합니다. initial contract에서는 OpenID Connect requirement만 scope list를 가졌고, ADR 0045가 declared OAuth2 scope validation을 추가합니다.</li>
+          <li>operation 추가 시 unknown scheme, non-OAuth/OIDC scope(따라서 <code>mutualTLS</code> scope 포함), invalid API-key header name, duplicate named component와 duplicate scheme inside one requirement를 fail-closed 합니다. facade feature consumer test가 rendering path를 고정합니다.</li>
+          <li>route authentication, HTTP challenge, bearer/API-key parser, OIDC/login/session lifecycle, OAuth token lifecycle, scope/tenant/permission authorization와 runtime document-drift detection은 application 또는 existing security crate가 계속 소유합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>OpenAPI JSON은 deterministic <code>components.securitySchemes</code>와 operation <code>security</code> shape를 갖고, reviewer는 endpoint와 security metadata를 같은 application declaration에서 볼 수 있습니다.</li>
+          <li>documentation scope와 runtime policy는 intentionally separate입니다. application은 same-change review와 authenticated integration test로 document requirement와 real middleware policy가 일치함을 증명합니다.</li>
+          <li>Authorization Code/Client Credentials metadata와 global/document default semantics는 ADR 0045로, static mutual-TLS declaration은 ADR 0046으로, API-key header grammar는 ADR 0047로 확장했습니다. legacy OAuth flow, hosted UI/client generation, external validation과 middleware-to-document inference는 public compatibility와 provider policy를 추가로 결정한 뒤에만 확장합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>application이 raw JSON security object를 직접 삽입</td><td>identifier, URL, scope validation과 deterministic failure contract를 잃습니다.</td></tr>
+            <tr><td>middleware/handler를 reflection해 security를 자동 생성</td><td>mount order, custom middleware, application authorization semantics와 documented public contract를 동치로 볼 수 없습니다.</td></tr>
+            <tr><td>처음부터 모든 OAuth 2.0 flow와 global default를 모델링</td><td>provider endpoint/consent/scopes/default override compatibility를 아직 결정하지 않았으므로 focused API surface를 넘습니다.</td></tr>
+            <tr><td>security metadata가 runtime layer를 자동 부착</td><td>document declaration을 credentials/token validation/tenant policy의 source of truth로 오해하게 만듭니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <p>
+          Authorization Code/Client Credentials metadata와 document-wide default/anonymous override는 ADR 0045로, static mutual-TLS declaration은 ADR 0046으로, API-key header grammar는 ADR 0047로 구현했습니다. server URL,
+          legacy OAuth flow, external validator/client generation 또는 route/runtime policy drift detection을 추가할 때에는
+          corresponding security owner, credentials/data exposure, migration and compatibility plan, real integration evidence를 포함한 새 ADR이 필요합니다.
+        </p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="../openapi.html">OpenAPI</a>, <a href="../authentication.html">인증</a>, <a href="./0039-openapi-explicit-description-boundary.html">ADR 0039</a>, <a href="./0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>, <a href="./0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>, and <a href="./0047-openapi-api-key-header-grammar.html">ADR 0047</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

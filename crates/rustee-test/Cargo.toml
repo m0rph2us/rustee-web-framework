@@ -1,0 +1,24 @@
+[package]
+name = "rustee-test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "In-process test helpers for Rustee applications"
+
+[dependencies]
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

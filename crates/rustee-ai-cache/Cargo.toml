@@ -1,0 +1,21 @@
+[package]
+name = "rustee-ai-cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Explicit tenant-scoped AI response-cache contracts for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+thiserror.workspace = true
+
+[dev-dependencies]
+rustee-ai-test = { path = "../rustee-ai-test", version = "0.1.0" }
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

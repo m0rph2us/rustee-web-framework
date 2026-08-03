@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0013: 출하 트랙과 지원 정책</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">기능 로드맵</a>
+          <a href="../release-plan.html">출하 계획</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0013</div>
+        <h1>출하 트랙과 지원 정책</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Rustee는 작은 HTTP framework부터 database, authentication, queue, Kafka, AI와 enterprise topology까지 확장한다.
+          단일 stage checklist로 이 범위를 관리하면 선택적 provider 하나의 운영 공백이 core API 안정화를 막거나,
+          반대로 container happy path만 가진 adapter가 공식 지원처럼 보일 위험이 있다. core semver 안정성, provider
+          contract, 특정 deployment qualification은 서로 다른 증거를 요구한다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            Rustee는 framework baseline(F1), 선택적 integration(I1-I3), enterprise topology(E)를 독립 출하 트랙으로
+            관리한다. v1은 F1 public surface의 안정성 약속이며 모든 optional adapter의 완료를 전제하지 않는다.
+          </p>
+        </div>
+        <ul>
+          <li>adapter operational state는 Experimental, Contract-verified, Supported, Enterprise-qualified로 구분한다.</li>
+          <li>Supported에는 real backend failure/duplicate/lifecycle contract, version matrix, bounded observability, operator runbook과 upgrade/rollback guidance가 필요하다.</li>
+          <li>Enterprise-qualified에는 workload별 ADR, topology and identity threat model, TLS/credential policy, recovery와 performance evidence가 추가로 필요하다.</li>
+          <li>공통 abstraction은 provider가 정말 같은 acknowledgement, ordering, transaction, failure 의미를 공유할 때만 도입한다. 그렇지 않으면 provider별 crate와 명시적 application policy를 유지한다.</li>
+          <li>release gate, status, 지원선은 <a href="../release-plan.html">출하 계획</a>, <a href="../testing.html">테스트 전략</a>, <a href="../implementation-review.html">구현 계획 재검토</a>에서 같은 의미로 기록한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>core HTTP framework는 finite v1 boundary를 가지며 provider breadth가 release를 무기한 막지 않는다.</li>
+          <li>선택적 crate는 단순 compile success만으로 production support를 주장할 수 없고, provider 특성에 맞는 evidence를 쌓아야 한다.</li>
+          <li>enterprise 요구는 product edition에 숨기지 않고 deployment assumption과 operator 책임을 드러낸다.</li>
+          <li>CI는 빠른 PR gate, backend contract, scheduled or release qualification을 분리하되 서로의 누락을 지원 선언으로 덮지 않는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>모든 provider가 끝난 뒤 v1</td><td>범위가 계속 움직이고 core 안정화가 external provider backlog에 묶이므로 채택하지 않는다.</td></tr>
+            <tr><td>모든 integration을 generic facade로 통일</td><td>queue acknowledgement, database transaction, AI side effect의 중요한 차이를 감추므로 채택하지 않는다.</td></tr>
+            <tr><td>container happy path만 통과하면 Supported</td><td>outage, duplicate, upgrade, observability와 운영 절차가 빠지므로 채택하지 않는다.</td></tr>
+            <tr><td>enterprise를 별도 보이지 않는 feature bundle로 선언</td><td>topology와 identity assumption을 숨기므로 workload별 qualification을 대체할 수 없다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>F0 release governance gate를 CI, release checklist, public API compatibility baseline으로 구현한다.</li>
+          <li>각 existing adapter에 operational state와 빠진 evidence를 기록한다.</li>
+          <li>Supported 또는 Enterprise-qualified로 승격하는 변경은 해당 provider 문서와 ADR에 구체적인 evidence를 남긴다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes its release-track or support-level model.</p>
+      </footer>
+    </main>
+  </body>
+</html>

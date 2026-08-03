@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0031 PostgreSQL Scheduler Observability Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../queues.html">Queue</a>
+          <a href="../operations.html">운영</a>
+          <a href="../testing.html">Test</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0031</div>
+        <h1>PostgreSQL scheduler pass observability 경계</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          recurring scheduler는 due row를 transaction 안에서 outbox로 materialize하거나 rate window가 가득 찼을 때 defer합니다.
+          운영자는 pass failure, cancellation, backlog pressure와 governor defer를 확인해야 하지만 schedule key, destination,
+          tenant, payload 또는 PostgreSQL error를 metric label로 쓰면 cardinality와 data-exposure 경계가 무너집니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-jobs-cron-sqlx</code>에 panic-isolated, cancellation-safe
+            <code>RecurringJobFireObserver</code> lifecycle을 추가하고, <code>rustee-jobs-cron-observability</code>와
+            <code>rustee-jobs-cron-observability-prometheus</code>를 optional exporter boundary로 둡니다.
+            application은 <code>PostgresRecurringJobs::with_fire_observer</code>로 collector를 명시적으로 연결합니다.
+          </p>
+        </div>
+        <p>
+          collector는 started/in-flight/completed pass, fixed <code>succeeded</code>/<code>failed</code>/<code>abandoned</code>
+          outcome, aggregate <code>claimed</code>/<code>staged</code>/<code>rate_limited</code> count와 global duration histogram만
+          보관합니다. Prometheus adapter는 explicit text 0.0.4 <code>no-store</code> response만 만들며 registry, listener,
+          authentication, route, alert threshold 또는 retry action을 자동으로 만들지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>caller cancellation은 silent loss가 아니라 <code>abandoned</code> pass로 기록됩니다. failed 또는 abandoned transaction의 row count는 durable completion으로 오해하지 않도록 기록하지 않습니다.</li>
+          <li>observer panic은 catch되어 schedule registration, outbox stage, governor consume/defer와 next-run advance에 영향을 주지 않습니다.</li>
+          <li>schedule key, cron expression, destination, job name, payload, occurrence ID, tenant, rate-limit key, database endpoint/credential와 raw error는 observer/event/metric label에 포함하지 않습니다.</li>
+          <li>alert owner, sustained failure/defer threshold, polling cadence, PostgreSQL outage response, downstream idempotency와 scrape-route network isolation은 application/deployment qualification으로 남습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>schedule key와 destination을 Prometheus label로 export</td><td>unbounded series와 business topology/data exposure를 만들므로 채택하지 않습니다.</td></tr>
+            <tr><td>scheduler가 global registry와 <code>/metrics</code> route를 자동 생성</td><td>listener ownership, scrape authentication과 application route policy를 침범하므로 채택하지 않습니다.</td></tr>
+            <tr><td>scheduler가 alert 또는 automatic pause/retry를 수행</td><td>outage, capacity, side effect와 tenant policy를 framework가 추측하게 되므로 deployment supervisor 책임으로 둡니다.</td></tr>
+            <tr><td>outbox relay metric만 scheduler health로 사용</td><td>outbox materialization 전의 failure, claimed backlog와 governor defer를 볼 수 없으므로 별도 pass lifecycle을 둡니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this ADR with any change to scheduler observer fields, labels, export behavior, or alert authority.</p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+[package]
+name = "rustee-middleware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tower-compatible middleware helpers for Rustee"
+
+[dependencies]
+async-compression.workspace = true
+async-stream.workspace = true
+futures-util.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+http-body-util.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

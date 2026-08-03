@@ -1,0 +1,7 @@
+error: missing `#[rustee(header = "x-header")]` attribute
+ --> tests/ui/from_header/missing_header.rs:1:10
+  |
+1 | #[derive(rustee_macros::FromHeader)]
+  |          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `rustee_macros::FromHeader` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,0 +1,41 @@
+name: OpenAI Batch live qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      spend_retention_approved:
+        description: "Spend and artifact-retention approval is recorded for this run"
+        required: true
+        type: boolean
+        default: false
+      run_key:
+        description: "Unique, non-secret qualification run key"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openai-batch-live-qualification
+  cancel-in-progress: false
+
+jobs:
+  lifecycle:
+    name: Opt-in provider lifecycle
+    if: ${{ inputs.spend_retention_approved }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: openai-batch-qualification
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.94.1
+      - name: Run the approved live lifecycle contract
+        run: cargo test -p rustee-ai-openai live_batch_lifecycle_is_explicitly_opt_in --locked -- --ignored
+        env:
+          RUSTEE_OPENAI_BATCH_LIVE: "1"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RUSTEE_OPENAI_BATCH_MODEL: ${{ secrets.RUSTEE_OPENAI_BATCH_MODEL }}
+          RUSTEE_OPENAI_BATCH_RUN_KEY: ${{ inputs.run_key }}

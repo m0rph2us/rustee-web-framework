@@ -1,0 +1,27 @@
+[package]
+name = "rustee-events-kafka-sqlx-observability-prometheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prometheus text exposition for Rustee Kafka delayed-retry relay metrics"
+
+[features]
+rdkafka = [
+  "dep:rustee-core",
+  "dep:rustee-events-kafka-sqlx-observability",
+  "rustee-events-kafka-sqlx-observability/rdkafka",
+]
+
+[dependencies]
+rustee-core = { path = "../rustee-core", version = "0.1.0", optional = true }
+rustee-events-kafka-sqlx-observability = { path = "../rustee-events-kafka-sqlx-observability", version = "0.1.0", optional = true }
+http.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

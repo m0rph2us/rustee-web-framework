@@ -1,0 +1,24 @@
+[package]
+name = "rustee-sqlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLx pool, readiness, and deployment migration helpers for Rustee"
+
+[features]
+default = []
+sqlite = ["sqlx/sqlite"]
+
+[dependencies]
+rustee-tenant = { path = "../rustee-tenant", version = "0.1.0" }
+sqlx.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true

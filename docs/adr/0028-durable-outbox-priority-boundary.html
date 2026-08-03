@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0028 Durable Outbox Priority Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../database.html">데이터베이스</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../testing.html">Test</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0028</div>
+        <h1>Durable outbox priority의 경계</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          one-time delayed job은 PostgreSQL clock 기반 <code>available_at</code>으로 이미 durable하게 stage할 수 있지만,
+          eligible row 사이에는 중요도를 표현할 방법이 없었습니다. broker마다 priority semantics가 다르므로 provider-neutral job
+          envelope에 priority를 넣으면 publish 뒤 delivery guarantees까지 잘못 약속할 수 있습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-outbox-sqlx</code>는 message staging 전 선택하는 <code>OutboxPriority</code>(0-255)를 제공합니다.
+            default <code>NORMAL</code>은 0이며 기존 ordinary row의 FIFO behavior를 유지합니다. PostgreSQL migration
+            <code>0003_rustee_outbox_priority.sql</code>은 priority column과 ready index를 추가하고, one kind/destination relay는
+            eligible row를 priority descending, then <code>created_at</code>, then row ID 순서로 <code>FOR UPDATE SKIP LOCKED</code> claim합니다.
+          </p>
+        </div>
+        <p>
+          priority는 source message deduplication key, delay, relay retry, broker message body를 바꾸지 않습니다. retry row도 같은
+          persisted priority를 유지합니다. existing deployment는 original <code>0001</code> migration을 수정하지 않고 <code>0003</code>을
+          forward-only migration으로 적용합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>higher priority row는 동일 destination/kind의 next claim batch에서 먼저 선택되지만, 이미 leased 또는 broker-accepted message를 재정렬하지 않습니다.</li>
+          <li>continuous high-priority traffic은 lower-priority starvation을 만들 수 있습니다. fairness quota, traffic shaping, alert threshold와 worker concurrency는 application/deployment가 소유합니다.</li>
+          <li>이 기능은 PostgreSQL transactional outbox의 local ordering만 정의합니다. NATS, Redis Streams, RabbitMQ, SQS와 Kafka의 broker-level priority는 별도 provider contract가 필요합니다.</li>
+          <li>cron/recurring schedule과 global rate-limited scheduling은 여전히 application-owned workflow이며, priority 구현만으로 완료되었다고 선언하지 않습니다.</li>
+          <li>PostgreSQL contract는 lower-priority row가 먼저 stage되어도 high-priority job lease가 먼저 반환되는지 확인합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>generic JobEnvelope priority</td><td>provider-specific queue semantics와 external delivery order를 framework가 보장하는 것처럼 보이므로 채택하지 않습니다.</td></tr>
+            <tr><td>in-memory priority queue</td><td>restart, transaction rollback, relay ownership 뒤 priority가 사라지므로 채택하지 않습니다.</td></tr>
+            <tr><td>priority와 cron/rate limit을 한 scheduler abstraction으로 제공</td><td>recurrence, time zone, catch-up, fairness와 broker topology 정책을 한 API에 숨기므로 별도 contract로 유지합니다.</td></tr>
+            <tr><td>priority를 batch claim 순서만 바꾸고 returned relay order를 고정하지 않음</td><td>SQL UPDATE return order는 보장되지 않으므로 priority/created time/row ID로 outer result order를 명시합니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Supersede this ADR if priority becomes broker-level, cross-provider, or fairness-governed behavior.</p>
+      </footer>
+    </main>
+  </body>
+</html>

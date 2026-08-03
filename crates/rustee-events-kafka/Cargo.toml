@@ -1,0 +1,28 @@
+[package]
+name = "rustee-events-kafka"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kafka producer integration for Rustee versioned events"
+
+[features]
+default = []
+rdkafka = ["dep:rdkafka", "dep:tokio"]
+
+[dependencies]
+futures-util.workspace = true
+rdkafka = { workspace = true, optional = true }
+rustee-events = { path = "../rustee-events", version = "0.1.0" }
+thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+rustee-events-observability = { path = "../rustee-events-observability", version = "0.1.0" }
+serde.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

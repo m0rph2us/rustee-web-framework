@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0022: AI Provider Batch Submission Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header"><div class="site-header-inner"><a class="brand" href="../index.html">Rustee</a><nav class="nav" aria-label="문서"><a href="../design-philosophy.html">철학</a><a href="../architecture.html">구조</a><a href="../database.html">데이터베이스</a><a href="../redis.html">Redis</a><a href="../mongodb.html">MongoDB</a><a href="../authentication.html">인증</a><a href="../queues.html">Queue</a><a href="../events.html">Event</a><a href="../ai.html">AI</a><a href="../testing.html">Test</a><a href="../operations.html">운영</a><a href="../roadmap.html">로드맵</a><a href="../ai-context.html">AI 유지관리</a><a href="./index.html">ADR</a></nav></div></header>
+    <main class="page">
+      <section class="hero"><div class="eyebrow">ADR 0022</div><h1>AI provider batch submission boundary</h1><p class="lead">Status: Accepted. Date: 2026-08-03.</p></section>
+      <section><h2>Context</h2><p>Provider asynchronous batch APIs have different upload, idempotency, cancellation, partial-result, billing and retention semantics. Serializing a raw prompt set into a generic queue payload or retrying an uncertain submission can disclose data or create duplicate provider charges.</p></section>
+      <section><h2>Decision</h2><div class="decision"><p>Batch is a content-free control-plane reference plus an atomic submission ledger, not a generic async loop.</p></div><ul><li><code>AiBatchReference</code> contains only opaque tenant/policy scope, catalog ID and stable run key. The application catalog loads raw work after worker authorization; Rustee never serializes the work.</li><li><code>AiBatchSubmitter</code> reserves the exact reference before catalog load and submits at most once. A recorded receipt is returned to duplicate delivery without provider contact.</li><li>Provider error leaves the reservation pending. Rustee does not automatically retry, cancel, poll, infer billing or resubmit. Application reconciliation chooses provider-specific recovery.</li><li>Receipt-record failure exposes only a safe provider batch ID for reconciliation. Provider adapters own native idempotency headers, limits, upload format, polling, partial result retrieval, cancellation and billing semantics.</li></ul></section>
+      <section><h2>Consequences</h2><ul><li>Production needs a durable atomic ledger and a catalog authorization/retention/erase procedure. The initial in-memory ledger is only for deterministic local tests.</li><li>Queue adapters may carry the reference and run key, never raw batch work. Job retry is safe only because the ledger returns existing receipt or pending ambiguity rather than resubmitting.</li><li>Exact-key response cache and evaluation remain separate contracts. Batch does not introduce automatic tool execution, cache warming, semantic memory or provider retry.</li></ul></section>
+      <section><h2>Alternatives</h2><table><thead><tr><th>대안</th><th>판단</th></tr></thead><tbody><tr><td>raw prompt set을 <code>rustee-jobs</code> JSON payload로 저장</td><td>queue retention과 authorization boundary가 흐려져 채택하지 않는다.</td></tr><tr><td>provider error 뒤 즉시 retry</td><td>accepted-but-unacknowledged batch의 duplicate cost를 만들 수 있어 채택하지 않는다.</td></tr><tr><td>provider polling/cancel/result API를 core trait으로 강제</td><td>provider별 lifecycle과 billing 의미가 달라 adapter별 후속 contract로 둔다.</td></tr></tbody></table></section>
+      <section><h2>Follow-up</h2><ul><li><code>rustee-ai-batch</code>은 reference, receipt, catalog, atomic ledger, no-retry submitter와 in-memory test ledger를 구현한다.</li><li><code>rustee-ai-batch-jobs</code>은 reference-only durable job과 run-key validation handler를 구현한다.</li><li>first provider adapter adds upload/poll/result/cancel/partial failure/billing/reconciliation live evidence without widening the core contract.</li></ul></section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-03. Update this ADR whenever batch reference, catalog authorization, idempotency, provider lifecycle, retry, receipt retention, billing, or reconciliation ownership changes.</p></footer>
+    </main>
+  </body>
+</html>

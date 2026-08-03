@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee 인증과 권한</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Authentication and Authorization</div>
+        <h1>정체성을 확인하고, 권한은 별도로 판단합니다</h1>
+        <p class="lead">
+          Rustee는 특정 identity provider나 사용자 DB를 소유하지 않습니다. 대신 OIDC/OAuth login, bearer token, browser
+          session을 하나의 <code>Principal</code>로 정규화하고, permission, role, scope, tenant에 따른 권한 부여를 명시적으로 적용합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>결정 요약</h2>
+        <div class="decision">
+          <p>
+            Stage 8은 <code>rustee-auth</code>, <code>rustee-auth-jwt</code>, <code>rustee-auth-oidc</code>,
+            <code>rustee-auth-session</code>을 선택적 crate로 분리합니다. 현재 static-key JWT와 HTTPS JWKS 기반 API resource-server,
+            server-side browser session 경로가 구현됐습니다. browser application의 OIDC Authorization Code + PKCE(S256), discovery, nonce-bound ID token과 session bridge, HTTPS opaque access-token introspection도 구현됐습니다.
+          </p>
+        </div>
+        <p>
+          인증은 <code>Authenticator</code>가 request credential을 검증해 <code>Principal</code>을 만드는 과정입니다.
+          권한 부여는 route 또는 handler가 <code>Principal</code>과 resource context를 사용해 permission을 검사하는 별도 과정입니다.
+          <code>rustee-core</code>는 이 타입이나 provider에 의존하지 않습니다.
+        </p>
+        <p>
+          bearer verifier가 token을 거부하면 <code>rustee-auth</code>는 401과 <code>WWW-Authenticate: Bearer</code>를 반환합니다.
+          JWKS, introspection 같은 필수 provider infrastructure가 안전하게 응답하지 못하면 verifier는 raw detail 없이
+          <code>ProviderUnavailable</code>을 반환하고 layer는 fail-closed 503으로 정규화합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>요청 처리 모델</h2>
+        <pre><code>HTTP request
+  -&gt; Authenticator
+  -&gt; Principal
+  -&gt; Authorization policy
+  -&gt; Handler</code></pre>
+        <table>
+          <thead>
+            <tr>
+              <th>단계</th>
+              <th>책임</th>
+              <th>실패 응답</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Authentication</td>
+              <td>credential 존재, signature/introspection, issuer, audience, expiry를 검증하고 <code>Principal</code>을 만듭니다.</td>
+              <td>누락 또는 유효하지 않은 credential은 401, provider/JWKS 장애는 보통 503으로 분류합니다.</td>
+            </tr>
+            <tr>
+              <td>Authorization</td>
+              <td>scope, permission, role, tenant, resource ownership를 확인합니다.</td>
+              <td>인증되었지만 허용되지 않은 요청은 403으로 분류합니다.</td>
+            </tr>
+            <tr>
+              <td>Handler</td>
+              <td>검증된 <code>AuthUser</code> 또는 <code>Principal</code>과 도메인 resource를 사용해 use case를 수행합니다.</td>
+              <td>인증 관련 내부 오류나 raw token은 HTTP response와 log에 노출하지 않습니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>crate와 API 경계</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>crate</th>
+              <th>책임</th>
+              <th>의도적으로 하지 않는 일</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>rustee-auth</code></td>
+              <td><code>Principal</code>, <code>AuthUser</code> extractor, <code>RequireAuth</code>, scope/role/permission policy, host-map tenant resolver/resolution layer, tenant-match layer, 401/403/404/503 mapping</td>
+              <td>사용자 table, password hash, provider-specific protocol 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-auth-jwt</code></td>
+              <td>단일 algorithm allowlist와 static HMAC/RSA/EC/EdDSA verification key를 사용하는 JWT resource-server bearer verifier</td>
+              <td>remote JWKS fetch/rotation, OIDC discovery/login callback, opaque token introspection</td>
+            </tr>
+            <tr>
+              <td><code>rustee-auth-oidc</code></td>
+              <td>HTTPS JWKS-backed bearer token 검증, OIDC discovery, Authorization Code + PKCE(S256), state/nonce 단회 소비, ID token 검증, session bridge, opaque access-token introspection, provider failure 정규화</td>
+              <td>모든 OAuth grant 또는 임의 claim의 자동 권한 해석, provider별 role mapping 강제</td>
+            </tr>
+            <tr>
+              <td><code>rustee-auth-oidc-redis</code></td>
+              <td>versioned namespace, remaining transaction TTL, Redis <code>GETDEL</code> atomic state consumption을 갖는 browser OIDC transaction-store adapter</td>
+              <td>Redis 장애를 in-memory transaction으로 묵시적 fallback하거나 state를 non-atomic read/delete로 소비</td>
+            </tr>
+            <tr>
+              <td><code>rustee-auth-session</code></td>
+              <td>opaque server-side session ID, secure/HTTP-only/SameSite cookie, rotation/logout API, CSRF middleware와 store trait</td>
+              <td>기본 session database 강제, Redis 장애 묵시적 무시, client cookie에 identity 전체 저장</td>
+            </tr>
+            <tr>
+              <td><code>rustee-auth-session-redis</code></td>
+              <td>versioned key namespace, 남은 session TTL을 Redis expiry로 저장하는 <code>SessionStore</code> adapter</td>
+              <td>Redis 실패를 anonymous session으로 바꾸거나 client-side identity cookie로 fallback</td>
+            </tr>
+          </tbody>
+        </table>
+        <pre><code>use jsonwebtoken::Algorithm;
+use rustee_auth::AuthLayer;
+use rustee_auth_jwt::{JwtAuthenticator, JwtConfig};
+
+let jwt_verifier = JwtAuthenticator::from_hmac_secret(
+    JwtConfig::new(Algorithm::HS256, "https://issuer.example", "rustee-api")?,
+    std::env::var("JWT_HMAC_SECRET")?,
+)?;
+
+let protected = App::new()
+    .get("/me", current_user)
+    .layer(AuthLayer::bearer(jwt_verifier));
+
+let app = App::new()
+    .get("/health", health)
+    .nest("/api", protected);
+
+async fn current_user(AuthUser(principal): AuthUser) -&gt; Json&lt;Profile&gt; {
+    Json(Profile::from(principal))
+}</code></pre>
+        <p><code>App::nest</code>는 <code>/api</code>를 제거한 request URI와 query를 <code>protected</code> service에 넘기므로 inner route는 계속 <code>/me</code>로 선언합니다. nested route의 observability template은 외부 <code>/api/me</code>로 유지하고, prefix 아래의 auth rejection과 fallback은 child service가 소유합니다. <code>rustee-auth</code>는 provider-neutral <code>Principal</code>, <code>AuthUser</code> extractor, bearer <code>AuthLayer</code>, scope/role/permission/tenant policy layer를 구현합니다. <code>rustee-auth-jwt</code>는 위 경로의 static-key verifier를 구현합니다. <code>Principal</code>은 subject, issuer, tenant, 검증된 scope, role, direct permission을 표현하지만 raw token을 보관하거나 재노출하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>현재 JWT resource-server 경로</h2>
+        <p>
+          <code>JwtConfig</code>는 issuer, audience, 허용 algorithm 하나와 선택적 clock-skew leeway를 명시적으로 받습니다.
+          기본 leeway는 0초이며, verifier는 signature와 <code>sub</code>, <code>iss</code>, <code>aud</code>, <code>exp</code>,
+          <code>nbf</code>를 모두 필수로 검증합니다. HMAC, RSA/PS, EC, EdDSA key constructor는 algorithm family가 맞지 않으면
+          시작 시 거부합니다.
+        </p>
+        <p>
+          성공한 token만 <code>Principal</code>로 변환합니다. <code>tenant</code> claim은 tenant context가 되고,
+          <code>scope</code>는 OAuth의 공백 구분 문자열 또는 문자열 배열로 받아 scope policy에 전달합니다. 검증 실패는 token이나
+          key 세부 정보를 노출하지 않는 단일 bearer rejection으로 정규화합니다.
+        </p>
+        <div class="warning">
+          <p>
+            이 crate는 local/static verification key 용도입니다. key ID에 따른 JWKS refresh와 rotation, issuer discovery,
+            browser redirect/login, opaque token introspection은 별도 <code>rustee-auth-oidc</code> 경로로 제공합니다. static key로
+            그 경로를 대체하거나 algorithm 검증을 완화해서는 안 됩니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>현재 JWKS resource-server 경로</h2>
+        <p>
+          <code>rustee-auth-oidc</code>는 configured HTTPS endpoint만 사용하고, 하나의 asymmetric algorithm, token header의 필수
+          <code>kid</code>, signature, <code>sub</code>, <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>를 함께 검증합니다.
+          remote JWK는 같은 algorithm을 명시하고 signature verification 용도로 허용된 경우에만 cache에 들어갑니다. duplicate <code>kid</code>는 임의 key를
+          고르지 않고 제외합니다.
+        </p>
+        <pre><code>use std::time::Duration;
+
+use jsonwebtoken::Algorithm;
+use rustee_auth::AuthLayer;
+use rustee_auth_oidc::{HttpJwksFetcher, JwksAuthenticator, OidcResourceServerConfig};
+use url::Url;
+
+let jwks_url = Url::parse("https://login.example.com/keys")?;
+let config = OidcResourceServerConfig::new(
+    Algorithm::RS256,
+    "https://login.example.com/",
+    "rustee-api",
+    jwks_url.clone(),
+)?;
+let verifier = JwksAuthenticator::new(
+    config,
+    HttpJwksFetcher::new(jwks_url, Duration::from_secs(3))?,
+);
+let protected = AuthLayer::bearer(verifier).layer(App::new());</code></pre>
+        <p>
+          successful JWKS는 기본 5분 동안 사용합니다. unknown <code>kid</code> 또는 만료된 cache는 refresh를 시도하며, 기본 30초의
+          minimum refresh interval이 임의 <code>kid</code> 입력으로 인한 fetch storm을 제한합니다. JWKS transport/HTTP failure는
+          raw error를 노출하지 않고 <code>ProviderUnavailable</code>과 fail-closed 503으로 정규화합니다. 애플리케이션은 startup
+          readiness가 provider reachability를 요구할 때에만 명시적으로 <code>refresh()</code>를 호출합니다.
+        </p>
+        <div class="warning">
+          <p>
+            이 resource-server API와 browser ID token API는 서로 다른 claim requirement를 가집니다. bearer JWT는 <code>nbf</code>를
+            필수로 요구하지만, OIDC ID token은 <code>exp</code>, <code>iat</code>, nonce를 필수로 하고 <code>nbf</code>가 있으면 검증합니다.
+            opaque access token은 아래의 remote introspection 경로로 검증하며 JWT처럼 decode해서는 안 됩니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>현재 opaque access-token 경로</h2>
+        <p>
+          <code>OpaqueTokenAuthenticator</code>는 configured HTTPS introspection endpoint에만 credential을 전송합니다.
+          HTTP 200만으로 인증하지 않고 <code>active=true</code>, non-blank <code>sub</code>, configured <code>iss</code>와
+          <code>aud</code>, 공급된 <code>exp</code>/<code>nbf</code> 시간 경계를 확인한 뒤에만 <code>Principal</code>을 만듭니다.
+          provider가 <code>exp</code>를 주지 않는다면 credential은 매 요청 remote 확인을 거치며 cache하지 않습니다.
+        </p>
+        <pre><code>use std::time::Duration;
+
+use rustee_auth::AuthLayer;
+use rustee_auth_oidc::{
+    HttpOpaqueTokenIntrospector, OidcClientAuthentication, OidcClientSecret,
+    OpaqueIntrospectionConfig, OpaqueTokenAuthenticator,
+};
+use url::Url;
+
+let config = OpaqueIntrospectionConfig::new(
+    "https://login.example.com/",
+    "rustee-api",
+    Url::parse("https://login.example.com/oauth2/introspect")?,
+    "rustee-resource-server",
+    OidcClientAuthentication::ClientSecretBasic(
+        OidcClientSecret::new(std::env::var("OIDC_INTROSPECTION_SECRET")?)?,
+    ),
+)?;
+let verifier = OpaqueTokenAuthenticator::new(
+    config,
+    HttpOpaqueTokenIntrospector::new(Duration::from_secs(3))?,
+);
+let protected = AuthLayer::bearer(verifier).layer(App::new());</code></pre>
+        <p>
+          HTTP adapter는 form body의 <code>token</code>, <code>token_type_hint=access_token</code>과 configured client authentication을
+          전송합니다. <code>ClientSecretBasic</code>, <code>ClientSecretPost</code>, 명시적인 <code>None</code>을 지원하지만 production resource
+          server는 provider가 허용하는 confidential authentication을 선택합니다. endpoint transport, HTTP status, JSON decoding failure는
+          raw detail 없이 <code>ProviderUnavailable</code>과 fail-closed 503으로 정규화합니다.
+        </p>
+        <div class="warning">
+          <p>
+            successful response cache의 기본 TTL은 60초, 기본 최대 항목 수는 1,024개입니다. cache key는 raw token이 아닌 SHA-256 fingerprint이며,
+            entry lifetime은 provider <code>exp</code>를 넘지 않습니다. inactive, invalid, 만료 response는 cache하지 않습니다. 즉시 revocation이
+            필요한 deployment는 <code>with_cache_ttl(Duration::ZERO)</code> 또는 0-entry cache를 명시합니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>현재 OIDC browser login 경로</h2>
+        <p>
+          <code>OidcBrowserLogin</code>은 discovery document의 issuer, authorization endpoint, token endpoint, JWKS URI를 configured
+          HTTPS provider와 비교한 뒤에만 redirect를 만듭니다. authorization request에는 <code>response_type=code</code>, exact redirect URI,
+          <code>openid</code>, S256 code challenge, server-side <code>state</code>, nonce가 들어갑니다. callback은 state record를 먼저 atomic하게
+          consume하므로 replay, provider error, code exchange retry가 같은 transaction을 재사용할 수 없습니다.
+        </p>
+        <pre><code>async fn login_start(State(app): State&lt;AppState&gt;)
+    -&gt; Result&lt;AuthorizationRedirect, OidcLoginError&gt; {
+    app.oidc_login.begin().await
+}
+
+async fn login_callback(
+    State(app): State&lt;AppState&gt;,
+    Query(callback): Query&lt;AuthorizationCallback&gt;,
+) -&gt; Result&lt;Response, OidcLoginError&gt; {
+    let issued = app.oidc_login
+        .complete_session(callback, &amp;app.sessions)
+        .await?;
+    let mut response = redirect_to("/app");
+    issued.apply_to(&amp;mut response);
+    Ok(response)
+}</code></pre>
+        <p>
+          token endpoint 응답에서 ID token만 검증에 사용하며 raw authorization code, PKCE verifier, client secret, ID/access token은
+          <code>Debug</code>이나 HTTP response에 노출하지 않습니다. ID token은 signature, issuer, audience, <code>exp</code>, <code>iat</code>,
+          multi-audience의 <code>azp</code>, nonce를 검증해 <code>Principal</code>로 바꾼 뒤 <code>SessionManager::establish</code>에 전달합니다.
+          application은 callback이 만든 임의 redirect URL을 신뢰하지 않고 server-side success location을 선택합니다.
+        </p>
+        <div class="warning">
+          <p>
+            <code>InMemoryAuthorizationTransactionStore</code>는 local/test 전용입니다. production browser login은
+            <code>rustee-auth-oidc-redis</code>의 <code>RedisAuthorizationTransactionStore</code>를 사용합니다. 기본 namespace는
+            <code>rustee:oidc:transaction:v1</code>이며 state record는 남은 transaction TTL로 저장되고 Redis <code>GETDEL</code>로 atomic하게
+            소비됩니다. Redis failure는 in-memory fallback 없이 login failure로 정규화합니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>현재 browser session 경로</h2>
+        <p>
+          <code>rustee-auth-session</code>은 cookie에 random opaque session ID만 두고 <code>Principal</code>, expiration, CSRF token은
+          <code>SessionStore</code>에 유지합니다. <code>SessionManager</code>는 login/privilege change에서 새 ID를 만들고 기존 ID를 삭제하는
+          rotation, logout invalidation, <code>Set-Cookie</code> 발급을 제공합니다. 기본 cookie는 <code>Secure</code>, <code>HttpOnly</code>,
+          <code>SameSite=Lax</code>이며 local development에서만 insecure cookie를 명시적으로 허용할 수 있습니다.
+        </p>
+        <p>
+          <code>SessionLayer</code>는 유효한 store record만 request extension에 넣고, <code>SessionUser</code> extractor는 검증된
+          principal과 opaque ID만 제공합니다. <code>CsrfLayer</code>는 POST/PUT/PATCH/DELETE 등 unsafe method에
+          <code>X-CSRF-Token</code>을 요구합니다. session store 장애는 fail-closed 503으로 정규화하며, 만료/없는 session은 anonymous 요청으로 처리합니다.
+        </p>
+        <div class="warning">
+          <p>
+            <code>InMemorySessionStore</code>는 local/test 전용입니다. production에는 <code>rustee-auth-session-redis</code>의
+            <code>RedisSessionStore</code>를 사용합니다. 기본 namespace는 <code>rustee:session:v1</code>이며 각 write는 남은 session TTL을
+            Redis expiry로 설정합니다. Redis read/write/delete failure는 <code>SessionLayer</code>에서 fail-closed 503으로 정규화합니다.
+            OIDC callback은 verified <code>Principal</code>으로 새 session을 발급합니다. cookie value나 CSRF token을 log/trace에 기록하지 않습니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>지원 방식과 보안 기준</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>방식</th>
+              <th>공식 경로</th>
+              <th>필수 검증</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>OIDC browser login</td>
+              <td><code>rustee-auth-oidc</code>의 Authorization Code + PKCE(S256), discovery, callback/session bridge</td>
+              <td>exact redirect URI, atomic one-time <code>state</code>, nonce, issuer/JWKS binding, ID token audience/<code>azp</code>, authorization code와 PKCE verifier의 결속</td>
+            </tr>
+            <tr>
+              <td>JWT bearer token</td>
+              <td>JWKS-backed verifier 또는 static verification key</td>
+              <td>algorithm allowlist, signature, <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>nbf</code>, key rotation/cache</td>
+            </tr>
+            <tr>
+              <td>Opaque bearer token</td>
+              <td><code>rustee-auth-oidc</code>의 HTTPS introspection adapter</td>
+              <td>endpoint trust, client authentication, <code>active</code>, <code>sub</code>/<code>iss</code>/<code>aud</code>, supplied time bounds, raw-token-free bounded cache, provider 장애 정책</td>
+            </tr>
+            <tr>
+              <td>API key service authentication</td>
+              <td><code>rustee-auth::ApiKeyLayer::header</code>와 application-owned <code>ApiKeyAuthenticator</code></td>
+              <td>explicit header field name, exactly one printable ASCII value at most 4 KiB, no query/cookie credential, provider의 secret-safe lookup/constant-time comparison·rotation·audit, raw-key-free error/logging</td>
+            </tr>
+            <tr>
+              <td>Cookie session</td>
+              <td><code>rustee-auth-session-redis</code>의 server-side Redis session store adapter</td>
+              <td><code>Secure</code>, <code>HttpOnly</code>, <code>SameSite</code>, fixed TTL, login/logout rotation, unsafe method CSRF protection</td>
+            </tr>
+            <tr>
+              <td>Service-to-service</td>
+              <td>bearer verifier와 provider extension. mTLS/DPoP/private-key client auth는 Stage 10 검토</td>
+              <td>audience 제한, 최소 scope, secret/key rotation, caller identity audit</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="warning">
+          <p>
+            implicit flow와 Resource Owner Password Credentials grant는 Rustee의 공식 login 경로에 넣지 않습니다. password 기반
+            로그인은 애플리케이션이 사용자 모델, rate limit, breach policy, password hash 전략을 명시한 provider로 구현합니다.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>API key service 경로</h2>
+        <p>
+          <code>ApiKeyLayer::header</code>는 configured HTTP field name 하나에서만 API key를 읽습니다. missing, duplicate,
+          non-ASCII, blank, whitespace 또는 4 KiB 초과 값은 provider 호출 전에 401로 거부하고, provider outage는 credential detail 없이
+          503으로 fail-closed 합니다. layer는 validated <code>Principal</code>만 extension에 넣으며 raw key, configured header name,
+          lookup detail을 response, handler 또는 <code>Debug</code> output에 넣지 않습니다.
+        </p>
+        <pre><code>use rustee_auth::{ApiKeyAuthenticator, ApiKeyLayer, Principal};
+
+// The provider owns hashed lookup, rotation, tenant mapping, and audit policy.
+let protected = ApiKeyLayer::header("X-API-Key", api_key_authenticator)?
+    .layer(App::new().get("/service", handler));</code></pre>
+        <p>
+          <code>StaticApiKeyAuthenticator</code>는 test/local example만을 위한 raw in-memory mapping입니다. production에는 keyed hash,
+          constant-time comparison 또는 provider-native secret lookup과 revocation/rotation runbook을 가진 application provider를 사용합니다.
+          query parameter와 cookie API key, automatic OpenAPI-to-middleware wiring, database schema, rate-limit key derivation은 이 layer의 scope가 아닙니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>권한과 tenant 경계</h2>
+        <ul>
+          <li><code>Principal</code>의 identity와 route의 authentication requirement는 permission 판단과 분리합니다.</li>
+          <li><code>RequirePermissionsLayer</code>는 direct permission 또는 <code>RolePolicy</code>가 해당 principal role에 grant한 모든 permission을 요구합니다. 단순 role 문자열만으로 resource ownership을 판단하지 않습니다.</li>
+          <li>JWT/JWKS/ID token/introspection verifier는 signature 또는 provider response를 검증한 뒤 <code>roles</code>와 <code>permissions</code> claim을 정규화할 수 있습니다. role이 실제로 부여하는 permission은 token claim이 아니라 deployment의 <code>RolePolicy</code>가 결정합니다.</li>
+          <li><code>TenantResolutionLayer</code>는 verified principal을 받은 뒤 <code>TenantResolver</code>가 만든 context를 비교하고, 일치할 때만 <code>TenantContext</code> extractor를 handler에 넣습니다. 기본 <code>HostTenantResolver</code>는 configured exact authority map을 case-insensitive로 매칭합니다. Host는 routing scope일 뿐 권한이 아니므로 principal tenant가 다시 일치해야 합니다.</li>
+          <li>unknown, malformed 또는 duplicate Host는 tenant detail을 주지 않는 404, tenant mismatch는 403, resolver outage는 sanitized 503입니다. custom resolver는 trusted proxy context, server-side routing 또는 session lookup을 사용할 수 있지만 임의 client header를 tenant authority로 쓰지 않습니다.</li>
+          <li><code>TenantContext</code>는 provider-neutral <code>rustee-tenant</code> crate가 소유하고 <code>rustee-auth</code>가 호환 경로로 re-export합니다. PostgreSQL에서는 <code>rustee-sqlx::begin_tenant_transaction</code>이 transaction-local setting을 설정해 application-owned RLS policy가 read/write를 막도록 합니다. route authorization만으로 데이터 격리를 보장하지 않으며, MongoDB와 다른 repository는 해당 provider의 별도 tenant query/credential 정책을 명시해야 합니다.</li>
+          <li>정책 engine, delegated authorization, ABAC/ReBAC는 Stage 10에서 별도 extension과 ADR로 검토합니다.</li>
+        </ul>
+        <pre><code>use rustee_auth::{
+    AuthLayer, HostTenantResolver, RequirePermissionsLayer, RolePolicy, TenantContext,
+    TenantResolutionLayer,
+};
+
+let mut roles = RolePolicy::new();
+roles.grant("project-editor", ["project:read", "project:write"])?;
+
+let policy = RequirePermissionsLayer::new(["project:write"], roles)?;
+let tenants = HostTenantResolver::new([(
+    "acme.example.test",
+    TenantContext::new("acme")?,
+)])?;
+let tenant_scoped = TenantResolutionLayer::new(tenants).layer(
+    policy.layer(App::new().get("/projects", list_projects)),
+);
+let protected = AuthLayer::bearer(authenticator).layer(tenant_scoped);
+
+// `list_projects(TenantContext, ...)` must constrain every read and write by the tenant.</code></pre>
+      </section>
+
+      <section>
+        <h2>세션과 실패 정책</h2>
+        <ul>
+          <li>browser session은 signed session ID cookie와 server-side state를 기본 모델로 합니다. identity data 전체를 암호화 cookie에 기본 저장하지 않습니다.</li>
+          <li>로그인, privilege 변경, logout 시 session ID를 rotation 또는 폐기합니다.</li>
+          <li><code>SessionLayer</code>는 session store outage를 fail-closed 503으로 처리합니다. Rustee 기본 middleware에는 identity cookie 또는 anonymous request로의 fail-open fallback이 없습니다.</li>
+          <li>JWKS와 opaque introspection adapter의 실제 loopback transport outage는 <code>authentication_unavailable</code> 503으로 fail-closed되며, response에는 raw token이나 provider endpoint를 넣지 않습니다. key refresh와 issuer 장애도 metrics와 trace에 남기되 token, authorization header, session ID를 기록하지 않습니다.</li>
+          <li>callback과 state-changing cookie request에는 CSRF 검증을 적용하고, CORS 허용 origin을 credential 사용과 함께 명시합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>구현 순서</h2>
+        <ol>
+          <li>Stage 4에서 request extension, extractor, error mapping을 안정화합니다.</li>
+          <li>Stage 6에서 Redis state-store와 failure policy를 구현해 session adapter의 기반을 만들었습니다.</li>
+          <li>Stage 8에서 <code>rustee-auth</code>의 <code>Principal</code>, authorization policy와 JWT resource-server flow를 구현합니다. provider-neutral principal, bearer layer, explicit header-only API-key layer, scope policy, static-key JWT 검증, JWKS cache/rotation verifier, OIDC Code + PKCE browser/session flow와 opaque introspection은 구현됐습니다.</li>
+          <li>같은 단계에서 role-to-permission policy, tenant-match request guard, configured host-map <code>TenantResolutionLayer</code>, JWKS/opaque introspection의 real loopback transport-outage security contract를 구현했습니다. repository-level tenant query verification과 실제 external IdP revocation integration test가 남았습니다.</li>
+          <li>Stage 10에서 advanced OAuth client authentication, delegated policy, mTLS/DPoP 같은 요구를 실제 deployment와 함께 독립 release gate로 확장합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>외부 표준</h2>
+        <ul>
+          <li><a href="https://www.rfc-editor.org/rfc/rfc9700.html">RFC 9700: Best Current Practice for OAuth 2.0 Security</a></li>
+          <li><a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110: HTTP Semantics</a></li>
+          <li><a href="https://openid.net/specs/openid-connect-core-1_0.html">OpenID Connect Core 1.0</a></li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. Update this document when authentication, token validation, session, API-key, authorization, or tenant policy changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+[package]
+name = "rustee-mongodb-checkpoint-sqlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PostgreSQL durable change-stream checkpoints for Rustee MongoDB consumers"
+
+[dependencies]
+futures-util.workspace = true
+rustee-mongodb = { path = "../rustee-mongodb", version = "0.1.0" }
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true

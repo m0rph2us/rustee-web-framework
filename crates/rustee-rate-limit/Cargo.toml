@@ -1,0 +1,24 @@
+[package]
+name = "rustee-rate-limit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Explicit keyed rate-limit middleware contracts for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+thiserror.workspace = true
+tower.workspace = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

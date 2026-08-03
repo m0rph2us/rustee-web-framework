@@ -1,0 +1,21 @@
+[package]
+name = "rustee-ai-eval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provider-neutral, bounded AI evaluation suites with application-owned graders for Rustee"
+
+[dependencies]
+futures-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rustee-ai-test = { path = "../rustee-ai-test", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

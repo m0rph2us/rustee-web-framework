@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee AI Application Integration</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./redis.html">Redis</a>
+          <a href="./mongodb.html">MongoDB</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">AI Application Integration</div>
+        <h1>모델 호출을 서비스의 안전한 기능으로 만듭니다</h1>
+        <p class="lead">
+          Rustee의 AI 통합은 Spring AI처럼 chat, streaming, structured output, tool calling, RAG, memory, observability를
+          조합할 수 있게 합니다. 다만 provider SDK와 agent loop를 core에서 숨기지 않고, 사용자 권한과 tenant 범위, 비용과 side effect를
+          검증 가능한 application contract로 만듭니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>결정 요약</h2>
+        <div class="decision">
+          <p>
+            Stage 9C에서 선택적 <code>rustee-ai</code>를 AI application contract와 pipeline runtime으로 제공합니다.
+            첫 provider adapter는 Responses API의 text/function request, function-call output, streaming을 지원하는
+            <code>rustee-ai-openai</code>이며, internal HTTP codec은 <code>reqwest</code>와 typed JSON/SSE parser로 구성합니다.
+            <code>rustee-core</code>는 model SDK, API key,
+            prompt, vector database에 의존하지 않습니다.
+          </p>
+        </div>
+        <p>
+          public API는 provider가 바뀌어도 유지할 수 있는 message, structured output, stream event, typed tool,
+          embedding, retrieval의 공통 경계만 제공합니다. reasoning parameter, hosted tool, model-specific safety setting처럼
+          이식할 수 없는 기능은 named provider option으로 명시하여 잃어버리지 않습니다.
+        </p>
+        <p>
+          현재 <code>rustee-ai</code>는 provider-neutral chat/stream contract, request input/tool-count policy,
+          structured JSON parsing, usage reservation/settlement, request/response/stream <code>AiAdvisor</code>, tool declaration, typed <code>ToolRegistry</code>, redacted tracing span과 approval boundary를 구현합니다.
+          tool call은 <code>DenyAllToolApproval</code>이 기본인 수동 경로에서만 실행할 수 있습니다. <code>rustee-ai-openai</code>은
+          Responses text/function/SSE, Embeddings와 generic JSONL input upload부터 OpenAI Batch file/lifecycle/result-row parsing까지를 구현했으며
+          RAG와 HTTP response streaming adapter는 후속 crate로 분리됩니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Crate 경계</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>crate</th>
+              <th>책임</th>
+              <th>초기 상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>rustee-ai</code></td>
+              <td>message, request/response, stream event, structured-output validation, <code>AiPipeline</code>/<code>AiAdvisor</code>, typed <code>ToolRegistry</code>, approval/error/usage와 redacted tracing contract</td>
+              <td>core contract, final-request policy, typed advisor/manual tool execution, content-free usage reservation/settlement pipeline, OpenTelemetry-exportable span, fake-provider test 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-audit-sqlx</code></td>
+              <td>tool approval/terminal outcome와 provider usage reservation을 위한 optional PostgreSQL durable ledger 및 pending reconciliation query</td>
+              <td>deployment-owned migration, tenant + idempotency key 멱등 기록, action identity/terminal usage conflict rejection, oldest-first bounded pending query와 real PostgreSQL CI contract 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-openai</code></td>
+              <td>OpenAI Responses text/function/SSE, Embeddings와 Batch lifecycle adapter</td>
+              <td>API key redaction, bounded request/SSE parsing, local TCP Responses/Embeddings contract와 safe unique-ID/endpoint/object-body Batch JSONL builder, typed <code>ChatRequest</code> Responses 및 ordered <code>EmbeddingInput</code> Embeddings row mapping, explicit bounded multipart upload, file-ID의 Batch create/retrieve/cancel/delete, one-hour through 30-day output/error-file expiration request, safe status/count/file-ID decode, explicit bounded download 및 safe JSONL output-row parser와 explicit <code>ChatResponse</code>/<code>Embedding</code> decode 구현; protected manual environment-gated live upload/submit/retrieve/cancel qualification workflow 제공. provider-only input body validation, retention/delete schedule, domain side effect, partial-result/billing reconciliation과 executed live evidence는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-rag</code></td>
+              <td>document/chunk metadata, embedding pipeline, retrieval context, source citation contract</td>
+              <td>tenant/document allowlist query, store result revalidation, bounded context/citation contract, content-free document revision ingestion, chunk/embedding/upsert validation, vector capability contract 구현; OpenAI embeddings adapter 연결 가능, real document source/vector adapter는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-rag-jobs</code></td>
+              <td>content-free document ingestion을 위한 typed durable job 및 worker adapter</td>
+              <td>versioned <code>RagIngestionJob</code>, job idempotency context forwarding 구현; job provider와 application source/index는 선택</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-rag-advisor</code></td>
+              <td>ACL-revalidated retrieval을 explicit <code>AiAdvisor</code>로 연결</td>
+              <td>application-owned query builder/context renderer, scope violation fail-closed, final request policy 전 message append 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-web</code></td>
+              <td><code>AiStream</code>을 HTTP SSE 또는 newline-delimited JSON response로 변환</td>
+              <td>generic streaming body, SSE/NDJSON event encoding, upstream error redaction 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-mcp</code></td>
+              <td>trusted MCP Streamable HTTP/stdio의 approval-gated tool adapter와 explicit read-only context client</td>
+              <td>2025-11-25 HTTP JSON/SSE POST-response와 opt-in bounded <code>Last-Event-ID</code> GET resumption without POST replay, explicit standalone GET notification stream, bounded stdio tool path, session 404 뒤 opt-in bounded no-replay HTTP reinitialize와 explicit/automatic stdio restart/backoff, request deadline, graceful/forced subprocess close, approval-gated executor, result/error redaction, capability-gated <code>resources/list</code>/<code>resources/templates/list</code>/<code>resources/read</code>와 <code>prompts/list</code>/<code>prompts/get</code> typed client 구현; macOS/Windows CI matrix가 Rust fixture로 stdio initialize/discovery/approved execution/close를 검증하도록 구성됨. automatic context adoption, server-initiated request/sampling/elicitation, Windows의 timeout/restart/context 같은 advanced subprocess lifecycle, context subscription/completion과 OAuth는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-mcp-oauth</code></td>
+              <td>protected MCP HTTP resource의 OAuth 2.1 discovery, PKCE authorization-code와 explicit token lifecycle adapter</td>
+              <td>bounded protected-resource/authorization-server discovery, S256 validation, atomic state/verifier transaction, callback single-use, code/refresh exchange의 <code>resource</code> binding, redacted token set과 application-owned store contract 구현; encrypted durable store, revocation/rotation procedure와 provider interoperability matrix는 남음. <a href="./mcp-oauth.html">상세</a></td>
+            </tr>
+            <tr>
+              <td><code>rustee-mcp-oauth</code></td>
+              <td>protected MCP HTTP resource의 public metadata와 application verifier 위 Bearer/scope authorization layer</td>
+              <td>validated metadata URL/issuer allowlist/scope config, public GET metadata, 401/403 Bearer challenge, verified principal handoff와 verifier outage redaction 구현; external authorization-server matrix, JWKS/introspection/key rotation, reverse-proxy canonical URL, tenant scope review와 live deployment evidence는 남음. <a href="./mcp-oauth.html">상세</a></td>
+            </tr>
+            <tr>
+              <td><code>rustee-mcp</code></td>
+              <td>Rustee tool과 application-owned read-only context를 Streamable HTTP MCP server로 노출하는 approval/audit-gated Tower service</td>
+              <td>2025-11-25 JSON-response initialize/notification, <code>tools/list</code>/<code>tools/call</code>, optional <code>resources/list</code>/<code>resources/templates/list</code>/<code>resources/read</code>와 <code>prompts/list</code>/<code>prompts/get</code>, request/response/item bound, fail-closed Origin allowlist, mount contract 구현; session/SSE GET, stdio, subscription/completion은 남음. OAuth resource protection은 optional <code>rustee-mcp-oauth</code>가 담당합니다.</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-test</code></td>
+              <td>deterministic provider script, recorded-stream event/error, sanitized invocation metadata</td>
+              <td>FIFO completion/stream script, open/event failure injection, content-free request record 구현</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-eval</code></td>
+              <td>application-owned target/grader를 사용한 provider-neutral bounded AI evaluation runner</td>
+              <td>unique/bounded suite, sequential no-retry executor, generic trusted grader, content-free grade/model/usage report, reference-backed catalog/ledger submitter와 deterministic fake-provider redaction contract 구현; human/LLM grader trust/spend, comparative baseline, response-cache/provider batch interoperability는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-eval-jobs</code></td>
+              <td>run-key-bound reference-only durable AI evaluation job</td>
+              <td>scope/catalog/run key만 serialize하고 envelope idempotency key가 run key와 다르면 catalog/model 실행 전에 거부; broker retry/DLQ와 reconciliation policy는 application 소유</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-eval-sqlx</code></td>
+              <td>AI evaluation run을 위한 PostgreSQL durable ledger</td>
+              <td>scoped run key의 pending/completed atomic reservation, exact catalog identity conflict rejection, bounded redacted pending query와 PostgreSQL contract 구현; catalog authorization, report retention/erase, provider/grader cost와 fresh rerun approval은 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-cache</code></td>
+              <td>application-owned tenant-scoped exact-key non-streaming response-cache adapter</td>
+              <td>opaque SHA-256 key, explicit bounded TTL/read-failure policy, tool interaction exclusion, hit/write-failure status, exact invalidation과 bounded in-memory contract 구현; key derivation/salt, tenant erase, stale-answer UX, distributed stampede control은 application 소유</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-cache-redis</code></td>
+              <td>exact-key AI response를 위한 Redis adapter</td>
+              <td>versioned namespace, serialized entry size bound, Redis-second TTL conversion, exact delete와 opt-in Redis round-trip contract 구현; encryption/TLS, retention/erase, outage/restart 및 topology evidence는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-batch</code></td>
+              <td>provider asynchronous batch를 위한 content-free catalog reference와 submission ledger control plane</td>
+              <td>safe scope/catalog/run key의 one-time submission과 safe batch/artifact reference, whole-artifact reserve/reconciled/pending ledger, authorized loader, application-owned row-idempotent processor contract 구현; OpenAI의 safe generic JSONL builder, typed Responses/Embeddings row와 explicit <code>ChatResponse</code>/<code>Embedding</code> conversion, bounded input upload/download/delete, Batch create/retrieve/cancel과 safe JSONL output-row parser adapter는 연결됨. provider-only input body validation, domain response semantics/side effect, partial result/billing과 production application domain ledger는 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-batch-jobs</code></td>
+              <td>reference-only durable batch submission과 artifact reconciliation job/handler adapter</td>
+              <td>versioned job payload, submission run-key 및 artifact reconciliation-key exact binding, duplicate submission no-resubmit contract 구현; artifact raw body는 durable payload에 없으며 broker retry policy, durable ledger/catalog adapter, provider live qualification은 남음</td>
+            </tr>
+            <tr>
+              <td><code>rustee-ai-batch-sqlx</code></td>
+              <td>whole-artifact reconciliation을 위한 optional PostgreSQL durable ledger</td>
+              <td>deployment-owned migration, scope/reconciliation-key atomic reservation, exact identity conflict rejection, idempotent completion record, oldest-first bounded pending query와 PostgreSQL CI contract 구현; application RLS/authorization, row-level domain ledger, retry/DLQ operator procedure, outage/recovery, retention/erase는 남음</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>목표 API</h2>
+        <pre><code>#[derive(Deserialize, JsonSchema)]
+struct SupportReply {
+    answer: String,
+    requires_human: bool,
+}
+
+let reply = ai.chat("support.default")
+    .system(SUPPORT_POLICY)
+    .user(question)
+    .advisor(TenantPolicy::from(&principal))
+    .advisor(Retrieval::from(knowledge_base))
+    .tool(lookup_order)
+    .structured::&lt;SupportReply&gt;()
+    .call()
+    .await?;</code></pre>
+        <p>
+          이는 더 높은 수준 builder API의 목표입니다. 현재 <code>support.default</code> 같은 model alias는 deployment configuration에서
+          provider/model/version과 budget으로 매핑합니다. handler는 API key나 vendor request type을 직접 다루지 않고,
+          <code>AppState</code>로 주입된 AI client를 사용합니다. Rust type의 JSON Schema는 <code>schemars</code>로 생성하고,
+          모델의 응답은 역직렬화 후에도 반드시 validation합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Pipeline과 advisor</h2>
+        <p>
+          <code>AiPipeline</code>은 Spring AI Advisor와 같은 조합 지점이지만, Tower middleware와 섞지 않습니다. HTTP middleware는
+          요청 전체의 관심사를 처리하고, AI advisor는 model 호출 전후의 AI-specific context만 다룹니다. 현재 <code>AiAdvisor</code>는
+          <code>before_request</code>, <code>after_response</code>, <code>on_stream_event</code> hook을 제공하며,
+          <code>complete_with_advisor</code> 또는 <code>stream_with_advisor</code>로 명시해 사용합니다. provider는 advisor가 만든 최종 request가
+          input/tool-count policy를 다시 통과한 뒤에만 호출됩니다. 기본 <code>complete</code>/<code>stream</code> 경로는 advisor를 실행하지 않습니다.
+          한 호출에는 하나의 advisor를 넘기며, tenant/RAG/budget처럼 순서가 중요한 여러 정책은 application이 하나의 advisor 안에서 명시적으로 조합합니다.
+        </p>
+        <p>
+          tenant 또는 actor quota가 필요하면 <code>BudgetAdvisor::new(AiExecutionContext, AiBudgetPolicy)</code>를 explicit advisor로
+          전달합니다. budget policy는 model alias, input character count, tool count, approved tool-result count만 받은
+          <code>AiBudgetRequest</code>로 admission하며 prompt 또는 completion을 받지 않습니다. <code>Denied</code>와 policy failure는
+          provider 호출 전에 fail-closed 합니다. durable usage가 필요한 경로는 stable application key로 만든
+          <code>AiUsageReservation</code>과 <code>complete_with_usage_ledger</code> 또는 <code>stream_with_usage_ledger</code>를 사용합니다.
+          <code>AiUsageLedger</code>의 <code>Reserved</code>만 provider를 한 번 호출할 수 있고, same key의 pending/settled record는 재호출을
+          차단합니다. provider completion의 <code>Usage</code>만 terminal ledger에 기록합니다. RAG나 tenant context 같은 advisor를 함께 쓰는 경우
+          <code>complete_with_advisor_and_usage_ledger</code> 또는 <code>stream_with_advisor_and_usage_ledger</code>가 advisor의 final request를
+          reserve하고 raw terminal usage를 settle한 뒤 application-visible response/event hook을 실행합니다. transport error, stream drop 또는 incomplete
+          stream에는 자동 refund를 추측하지 않고 pending reconciliation으로 남깁니다. quota admission과 reservation을 함께 강제해야 하면
+          application의 ledger implementation이 하나의 durable transaction으로 처리합니다.
+        </p>
+        <p>
+          <code>AiPipeline</code>의 complete/stream 경로와 <code>ToolRegistry</code>의 수동 실행 경로는 기존
+          <code>tracing</code> subscriber에서 export 가능한 span을 만듭니다. AI request span은 operation, message/tool/tool-result count,
+          aggregate input character count, latency, usage, fixed outcome만 기록합니다. tool span은 risk class와 fixed outcome만 기록합니다.
+          prompt, completion, model alias, provider response ID, tenant/subject, call ID, idempotency key, tool name, arguments, tool result는 기록하지 않습니다.
+          stream은 open 시 <code>opened</code>를 기록하고 <code>Completed(Usage)</code> 또는 stream error가 오면 terminal outcome으로 갱신합니다.
+          consumer가 중간에 drop한 stream에는 완료를 추측하지 않습니다. <code>rustee-observability-opentelemetry</code> subscriber layer가 이 span을 export하며,
+          exporter, sampling, retention, provider billing reconciliation과 outbound trace header injection은 application이 명시적으로 소유합니다.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <h3>Tenant 및 권한</h3>
+            <p><code>Principal</code>과 tenant scope를 retrieval filter, tool eligibility, audit context에 전달합니다.</p>
+          </article>
+          <article class="card">
+            <h3>RAG</h3>
+            <p>질문을 query로 바꾸고 허용된 document만 검색해 source와 함께 context로 추가합니다.</p>
+          </article>
+          <article class="card">
+            <h3>대화 기억</h3>
+            <p>명시적으로 선택한 conversation store에서 history를 읽고, 보존 기간과 요약 정책을 적용합니다.</p>
+          </article>
+          <article class="card">
+            <h3>관측 및 예산</h3>
+            <p>latency, token/usage, 정규화 outcome, tool risk class를 기록하고 tenant/user별 budget을 확인합니다.</p>
+          </article>
+        </div>
+        <p>
+          prompt와 completion 본문은 기본적으로 log, metric, trace attribute에 넣지 않습니다. 필요할 때만 별도의 redaction과 retention
+          정책을 가진 audit sink를 명시적으로 설정합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Tool calling과 agent loop</h2>
+        <div class="warning">
+          <p>
+            model의 tool call은 권한이 아닙니다. model output과 retrieved document는 신뢰할 수 없는 입력으로 다루며,
+            Rustee는 tool 정의가 존재한다는 이유만으로 database write, 결제, 이메일 전송, shell 실행을 자동 수행하지 않습니다.
+          </p>
+        </div>
+        <ul>
+          <li><code>AiExecutionContext</code>는 application이 verified principal과 server-resolved tenant에서 만든 non-blank tenant/subject를 담습니다. model output이나 request header에서 직접 만들지 않으며, Serialize하지 않고 Debug에서도 식별자를 숨깁니다.</li>
+          <li><code>ToolExecutionContext</code>는 <code>AiExecutionContext</code>와 application-defined non-blank idempotency key를 한 action에 묶습니다. <code>ToolRegistry::execute(context, call, approval)</code>는 identity를 approval policy에, identity와 같은 key를 typed handler에 전달하므로 external HTTP/email/payment 호출도 semantic action별 key를 재사용해 재시도할 수 있습니다.</li>
+          <li>tool은 read-only, confirmation-required, privileged action으로 분류합니다. privileged action은 사용자 또는 application approval 없이는 실행하지 않습니다.</li>
+          <li>tool별 timeout, concurrency, rate limit, retry, 최대 payload, audit event를 설정하고, loop에는 최대 단계와 총 time/token budget을 둡니다. <code>rustee-ai-audit-sqlx</code>은 optional PostgreSQL approval/outcome ledger와 AI usage reservation/completed-usage ledger를 제공합니다. pending usage에는 provider lookup, timeout, retention, manual review를 application storage/worker가 명시적으로 수행하며, framework는 provider 재실행이나 refund를 자동으로 수행하지 않습니다.</li>
+          <li><code>ToolRegistry</code>는 <code>ToolApprovalPolicy</code>의 <code>Approved</code> 결정 뒤에만 handler를 호출합니다. <code>execute_with_approval_audit(context, call, approval, audit)</code>는 승인 후 handler 전 durable audit sink를 성공시켜야 하며, 기록 실패 시 side effect를 시작하지 않습니다. <code>execute_with_execution_audit</code>는 <code>ToolExecutionAuditSink</code>에 terminal <code>Succeeded</code>/<code>Failed</code> outcome도 기록합니다. outcome 기록이 실패하면 handler가 이미 실행됐을 수 있으므로 rollback을 주장하지 않고 redacted event를 <code>OutcomeAudit</code> error로 반환해 application이 idempotency key로 재조정합니다. <code>PostgresToolAuditSink</code>는 tenant + idempotency key의 동일 action 재기록은 멱등 허용하지만 actor/call/tool/risk 또는 terminal outcome이 달라지면 덮어쓰지 않고 실패합니다. 수동 실행 span은 risk class와 success, deny, normalized execution/audit failure만 기록하고 audit event와 handler는 같은 key를 보지만 prompt, arguments, tool result를 담지 않습니다. 기본 <code>DenyAllToolApproval</code>은 모든 실행을 거부합니다. automatic tool loop는 아직 제공하지 않습니다.</li>
+          <li>tool result는 model에 다시 넣기 전에 secret/PII를 필터링하고 크기를 제한합니다. MCP server의 annotation과 result도 신뢰하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>MCP remote tool</h2>
+        <p>
+          <code>rustee-ai-mcp</code>는 explicit <code>McpHttpConfig</code>와 <code>McpHttpClient</code>로 하나의 trusted
+          Streamable HTTP endpoint를 초기화합니다. non-loopback endpoint는 HTTPS여야 하며 embedded credential, query,
+          fragment를 거부합니다. client는 protocol version <code>2025-11-25</code>, server info, capability object를 확인하고
+          initialized notification을 보낸 뒤에 negotiated capability의 <code>tools/list</code> 또는 read-only context method를 호출합니다. session ID가 협상되면 subsequent request에
+          protocol-version/session header를 다시 보냅니다. session-bearing request가 404를 받으면 client는 stored session을 비우고
+          <code>SessionExpired</code>를 반환합니다. application shutdown은 <code>close_session()</code>으로 explicit DELETE를 보낼 수 있으며,
+          stateless server의 405는 local session state를 지우는 정상 응답으로 처리합니다.
+        </p>
+        <ol>
+          <li>application startup에서 endpoint trust, bearer credential, request deadline, JSON/SSE POST-response byte limit, page/tool/context item/context byte limit를 명시하고 <code>initialize()</code>를 호출합니다.</li>
+          <li><code>list_tools()</code>가 paginated discovery를 bounded하게 가져오지만, remote description, schema, annotation은 authorization이 아니라 검토 대상 input입니다.</li>
+          <li>application은 선택한 <code>McpToolDefinition</code>마다 risk를 직접 지정해 <code>McpRemoteTool::from_discovery</code>로 만들고 기존 <code>ToolRegistry</code>에 등록합니다.</li>
+          <li>model이 요청한 call은 기존 <code>ToolApprovalPolicy</code>와 optional durable audit을 통과한 뒤에만 remote <code>tools/call</code>으로 전달됩니다. deny, audit failure, malformed argument에는 network call이 없습니다.</li>
+        </ol>
+        <p>
+          remote tool result는 <code>{"mcp": ...}</code> 형태의 untrusted JSON으로만 반환됩니다. byte limit은 transport body를
+          제한할 뿐 model prompt에 적합함을 보장하지 않으므로 application은 provider에 다시 넣기 전에 schema validation, secret/PII
+          filtering과 tighter context bound를 적용합니다. remote JSON-RPC error와 tool error detail은 <code>ToolExecutionError</code>로
+          노출되지 않습니다. Rustee idempotency key도 기본으로 전송하지 않으며, server가 metadata confidentiality와
+          <code>io.rustee/idempotency-key</code> semantics를 문서화한 경우에만
+          <code>with_rustee_idempotency_metadata()</code>를 opt-in 합니다.
+        </p>
+        <div class="warning">
+          <p>
+            client adapter는 POST의 <code>application/json</code>과 <code>text/event-stream</code> response를 받습니다. SSE에서는
+            matching JSON-RPC result 전의 valid notification을 소모하고, matching result가 없거나 server-to-client request가 오면
+            실패합니다. session expiry 뒤 기본 설정에서는 caller가 <code>initialize()</code>를 완료해야 합니다. opt-in <code>with_automatic_session_recovery(max_attempts, initial_backoff, max_backoff)</code>는 404 뒤 최대 8회와 30초 backoff cap 안에서 새 initialize/notification handshake를 준비하지만, 만료된 request나 remote <code>tools/call</code>을
+            자동 재시도하지 않습니다. <code>with_automatic_sse_resumption(max_attempts, initial_backoff, max_backoff)</code>는 valid event ID를
+            받은 뒤 최대 8회와 30초 backoff cap 안에서 <code>Last-Event-ID</code> GET만 보내며 origin POST나 tool call을 재전송하지 않습니다.
+            서버 <code>retry</code> 값도 이 cap 안에서만 수용합니다. <code>close_session()</code>도 tool을 호출하지 않습니다. <code>open_server_event_stream()</code>은 initialized session의
+            standalone SSE GET을 열어 untrusted JSON-RPC notification만 한 개씩 반환하고, event ID가 있는 단절만 같은 bounded GET resumption으로 처리합니다. notification은 tool, resource, prompt 또는 model input에 자동 전달되지 않습니다. server-to-client request/response, resource subscription/list-change의 automatic handling과 prompt/resource completion, sampling/elicitation과 OAuth authorization flow는 아직 지원하지 않습니다. application은 unsupported
+            transport를 fallback으로 해석하거나 raw MCP client를 core 경계에 우회 연결하지 않습니다.
+          </p>
+        </div>
+        <p>
+          이 선택의 security/ownership rationale은 <a href="./adr/0015-mcp-remote-tool-boundary.html">ADR 0015</a>에 기록합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>MCP OAuth</h2>
+        <p>
+          client HTTP authorization은 transport core가 아니라 optional <code>rustee-ai-mcp-oauth</code>가 담당합니다. application은 discovery 결과에서 authorization server와 scope를 명시적으로 선택하고, <code>McpOAuthAuthorizationFlow</code>로 one-time state/PKCE redirect와 callback exchange를 연결합니다. token set은 exact MCP resource에만 적용되며 expiry/401/403 뒤 tool, read, prompt 또는 discovery request를 자동 replay하지 않습니다. refresh도 application이 명시적으로 호출합니다.
+        </p>
+        <div class="warning"><p><code>rustee-ai-mcp-oauth-redis</code>는 state/token을 AES-256-GCM envelope로 Redis에 저장하고 active/retired decrypt key rotation, TTL/atomic state consume를 제공합니다. tenant/user key mapping, KMS/secret delivery, revoke/consent rollback과 multi-instance refresh coordination은 application deployment가 구현해야 합니다. 반대 방향의 optional <code>rustee-mcp-oauth</code>는 token을 저장하지 않고 metadata와 Bearer/scope layer를 제공합니다. exact resource audience와 issuer/key validation은 application verifier가 강제해야 하며 OAuth scope는 tool/context/tenant authorization을 대체하지 않습니다.</p></div>
+        <p><a href="./mcp-oauth.html">MCP OAuth 문서</a>, <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018</a>, <a href="./adr/0019-mcp-oauth-resource-server-boundary.html">ADR 0019</a>가 canonical security/ownership 기준입니다.</p>
+      </section>
+
+      <section>
+        <h2>MCP stdio tool</h2>
+        <p>
+          <code>McpStdioConfig</code>/<code>McpStdioClient</code>는 application이 신뢰한 local program과 argument를 subprocess로 실행해
+          newline-delimited JSON-RPC를 stdin/stdout으로 교환합니다. stdout 한 줄과 encoded request, response 전 interleaved notification 수,
+          discovery page/tool 수와 각 request deadline을 제한하고 stderr는 protocol channel에 연결하지 않습니다. command, inherited environment, executable update와
+          process permission은 application deployment trust boundary입니다.
+        </p>
+        <p>
+          initialize 뒤 tool discovery 결과는 <code>McpStdioRemoteTool::from_discovery</code>로 선택해야 하며, context discovery/read/get 결과는 별도의 explicit application/user selection을 거쳐야 합니다. tool 실행은 기존
+          <code>ToolRegistry</code> approval/audit 경계를 통과합니다. request deadline, stdout protocol violation, output bound 또는 pipe failure는
+          현재 connection을 폐기하므로 기본 설정에서는 caller가 새 <code>initialize()</code> 또는 explicit <code>restart()</code>를 해야 합니다. <code>restart()</code>는 기존 process를
+          유한하게 정리하고 새 handshake만 수행하며 prior call을 재실행하지 않습니다. opt-in <code>with_automatic_restart(max_attempts, initial_backoff, max_backoff)</code>는
+          discarded connection을 정리한 뒤 최대 8회의 exponential backoff handshake를 시도합니다. maximum backoff는 30초이며 다음 explicit 요청을 준비하지만, 실패한 discovery/read/prompt/tool call은 원래 오류로 반환하고 재전송하지 않습니다. <code>close()</code>는 stdin EOF 뒤 bounded grace period를 기다리고,
+          남아 있으면 subprocess를 종료하지만 tool을 재실행하지 않습니다. stdout에서 matching response 전 server request가 오거나 message bound를 넘으면 sanitized failure로 끝납니다.
+        </p>
+        <div class="warning"><p>macOS/Windows CI matrix는 Rust fixture로 stdio initialize/discovery/approved execution/close 기본 경로를 검증하도록 구성됩니다. Windows의 timeout/restart/context 같은 advanced lifecycle 증거와 stdout protocol violation forensic capture는 아직 제공하지 않습니다. automatic tool replay는 지원하지 않으며 automatic restart는 application-trusted command에만 opt-in하고 failed action을 성공으로 바꾸지 않습니다.</p></div>
+      </section>
+
+      <section>
+        <h2>MCP context</h2>
+        <p>
+          negotiated <code>resources</code>/<code>prompts</code> capability가 있을 때만 <code>McpHttpClient</code>와 <code>McpStdioClient</code>는
+          <code>list_resources()</code>, <code>list_resource_templates()</code>, <code>read_resource(uri)</code>, <code>list_prompts()</code>,
+          <code>get_prompt(name, arguments)</code>를 제공합니다. metadata, text/blob, image/audio, embedded resource와 resource link는 typed하지만
+          모두 untrusted remote input입니다. duplicate name/cursor, malformed URI/base64, unsupported capability와 configured item/content limit 위반은
+          sanitized failure로 끝나며, resource read는 요청 URI와 반환 URI가 일치해야 합니다.
+        </p>
+        <p>
+          이 API는 <code>ChatRequest</code>, <code>AiAdvisor</code>, provider 또는 <code>ToolRegistry</code>에 자동 연결되지 않습니다. application은 resource URI와
+          prompt를 명시적으로 선택하고 tenant authorization, user consent, classification, secret/PII redaction, modality/provider compatibility와 더 작은
+          token/context budget을 확인한 뒤에만 자체 renderer/advisor 입력으로 채택합니다. resource link는 자동 fetch하지 않습니다. 자세한 ownership은
+          <a href="./adr/0017-mcp-context-boundary.html">ADR 0017</a>에서 관리합니다.
+        </p>
+        <div class="warning"><p><code>resources/subscribe</code>, list-changed notification, prompt/resource completion, roots, sampling/elicitation과 OAuth authorization은 아직 제공하지 않습니다.</p></div>
+      </section>
+
+      <section>
+        <h2>MCP server</h2>
+        <p>
+          <code>rustee-mcp::McpServer</code>는 <code>App::nest("/mcp", server)</code>로 mount하는 prefix-stripped Tower service입니다.
+          <code>POST /</code>의 JSON response path에서 <code>initialize</code>, <code>notifications/initialized</code>,
+          <code>tools/list</code>, <code>tools/call</code>을 처리합니다. <code>with_context_provider(...)</code>를 명시한 경우에는
+          capability를 광고하고 <code>resources/list</code>, <code>resources/templates/list</code>, <code>resources/read</code>,
+          <code>prompts/list</code>, <code>prompts/get</code>도 read-only로 처리합니다. initialize 뒤 client는
+          <code>MCP-Protocol-Version: 2025-11-25</code> header를 보내야 하며, server는 session을 발급하거나 SSE GET endpoint를 제공하지 않습니다.
+        </p>
+        <p>
+          <code>McpServerConfig</code>는 <code>Origin</code> header가 없는 native MCP client는 authentication boundary로 넘기지만,
+          header가 있는 request는 default로 403 처리합니다. browser-origin을 허용하려면 path/query/credential 없는 canonical HTTP(S)
+          origin을 <code>with_allowed_origins(...)</code>로 명시해야 합니다. 이 allowlist는 DNS rebinding 방어일 뿐 tenant/caller
+          authentication이나 CORS response를 제공하지 않으므로, cross-origin browser deployment는 application 또는 proxy의 CORS policy를
+          별도로 소유해야 합니다.
+        </p>
+        <p>
+          server constructor는 <code>McpToolAccessPolicy</code>, existing <code>ToolApprovalPolicy</code>,
+          <code>ToolExecutionAuditSink</code>를 모두 요구합니다. access policy는 verified authentication middleware 뒤 request extension을
+          읽어 visible tool name을 정하고, 각 실행에 trusted <code>ToolExecutionContext</code>와 application-owned idempotency key를
+          생성합니다. JSON-RPC request ID, tool argument, remote caller description으로 idempotency key를 만들지 않습니다. visible tool이
+          아니거나 approval/audit/handler가 실패하면 raw detail 없이 MCP <code>isError</code> result만 반환합니다.
+        </p>
+        <p>
+          <code>tools/list</code>은 access policy가 허용한 registered definition만 노출하고, <code>tools/call</code>은
+          <code>ToolRegistry::execute_with_execution_audit</code>를 통해 approval record를 handler보다 먼저, terminal outcome을 handler 뒤에
+          기록합니다. application은 policy를 request-time synchronous decision으로 구현하거나 필요한 remote identity lookup을 auth middleware
+          / request extension 단계에서 완료해야 합니다. 이는 Rustee streaming request body를 async policy가 잡아 Tower service cancellation과
+          concurrency를 흐리게 만들지 않기 위한 경계입니다.
+        </p>
+        <p>
+          context를 노출하려면 application은 <code>McpContextProvider</code>를 제공해야 합니다. provider는 같은 authenticated request를 받아
+          tenant/user/data authorization을 직접 적용하고, 선택된 URI의 read 결과가 요청 URI와 일치하는지 server가 다시 확인합니다. provider의
+          failure와 invalid/duplicate/too-many result는 raw detail 없이 generic failure가 되며, <code>McpServerConfig</code>의 item 및 response
+          byte limit를 넘길 수 없습니다. context discovery나 read는 <code>ToolRegistry</code> 실행 권한을 만들지 않습니다.
+        </p>
+        <div class="warning">
+          <p>
+            server는 아직 session lifecycle, Streamable HTTP SSE GET, stdio, resource/prompt subscription/completion, sampling/elicitation, OAuth authorization와
+            dynamic tool-list change notification을 지원하지 않습니다. 이 기능은 endpoint authorization, cancellation, credential rotation과
+            rollback contract를 가진 별도 adapter 단계입니다.
+          </p>
+        </div>
+        <p>
+          server authorization/audit ownership은 <a href="./adr/0016-mcp-tool-server-boundary.html">ADR 0016</a>에 기록합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Streaming과 오류</h2>
+        <p>
+          <code>AiStream</code>은 <code>TextDelta</code>, unexecuted <code>ToolCall</code>, application-approved <code>ToolResult</code>,
+          <code>Completed(Usage)</code>를 provider-neutral event로 전달합니다. <code>rustee-ai-openai</code>은 Responses SSE의 text delta,
+          function-call argument completion, terminal usage를 이 형태로 정규화합니다. <code>rustee-ai-web</code>이 이를 HTTP SSE나
+          newline-delimited JSON으로 바꿉니다. provider error는 raw detail 없이 <code>ai_stream_failed</code> event로 정규화하고,
+          browser가 response body를 끊으면 body와 upstream stream이 함께 drop되어 transport cancellation에 참여합니다.
+        </p>
+        <p>
+          오류는 <code>InvalidRequest</code>, <code>Unauthorized</code>, <code>RateLimited</code>, <code>Unavailable</code>,
+          <code>Timeout</code>, <code>SafetyRefusal</code>, <code>StructuredOutputInvalid</code>, <code>ToolDenied</code>,
+          <code>ToolFailed</code>로 정규화합니다. raw provider body와 secret은 client response나 log에 그대로 노출하지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>RAG와 비동기 ingestion</h2>
+        <ul>
+          <li><code>rustee-ai-rag</code>의 <code>RetrievalScope</code>는 tenant와 non-empty document allowlist를 필수로 받습니다. <code>RagRetriever</code>는 store query에 이 scope를 전달하고, 반환된 모든 chunk의 tenant/document ID를 다시 검사합니다. 하나라도 범위를 벗어나면 partial context 없이 fail-closed 합니다.</li>
+          <li><code>DocumentReference</code>와 <code>RagIngestionRequest</code>는 tenant, document ID, revision, checksum, embedding model alias만 durable payload로 보관합니다. source URI, citation, document text는 worker가 application source에서 읽은 뒤에만 다루며, <code>rustee-ai-rag-jobs</code>의 versioned <code>RagIngestionJob</code>은 이 request와 job idempotency context를 전달합니다.</li>
+          <li><code>RagIngestor</code>는 loader, chunker, <code>EmbeddingProvider</code>, <code>VectorIndex</code>를 조합합니다. source/chunk document revision mismatch, duplicate chunk ID, empty chunk batch, embedding count mismatch는 vector upsert 전에 거부합니다. file parsing, chunking, embedding, upsert, re-indexing은 HTTP request 안에서 실행하지 않고 <a href="./queues.html">durable job</a>으로 실행합니다.</li>
+          <li><code>rustee-ai-rag-advisor</code>의 <code>RagAdvisor</code>는 application <code>RagQueryBuilder</code>가 만든 authorized query로 retrieval을 실행하고, application <code>RagContextRenderer</code>가 만든 message만 request에 추가합니다. framework는 질문 추출, tenant scope, prompt role, retrieved text의 delimiter를 자동으로 결정하지 않으며 scope violation이면 renderer/provider 호출 전에 fail-closed 합니다.</li>
+          <li>document revision, chunk ID, embedding model alias, checksum, source citation, retention/deletion request를 추적합니다. 재임베딩은 별도 revision으로 만들고 승인된 job으로 교체합니다.</li>
+          <li>vector index는 capability-based adapter로 연결합니다. <code>VectorStoreCapabilities</code>가 metadata filter, delete-by-document, hybrid search 지원을 명시하며, adapter는 지원하지 않는 기능을 조용히 흉내 내지 않습니다.</li>
+          <li>semantic cache와 shared chat memory는 기본값이 아닙니다. tenant namespace, TTL, invalidate/erase, 민감정보 정책을 정의한 뒤 선택 기능으로 켭니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>운영, 보안, 테스트</h2>
+        <ul>
+          <li>OpenTelemetry trace/metric에는 provider, model alias, operation, stream 여부, latency, retry, token/usage, tool 이름을 기록합니다. prompt/completion 원문은 기본적으로 내보내지 않습니다.</li>
+          <li>provider credential은 secret manager 또는 environment-backed configuration에서 읽고, <code>AppState</code>에 capability client만 주입합니다. startup에서 실제 model call을 보내지 않습니다.</li>
+          <li>readiness는 AI configuration과 필요한 local dependency 상태를 구분해 보고합니다. 외부 model provider 장애가 일반 HTTP service의 readiness를 무조건 실패시키지 않게 policy를 명시합니다.</li>
+          <li>긴 research, batch embedding, evaluation, ingestion은 <code>rustee-jobs</code>로 실행하며 job payload에 raw credential이나 전체 conversation을 넣지 않습니다. <code>rustee-ai-eval</code> 자체는 in-memory sequential runner이고, <code>rustee-ai-eval-jobs</code>는 scope/catalog/run key만 든 reference를 job envelope idempotency key와 대조한 뒤 authorized catalog loader에 넘깁니다. <code>rustee-ai-eval-sqlx</code> ledger는 pending/completed reservation만 보존하므로 실패한 key를 자동 재시도하지 않습니다. <code>rustee-ai-batch-jobs</code> payload는 submission의 tenant/policy scope, catalog ID, run key 또는 reconciliation의 output/error role, opaque provider file ID, reconciliation key만 담습니다. worker는 authorized catalog load 또는 artifact load 뒤 application-owned row-level <code>custom_id</code> idempotency로 결과를 적용합니다. pending 처리, explicit new-key retry, artifact retention/delete는 <a href="./ai-batch-operations.html">AI Batch 운영 runbook</a>을 따릅니다. response cache는 batch/job 대체물이 아니며 tool interaction, stream, shared chat memory 또는 semantic similarity reuse를 자동으로 수행하지 않습니다.</li>
+          <li><code>AiEvaluationReference</code>는 scope/catalog ID/run key만 가지며 <code>rustee-ai-eval-jobs</code>는 same run key idempotency를 요구합니다. <code>AiEvaluationCatalog</code>는 authorized worker 안에서만 raw suite를 load하고, <code>AiEvaluationRunLedger</code>는 reserved/completed/pending만 기록합니다. optional <code>rustee-ai-eval-sqlx</code>은 reference와 status를 PostgreSQL에 보관하지만 report/prompt/target/completion은 저장하지 않습니다. catalog/model/grader/completion-record failure 뒤 pending을 자동 release하지 않으며, 재평가가 안전할 때만 application이 새 run key로 승인된 job을 enqueue합니다. <a href="./adr/0038-ai-evaluation-durable-run-boundary.html">ADR 0038</a>을 따릅니다.</li>
+          <li><code>rustee-ai-test</code>는 queued completion/stream event/error를 FIFO로 재현하고, model alias와 message/tool count만 담는 content-free invocation record를 제공합니다. 실제 provider integration test는 opt-in credential과 spending limit을 요구합니다. tool permission과 RAG ACL은 각각 application policy와 <code>rustee-ai-rag</code> fake store contract에서 검증합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>의도적으로 제공하지 않는 것</h2>
+        <ul>
+          <li>core crate에 hard-coded model provider, API key, prompt template, vector database를 넣는 것</li>
+          <li>대화 내용, prompt, completion을 default log 또는 trace에 저장하는 것</li>
+          <li>model이 요청했다는 이유만으로 side-effecting tool을 승인 없이 실행하는 것</li>
+          <li>tenant 권한 확인 없이 vector search 또는 chat memory를 공유하는 것</li>
+          <li>long-running agent loop를 HTTP request lifetime 안에서 무제한 실행하는 것</li>
+          <li>provider의 structured output 또는 transaction 기능만으로 business result의 정확성을 보장한다고 주장하는 것</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>구현 순서</h2>
+        <ol>
+          <li>Stage 9C에서 <code>rustee-ai</code>의 message, request/response, error, usage, model alias, non-streaming/streaming contract를 구현합니다. core contract, final-request policy, structured JSON parsing, request/response/stream <code>AiAdvisor</code>, typed tool registry, approval boundary와 fake-provider test는 구현되었습니다.</li>
+          <li><code>rustee-ai-openai</code>에서 Responses text/function request, function-call output, streaming SSE와 Embeddings batch request/index-ordered response, safe generic Batch JSONL builder 및 typed <code>ChatRequest</code> Responses/ordered <code>EmbeddingInput</code> Embeddings row mapping, explicit bounded input JSONL multipart upload/download/delete, OpenAI Batch create/retrieve/cancel과 safe progress snapshot, safe JSONL output-row parser 및 explicit <code>ChatResponse</code>/<code>Embedding</code> decoder를 local TCP contract test로 구현했고, <code>rustee-ai-web</code>에서 redacted SSE/NDJSON HTTP response를 구현했습니다. <code>rustee-ai-batch</code>/<code>rustee-ai-batch-jobs</code>는 output/error artifact reference, reconciliation-key-bound durable job, no-auto-replay whole-artifact ledger, authorized loader와 row-level domain idempotency processor 경계를 제공합니다. provider-only input/body validation, domain side effect와 structured-output option, opt-in live credential contract를 추가합니다.</li>
+          <li><code>AiExecutionContext</code>로 verified tenant/subject를 advisor budget gate와 approval policy에 공유하고, <code>ToolExecutionContext</code>로 action idempotency key를 handler와 audit에 공유하는 typed tool 경계는 구현했습니다. <code>BudgetAdvisor</code>는 provider 호출 전에 content-free <code>AiBudgetRequest</code>를 application-owned <code>AiBudgetPolicy</code>로 admission합니다. durable route는 <code>AiUsageReservation</code>과 <code>AiUsageLedger</code>로 provider attempt를 reserve하고 actual <code>Usage</code>를 settle하며 pending/settled duplicate call을 차단합니다. advisor와 ledger의 combined pipeline path는 final enriched request를 reserve하고 terminal raw usage를 advisor output 전에 settle합니다. <code>rustee-ai-audit-sqlx</code>는 approval/outcome ledger와 PostgreSQL usage reservation/completed-usage ledger, bounded pending query를 제공합니다. provider ambiguity, refund decision, retention/retry worker, exporter/sampling/retention과 application-specific authorization policy는 계속 application이 소유합니다.</li>
+          <li><code>rustee-ai-rag</code>의 tenant/document ACL retrieval 및 citation contract, content-free document revision ingestion, chunk/embedding/vector upsert validation과 capability contract, <code>rustee-ai-rag-jobs</code> durable typed ingestion job, <code>rustee-ai-rag-advisor</code> explicit query/renderer pipeline integration은 구현됐습니다. <code>OpenAiEmbeddingsProvider</code>는 provider-neutral <code>EmbeddingProvider</code>에 연결됩니다. 실제 document source/vector adapter와 opt-in provider credential contract를 추가합니다.</li>
+          <li>Stage 10에서 <code>rustee-ai-mcp</code>의 session-expiry-safe/explicit-close Streamable HTTP JSON/SSE POST-response client와 opt-in bounded no-replay session reinitialize, valid event ID 뒤 GET만 사용하는 opt-in bounded SSE resumption, explicit standalone GET notification stream, explicit restart와 opt-in bounded no-replay automatic restart/backoff가 가능한 stdio subprocess client, Rustee approval-gated remote tool path와 capability-gated read-only resource/prompt context client를 구현했습니다. macOS/Windows CI matrix는 Rust fixture로 stdio initialize/discovery/approved execution/close 기본 경로를 고정하도록 구성합니다. context와 standalone notification은 <code>ChatRequest</code>에 자동 주입되지 않습니다. <code>rustee-mcp</code>는 Origin fail-closed/access-policy/terminal-audit-gated JSON server와 authenticated <code>McpContextProvider</code> 기반 read-only resource/template/prompt serving을 구현했습니다. <code>rustee-ai-eval</code>/<code>rustee-ai-eval-jobs</code>/<code>rustee-ai-eval-sqlx</code>은 reference-only catalog load, run-key-bound durable dispatch와 pending/completed PostgreSQL run ledger를, <code>rustee-ai-cache</code>는 explicit tenant-scoped exact-key response reuse를, <code>rustee-ai-batch</code>는 catalog reference/ledger/no-retry submission 및 artifact reconciliation control plane을 제공합니다. <code>rustee-ai-openai</code>은 explicit bounded Batch input upload/download/delete, JSONL output-row structural parser와 create/retrieve/cancel safe lifecycle adapter를 제공합니다. client/server full session lifecycle, server-initiated request/sampling/elicitation, Windows advanced subprocess lifecycle, context subscription/completion, controlled automatic tool loop, additional model provider, semantic cache와 provider batch model-response handling/partial-result reconciliation은 별도 contract와 ADR을 거쳐 확장합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>외부 문서</h2>
+        <ul>
+          <li><a href="https://docs.spring.io/spring-ai/reference/api/">Spring AI API overview</a></li>
+          <li><a href="https://docs.spring.io/spring-ai/reference/api/advisors.html">Spring AI Advisors</a></li>
+          <li><a href="https://docs.spring.io/spring-ai/reference/api/tools.html">Spring AI Tool Calling</a></li>
+          <li><a href="https://platform.openai.com/docs/api-reference/responses-streaming/response/web_search_call?lang=curl">OpenAI Responses streaming and structured outputs</a></li>
+          <li><a href="https://docs.rs/reqwest/latest/reqwest/">reqwest HTTP client</a></li>
+          <li><a href="https://docs.rs/schemars/latest/schemars/trait.JsonSchema.html">schemars JSON Schema derive</a></li>
+          <li><a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports">MCP Streamable HTTP transport</a></li>
+          <li><a href="https://modelcontextprotocol.io/specification/2025-11-25/server/tools">MCP tool security guidance</a></li>
+          <li><a href="https://modelcontextprotocol.io/specification/2025-11-25/server/resources">MCP resources</a></li>
+          <li><a href="https://modelcontextprotocol.io/specification/2025-11-25/server/prompts">MCP prompts</a></li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this document when AI crate boundaries, provider support, model alias, tool policy, RAG retrieval, memory, observability, usage ledger, budget, or MCP policy changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

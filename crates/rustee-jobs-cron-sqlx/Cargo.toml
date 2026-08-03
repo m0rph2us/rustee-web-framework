@@ -1,0 +1,26 @@
+[package]
+name = "rustee-jobs-cron-sqlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PostgreSQL-backed IANA time-zone cron scheduler that atomically stages Rustee jobs through the outbox"
+
+[dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+cron.workspace = true
+rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+rustee-outbox-sqlx = { path = "../rustee-outbox-sqlx", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

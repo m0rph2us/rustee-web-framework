@@ -1,0 +1,21 @@
+[package]
+name = "rustee-outbox-observability-prometheus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Prometheus text exporter for Rustee transactional outbox relay metrics"
+
+[dependencies]
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-outbox-observability = { path = "../rustee-outbox-observability", version = "0.1.0" }
+
+[dev-dependencies]
+http-body-util.workspace = true
+rustee-outbox-sqlx = { path = "../rustee-outbox-sqlx", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

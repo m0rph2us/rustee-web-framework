@@ -1,0 +1,28 @@
+[package]
+name = "rustee-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tokio and Hyper HTTP/1.1 server adapter for Rustee"
+
+[dependencies]
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+tower.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+http.workspace = true
+rustee-middleware = { path = "../rustee-middleware", version = "0.1.0" }
+rustee-observability = { path = "../rustee-observability", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

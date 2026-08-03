@@ -1,0 +1,14 @@
+[package]
+name = "rustee-jobs-cron-observability"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Exporter-neutral PostgreSQL recurring-scheduler pass metrics for Rustee"
+
+[dependencies]
+rustee-jobs-cron-sqlx = { path = "../rustee-jobs-cron-sqlx", version = "0.1.0" }
+
+[lints]
+workspace = true

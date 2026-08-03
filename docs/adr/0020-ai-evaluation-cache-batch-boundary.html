@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0020: AI Evaluation, Cache, and Batch Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0020</div>
+        <h1>AI evaluation, cache, and batch boundary</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          AI evaluation, response cache, and batch execution 모두 prompt, expected answer, completion 또는 access-controlled
+          application data를 오래 보관하거나 더 넓은 scope로 재사용할 위험이 있다. <code>rustee-ai</code>의 provider call,
+          budget/usage ledger, advisor와 RAG ACL은 이미 application-owned authorization boundary를 갖지만 evaluation fixture,
+          cache fingerprint, batch payload를 core가 임의로 만들면 tenant/data retention과 provider billing semantics가 흐려진다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision"><p>평가, cache, batch를 하나의 hidden AI convenience layer로 합치지 않는다. 각각 optional crate와 explicit application-owned catalog/store/executor boundary로 도입한다.</p></div>
+        <ul>
+          <li><code>rustee-ai-eval</code>은 generic target과 trusted grader를 가진 bounded in-memory suite를 실행한다. report는 safe case ID, normalized pass/fail score/label, model alias와 usage만 가진다. request, target, completion은 serialization, Debug, telemetry report에 넣지 않는다.</li>
+          <li>evaluation executor는 application-governed pipeline wrapper여야 한다. evaluator는 hidden provider retry, parallel fan-out, budget bypass, usage settlement 또는 automatic tool loop를 제공하지 않는다. case failure는 later case를 시작하지 않고 fail-fast 한다.</li>
+          <li>future response/semantic cache는 application-generated tenant namespace와 opaque versioned fingerprint, explicit TTL, erase/invalidate policy, cache-hit accounting과 fail-closed/bypass policy를 요구한다. tool-call response, shared chat memory, prompt/content hash와 cross-tenant reuse를 default로 만들지 않는다.</li>
+          <li>future durable batch는 raw suite/case/conversation이 아니라 application catalog reference, trusted run key, bounded scope와 idempotency metadata만 <code>rustee-jobs</code> payload에 보관한다. worker가 catalog를 authorized load하고 evaluator executor를 선택한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>application은 grading target semantics, human/LLM grader trust, cache encryption/retention, tenant erase, catalog authorization, batch scheduling/concurrency, pricing/reconciliation을 문서화해야 한다.</li>
+          <li>evaluation report가 observability 또는 release comparison에 적합한 content-free record가 되며 fixture content는 application test data에 남는다.</li>
+          <li>first implementation은 deterministic local evaluation contract다. distributed cache stampede control, durable evaluation catalog, provider async batch API, live grader spend limit과 comparative/online evaluation evidence는 release gate로 남는다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>prompt/completion을 framework evaluation report 또는 job JSON으로 직접 직렬화</td><td>retention, privacy, tenant erase와 queue exposure가 숨겨지므로 채택하지 않는다.</td></tr>
+            <tr><td>모든 <code>AiPipeline</code> completion에 automatic semantic cache 적용</td><td>tool result, tenant authorization, stale answer와 cost accounting을 혼합하므로 채택하지 않는다.</td></tr>
+            <tr><td>evaluation failure를 provider retry로 자동 해결</td><td>model output/charge ambiguity를 증가시키므로 application이 explicit run policy를 결정한다.</td></tr>
+            <tr><td>provider-specific async batch API를 core contract로 가정</td><td>cancel/partial result/retry/billing semantics가 provider마다 달라 optional adapter로 분리한다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li><code>rustee-ai-eval</code>은 unique/bounded suite, generic trusted grader, sequential no-retry executor, content-free case report/usage summary와 deterministic fake-provider contract를 구현한다.</li>
+          <li>cache adapter는 namespace/fingerprint/TTL/erase/failure-mode and tool-result eligibility contract를 별도 ADR로 추가한다.</li>
+          <li>batch catalog/job adapter는 durable reference/idempotency, scoped worker load, partial failure/retry/cancel/reconciliation, provider async batch evidence를 별도 ADR로 추가한다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Update this ADR whenever evaluation target/grader/report retention, AI cache eligibility, durable batch payload, retry, or provider billing ownership changes.</p>
+      </footer>
+    </main>
+  </body>
+</html>

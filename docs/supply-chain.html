@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee 공급망과 릴리스 증거</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./architecture.html">구조</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./release-plan.html">출하 계획</a>
+          <a href="./release-inventory.html">Release inventory</a>
+          <a href="./supply-chain.html">공급망</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Software Supply Chain</div>
+        <h1>Rustee 공급망과 릴리스 증거</h1>
+        <p class="lead">
+          Rustee의 release artifact는 dependency policy, source package checksum, CycloneDX SBOM, keyless provenance를 함께 남깁니다.
+          이 문서는 각 증거의 범위와 release operator의 확인 순서를 정의합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>현재 통제</h2>
+        <table>
+          <thead>
+            <tr><th>통제</th><th>실행 시점</th><th>보장하는 것</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>RustSec advisory</td><td>dependency 변경 PR, main, daily</td><td>현재 <code>Cargo.lock</code>의 알려진 취약 dependency와 yanked package를 release 전에 차단</td></tr>
+            <tr><td><code>cargo-deny</code></td><td>dependency 변경 PR, main, daily</td><td>all-feature graph의 SPDX license, registry/git source, wildcard dependency 정책을 검증</td></tr>
+            <tr><td>workflow action pin</td><td>Fast PR, release qualification</td><td>checked-in workflow의 direct <code>uses:</code> reference가 full commit SHA인지 확인해 mutable tag/branch를 차단</td></tr>
+            <tr><td>source package qualification</td><td><code>v*</code> tag 또는 manual dispatch</td><td>stable format/lint/test/doctest와 inventory-approved candidate-only <code>.crate</code> source archive를 생성</td></tr>
+            <tr><td>CycloneDX SBOM</td><td>release qualification</td><td>all-feature, all-target Cargo graph를 CycloneDX 1.5 JSON으로 기록</td></tr>
+            <tr><td>GitHub keyless provenance</td><td>release qualification</td><td>source package와 SBOM artifact가 해당 GitHub Actions workflow에서 생성되었음을 Sigstore-backed attestation으로 기록</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>정책 경계</h2>
+        <div class="decision">
+          <p>
+            알려진 advisory, 허용되지 않은 license, unknown source는 exception 없이 release를 막습니다.
+            <code>deny.toml</code>의 exception 목록은 비어 있어야 하며, 이 원칙을 바꾸는 변경은 ADR, owner, 만료일,
+            compensating control과 release note를 함께 가져야 합니다.
+          </p>
+        </div>
+        <ul>
+          <li>중복 전이 dependency는 현재 경고로 추적하되, security policy 위반으로 자동 통과시키지 않습니다.</li>
+          <li>SBOM은 dependency 구성표입니다. source artifact의 재현 빌드, runtime configuration, container image, cloud service의 보안을 대신 증명하지 않습니다.</li>
+          <li><code>check-workflow-action-pins.mjs</code>는 repository workflow의 direct action reference만 검사합니다. action 내부의 composite/reusable workflow dependency, container image digest, GitHub organization action-allowlist와 runner image는 별도 trust review 대상입니다.</li>
+          <li>provenance attestation은 source package 및 SBOM 파일이 release workflow에서 생성된 사실을 묶습니다. crates.io publish 권한, registry upload, consumer runtime의 신뢰를 자동으로 보장하지 않습니다.</li>
+          <li>GitHub artifact attestation은 public repository 또는 이를 지원하는 GitHub Enterprise Cloud 환경을 요구합니다. 해당 기능을 사용할 수 없는 repository는 release를 승인하기 전에 동등한 signed provenance storage를 ADR로 정해야 합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Release 산출물</h2>
+        <pre><code>target/package/*.crate
+target/package/SHA256SUMS
+target/sbom/**/sbom.cdx.json</code></pre>
+        <p>
+          <code>SHA256SUMS</code>는 source package 각각의 subject 목록이며, release workflow의 source provenance attestation에 사용합니다.
+          <code>cargo-cyclonedx</code> 0.5.9는 Cargo metadata와 lockfile을 사용해 각 workspace package의 CycloneDX 1.5 JSON을 생성합니다.
+          <code>scripts/collect-cyclonedx-sboms.mjs</code>는 JSON 형식과 spec version을 검증한 뒤 <code>target/sbom</code>에 모읍니다.
+          source package와 SBOM archive는 모두 90일간 GitHub Actions artifact로 보관합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Release 확인 순서</h2>
+        <ol>
+          <li>dependency policy, RustSec advisory, MSRV/stable CI와 provider contract를 green 상태로 만듭니다.</li>
+          <li>workflow action pin verifier가 every direct <code>uses:</code> reference의 full commit SHA를 확인합니다.</li>
+          <li>release inventory가 publish intent와 package metadata를 현재 workspace와 일치한다고 확인합니다.</li>
+          <li><code>v*</code> tag의 release qualification에서 source package, checksum, SBOM archive와 두 provenance attestation을 확인합니다.</li>
+          <li>첫 publish와 이후 publish는 source package checksum, release note, migration guidance, publish credential ownership을 사람이 검토한 뒤 별도 승인 환경에서 수행합니다. local path dependency가 registry에서 해석될 수 있는 publish 뒤에는 <code>verify-published-release-candidates.mjs</code>의 registry source consumer compile verification을 별도 record로 남깁니다.</li>
+          <li>consumer는 GitHub CLI의 attestation verification과 published package checksum 대조를 자신의 trust policy에 따라 수행합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>AI 유지 규칙</h2>
+        <ul>
+          <li><code>Cargo.toml</code>, <code>Cargo.lock</code>, dependency feature, MSRV 또는 publish intent를 바꾸면 이 문서, <a href="./release-plan.html">출하 계획</a>, <a href="./testing.html">테스트 전략</a>, <a href="./release-inventory.html">release inventory</a>와 inventory verifier를 같은 변경에서 갱신합니다.</li>
+          <li>SBOM generator, retention, checksum subject, attestation 방식이 바뀌면 <code>.github/workflows/release-qualification.yml</code>와 <code>scripts/collect-cyclonedx-sboms.mjs</code>를 함께 검증합니다. workflow action을 추가하거나 바꾸면 full SHA/comment와 <code>scripts/check-workflow-action-pins.mjs</code> 결과를 함께 검증합니다.</li>
+          <li>release evidence의 한계나 새로운 exception을 발견하면 code comment가 아니라 이 HTML 문서와 ADR에 기록합니다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Owner: Rustee release maintainers.</p>
+      </footer>
+    </main>
+  </body>
+</html>

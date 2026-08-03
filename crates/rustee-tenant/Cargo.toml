@@ -1,0 +1,17 @@
+[package]
+name = "rustee-tenant"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Trusted tenant context shared by Rustee security and storage integrations"
+
+[dependencies]
+futures-util.workspace = true
+http.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rustee Kafka Delayed Retry 운영 Runbook</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="./design-philosophy.html">철학</a>
+          <a href="./architecture.html">구조</a>
+          <a href="./database.html">데이터베이스</a>
+          <a href="./authentication.html">인증</a>
+          <a href="./queues.html">Queue</a>
+          <a href="./events.html">Event</a>
+          <a href="./ai.html">AI</a>
+          <a href="./testing.html">Test</a>
+          <a href="./operations.html">운영</a>
+          <a href="./roadmap.html">로드맵</a>
+          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./adr/index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Operations Runbook</div>
+        <h1>Kafka Delayed Retry</h1>
+        <p class="lead">
+          PostgreSQL에 durable retry intent를 기록한 뒤 Kafka retry topic으로 다시 전달하는 경계의 배포, 장애, restore와 replay 절차입니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>운영 전제</h2>
+        <div class="decision">
+          <p>
+            이 adapter는 at-least-once입니다. Kafka acknowledgement 뒤 PostgreSQL confirmation 실패 또는 process abort 뒤에는 같은 retry record가 다시 publish될 수 있습니다.
+            retry consumer와 외부 side effect는 event ID 또는 domain key를 기준으로 idempotent해야 합니다. 이 문서는 Kafka source offset을 자동으로 reset하거나 DLQ를 자동 replay하는 명령을 제공하지 않습니다.
+          </p>
+        </div>
+        <ul>
+          <li>consumer runtime 전에 application migration set으로 <code>0001_rustee_kafka_delayed_retries.sql</code>을 forward-only 적용합니다.</li>
+          <li>source, retry, DLQ topic과 ACL, retention, partition policy는 deployment가 provision합니다. retry/DLQ topic name을 바꿔도 이미 stage한 row는 stored destination으로 전달됩니다.</li>
+          <li>relay identity에는 retry/DLQ topic metadata read와 publish 권한, delayed-retry table select/update 권한만 부여합니다. source consumer identity의 commit 권한과 분리할 수 있는지는 application security model이 결정합니다.</li>
+          <li>retry payload는 최대 1 MiB입니다. raw payload, key, broker endpoint, credential, handler error를 metric label이나 incident ticket에 복사하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>배포 순서</h2>
+        <ol>
+          <li>retry/DLQ topic, ACL, migration backup과 external side-effect idempotency policy를 change record에서 승인합니다.</li>
+          <li>single migration job으로 delayed-retry migration을 적용하고 schema version과 table backup completion을 기록합니다. 적용한 migration을 수정하거나 runtime startup에서 migration을 실행하지 않습니다.</li>
+          <li>new runtime을 시작하기 전에 <code>readiness(KafkaDelayedRetryReadinessConfig)</code>로 retry table select와 retry/DLQ topic metadata를 확인합니다. 이 check는 topic을 생성하거나 migration을 수행하지 않습니다.</li>
+          <li>application supervisor에서 <code>run_until(KafkaDelayedRetryRelayLoopConfig, shutdown)</code>을 await하고 optional <code>KafkaDelayedRetryRelayMetrics</code> observer를 relay에 연결합니다. empty pass polling cadence, restart backoff, readiness inclusion과 alert ownership은 deployment configuration입니다.</li>
+          <li>새 release의 relay error, unpublished due row age, active lease age, Kafka retry consumer idempotency 결과를 관찰한 뒤 source consumer traffic을 전환합니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>정상 운영</h2>
+        <p>
+          readiness 성공은 retry table select와 retry/DLQ topic metadata만 뜻합니다. backlog가 비어 있음, source group이 healthy함, retry consumer가 side effect를 완료함,
+          migration backup이 usable함을 뜻하지 않습니다. alert는 deployment가 query/exporter로 구성하며 row ID, payload, key, endpoint를 label로 쓰지 않습니다.
+        </p>
+        <p>
+          collector는 started/in-flight/completed pass, fixed terminal outcome, fully successful pass의 confirmed publish count와 global duration만 live 집계합니다.
+          <code>relay.backlog()</code>는 PostgreSQL database clock을 사용해 unpublished/due/leased/oldest-due aggregate를 반환하고, application이 chosen timeout과 cadence로
+          호출해 <code>record_backlog</code>에 전달합니다. Prometheus helper는 이 last snapshot을 <code>Cache-Control: no-store</code> response로 인코드할 뿐,
+          database query loop, listener, metric registry, health route, alert threshold 또는 automatic restart를 만들지 않습니다. failed/abandoned pass의 publish count가 비어 있는 것은
+          zero publish 증명이 아니라, acknowledgement와 confirmation 사이 duplicate 가능성을 count로 단정하지 않기 위한 경계입니다.
+        </p>
+        <pre><code>-- Aggregate-only investigation queries; do not expose row payload or keys in dashboards.
+SELECT count(*) AS unpublished
+FROM rustee_kafka_delayed_retries
+WHERE published_at IS NULL;
+
+SELECT min(available_at) AS oldest_available
+FROM rustee_kafka_delayed_retries
+WHERE published_at IS NULL
+  AND available_at &lt;= clock_timestamp();</code></pre>
+        <ul>
+          <li>unpublished due row age가 delivery SLO를 넘으면 Kafka metadata, relay error, lease duration, database availability와 topic ACL을 확인합니다.</li>
+          <li>lease는 process crash 뒤 expiry가 지나면 재전달될 수 있습니다. lease expiry를 message loss로 해석하지 말고 consumer idempotency와 duplicate evidence를 함께 검토합니다.</li>
+          <li>relay <code>run_until</code>은 publish/database 오류를 숨기지 않고 return합니다. supervisor가 bounded backoff와 restart policy를 적용하며 framework가 automatic replay를 수행하지 않습니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Kafka 또는 DB 장애</h2>
+        <ol>
+          <li>readiness 또는 relay error가 dependency category를 보고하면 raw endpoint/credential 없이 deployment alert와 correlated log를 확인합니다.</li>
+          <li>Kafka outage에서는 claimed unpublished row가 configured retry delay 뒤 다시 eligible해집니다. producer acknowledgement와 database confirmation 사이의 crash는 duplicate publish를 만들 수 있습니다.</li>
+          <li>PostgreSQL outage에서는 source failure route가 retry intent를 stage하지 못하므로 source offset을 commit하지 않습니다. database recovery 뒤 consumer redelivery가 retry stage를 다시 시도합니다.</li>
+          <li>dependency recovery 후 readiness, migration version, retry/DLQ ACL을 다시 확인하고 supervisor를 restart합니다. table row를 수동 삭제하거나 source offset을 먼저 이동하지 않습니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Restore와 Replay</h2>
+        <p>
+          database restore와 Kafka replay는 서로 다른 recovery action입니다. 먼저 restore point, source/retry/DLQ retention, retry table row count,
+          consumer idempotency receipt와 external provider idempotency key를 함께 검토합니다. restore 후 <code>published_at</code> 상태를 과거로 되돌리면 이미 Kafka에 전달된 row도 다시 relay될 수 있습니다.
+        </p>
+        <ol>
+          <li>incident owner가 time range, source/retry/DLQ topic, consumer group, tenant/security impact와 expected duplicate budget을 승인합니다.</li>
+          <li>non-production 또는 isolated consumer group에서 offset range, envelope version, upcaster, idempotency receipt와 downstream provider behavior를 dry-run 합니다.</li>
+          <li>production replay는 separate consumer group과 bounded rate로 실행합니다. source group offset reset, DLQ publish, retry-table mutation은 independent approval과 rollback point를 가집니다.</li>
+          <li>reconciliation은 domain key/event ID 기준으로 completed, duplicate-suppressed, manual-review 상태를 기록합니다. raw payload를 generic operations log에 보관하지 않습니다.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>증거와 소유자</h2>
+        <table>
+          <thead><tr><th>항목</th><th>필요한 증거</th><th>소유자</th></tr></thead>
+          <tbody>
+            <tr><td>schema</td><td>forward migration order, backup/restore rehearsal, table access role</td><td>data platform owner</td></tr>
+            <tr><td>broker</td><td>Kafka version, retry/DLQ topic/ACL/retention/partition inventory, outage exercise</td><td>messaging owner</td></tr>
+            <tr><td>relay</td><td>readiness, observer/aggregate-backlog scrape, supervisor backoff, graceful shutdown, due-row/lease alert threshold and incident owner</td><td>application owner</td></tr>
+            <tr><td>replay</td><td>approved range, isolated-group dry-run, idempotency/reconciliation result</td><td>application and domain owner</td></tr>
+          </tbody>
+        </table>
+        <p>이 evidence가 없으면 adapter는 Contract-verified 상태에 머물며 Supported 또는 Enterprise-qualified라고 선언하지 않습니다.</p>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="./adr/0034-kafka-postgres-delayed-retry.html">ADR 0034</a> for the delivery boundary.</p>
+      </footer>
+    </main>
+  </body>
+</html>

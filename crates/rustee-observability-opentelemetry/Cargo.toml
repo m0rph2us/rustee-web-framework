@@ -1,0 +1,28 @@
+[package]
+name = "rustee-observability-opentelemetry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Optional OpenTelemetry tracing bridge for Rustee observability"
+
+[dependencies]
+http.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-observability = { path = "../rustee-observability", version = "0.1.0" }
+tower.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+opentelemetry-otlp = { version = "=0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
+rustee-router = { path = "../rustee-router", version = "0.1.0" }
+tokio.workspace = true
+
+[lints]
+workspace = true

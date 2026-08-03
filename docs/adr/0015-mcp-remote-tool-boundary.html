@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0015: MCP Remote Tool Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0015</div>
+        <h1>MCP remote tool boundary</h1>
+        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          MCP server는 application 밖에서 tool schema, description, annotation과 결과를 제공한다. 이 metadata는 model에게
+          유용할 수 있지만 tenant authorization, user confirmation, side-effect risk, data classification 또는 idempotency를
+          증명하지 않는다. raw MCP client를 model loop에 직접 연결하면 remote discovery 자체가 database write, email,
+          payment 같은 capability의 implicit allowlist가 될 수 있다.
+        </p>
+        <p>
+          MCP의 Streamable HTTP transport는 JSON과 SSE response, optional session, authorization extension을 허용한다.
+          초기 Rustee adapter가 모든 transport와 server capability를 동시에 받아들이면 lifecycle, cancellation, credential,
+          audit와 output boundary를 검증할 수 없다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-ai-mcp</code>은 MCP 2025-11-25 Streamable HTTP의 bounded <code>application/json</code> 및 POST
+            <code>text/event-stream</code> response path와 application-trusted local subprocess의 bounded stdio path를 구현한다.
+            explicit endpoint 또는 local process initialization과 bounded <code>tools/list</code> discovery 뒤에도 remote tool은 자동
+            registration 또는 authorization을 얻지 않는다. application이 tool별 <code>ToolRisk</code>를 지정하여
+            <code>McpRemoteTool</code>을 기존 <code>ToolRegistry</code>에 등록할 때만 provider-visible capability가 된다.
+          </p>
+        </div>
+        <ul>
+          <li>non-loopback endpoint는 HTTPS여야 하며 endpoint URL의 embedded credential, query, fragment를 거부한다. bearer credential은 explicit configuration이고 Debug에서 숨긴다.</li>
+          <li>client는 protocol version, server info, capability object를 확인하고 initialized notification을 완료한 뒤에만 tool discovery/call을 허용한다. negotiated session/version header는 subsequent request에 적용한다.</li>
+          <li>session-bearing request의 404는 stored session을 invalidate하고 sanitized <code>SessionExpired</code>로 끝낸다. adapter는 automatic <code>tools/call</code> replay를 수행하지 않으며 application은 새 initialize 뒤 idempotency/approval policy로 다음 action을 결정한다. opt-in HTTP session recovery는 configured maximum과 exponential backoff 안에서 replacement initialize/notification만 시도해 다음 explicit action을 준비한다.</li>
+          <li><code>close_session()</code>은 session-bearing DELETE를 보내고 success 또는 stateless server의 405에 local session을 clear한다. 이 control path는 tool execution을 하지 않는다.</li>
+          <li>response body, pagination page와 total tool 수를 제한한다. remote JSON-RPC/tool failure의 raw detail은 public error나 tool execution error로 전달하지 않는다.</li>
+          <li>POST SSE는 같은 total byte limit 안에서 matching JSON-RPC result 전 valid notification만 소모한다. server-to-client request, mismatched result, malformed frame 또는 terminal result 없는 stream은 실행하거나 retry하지 않고 sanitized failure로 끝낸다.</li>
+          <li>stdio는 exact program/argument와 inherited environment를 application deployment trust boundary로 취급한다. newline JSON-RPC request/stdout line, interleaved notification, discovery와 request/shutdown duration을 제한하고 stderr는 protocol channel로 읽지 않는다. deadline, pipe failure, malformed/oversized stdout은 process connection을 폐기하며 caller가 explicit initialize 또는 prior tool call을 replay하지 않는 <code>restart()</code>를 선택해야 한다. opt-in automatic restart는 최대 8회와 30초 backoff cap 안에서 terminated connection의 replacement handshake만 시도하고 failed action의 result를 바꾸거나 replay하지 않는다. close/restart는 stdin EOF 뒤 bounded grace period를 기다린 뒤 남은 subprocess를 종료한다.</li>
+          <li>model-requested <code>tools/call</code>은 existing <code>ToolApprovalPolicy</code>와 optional approval/outcome audit 이후에만 network로 전송한다. remote annotations는 risk/approval 결정을 대신하지 않는다.</li>
+          <li>remote result는 untrusted JSON으로 반환한다. application은 provider에 넣기 전 schema validation, secret/PII filtering과 smaller context bound를 소유한다.</li>
+          <li>Rustee idempotency key는 default로 remote에 보내지 않는다. server가 <code>io.rustee/idempotency-key</code> metadata extension의 confidentiality와 semantic idempotency를 문서화한 경우에만 explicit opt-in 한다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>기존 deny-by-default, tenant-aware approval과 durable audit가 remote tool에도 유지된다.</li>
+          <li>application startup은 endpoint trust, credentials, availability와 selected tool inventory를 검토해야 한다. discovery result가 바뀌면 automatic privilege expansion으로 처리하지 않는다.</li>
+          <li>client adapter는 POST SSE stream의 matching JSON-RPC result 전 valid notification을 bounded하게 소모하고 session 404를 replay 없이 invalidation으로 처리하며 explicit DELETE/405 close를 제공합니다. opt-in HTTP recovery는 expired original action을 재전송하지 않고 bounded replacement handshake만 준비한다. valid SSE event ID 뒤 opt-in resumption은 configured retry/total-byte bound 안에서 <code>Last-Event-ID</code> GET만 보내며 origin POST, discovery/read/prompt/tool action을 재전송하지 않는다. resume GET 404는 current session을 비우고 original action을 <code>SessionExpired</code>로 끝낸다. explicit standalone GET stream은 initialized session/protocol header로 untrusted notification만 전달하고 event ID 뒤 bounded reconnect를 허용하지만 server request/response를 실행하거나 answer하지 않는다. local stdio는 no-replay explicit restart와 opt-in bounded automatic restart/backoff를 포함한 process lifecycle을 제공하며, automatic restart도 original discovery/read/prompt/tool action을 재전송하지 않고 next explicit request만 recovered process에 보낸다. Rust fixture integration test와 macOS/Windows CI matrix는 stdio initialize/discovery/approved execution/close 공통 경로를 검증하도록 구성한다. read-only resource/template/prompt list/read/get과 automatic model-context adoption의 분리는 <a href="./0017-mcp-context-boundary.html">ADR 0017</a>에서 관리한다. Windows advanced subprocess lifecycle, context subscription/completion, server-to-client request/sampling/elicitation과 OAuth authorization은 지원하지 않는다. MCP server의 별도 boundary는 <a href="./0016-mcp-tool-server-boundary.html">ADR 0016</a>에서 관리한다.</li>
+          <li>HTTP OAuth client lifecycle은 transport core가 아니라 <a href="./0018-mcp-oauth-client-boundary.html">ADR 0018</a>의 optional <code>rustee-ai-mcp-oauth</code>에 분리한다. discovery, PKCE callback, token exchange/explicit refresh는 resource-bound이고 original action을 replay하지 않는다. this transport core와 MCP server 자체는 OAuth credential lifecycle 또는 resource-server authorization을 소유하지 않는다.</li>
+          <li>Supported 승격에는 supported server/version matrix, endpoint authorization/rotation procedure, failure/cancellation/interoperability evidence와 output redaction policy가 필요하다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>discovered tool을 모두 자동 등록/승인</td><td>remote metadata가 application authorization을 대체하게 되므로 채택하지 않는다.</td></tr>
+            <tr><td>MCP annotation으로 risk를 자동 결정</td><td>annotation은 trusted policy source가 아니므로 application-owned risk selection을 유지한다.</td></tr>
+            <tr><td>reconnecting SSE, automatic recovery, full server capability를 단일 first release에 포함</td><td>HTTP session과 stdio process의 explicit/opt-in no-replay recovery, received event ID만 쓰는 bounded SSE resumption, standalone notification stream과 macOS/Windows 기본 stdio lifecycle fixture는 구현했지만 credential, server-initiated request와 advanced platform lifecycle test surface는 independent release gate가 필요하다.</td></tr>
+            <tr><td>모든 remote call에 idempotency key를 자동 전달</td><td>remote metadata exposure와 unsupported semantic guarantee를 만들 수 있으므로 explicit server-aware opt-in만 둔다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Follow-up</h2>
+        <ul>
+          <li>server-initiated request/sampling/elicitation과 Windows timeout/restart/context 같은 advanced stdio lifecycle은 bounded parser, approval/cancellation/process lifecycle, redaction contract를 갖춘 별도 implementation으로 추가한다. received event ID resumption, HTTP session/stdio automatic recovery의 supported-server/platform interoperability evidence도 이 gate에서 넓힌다.</li>
+          <li>context subscription/completion은 별도 contract로 남는다. MCP OAuth client의 durable encrypted store, revocation/rotation, consent rollback과 provider interoperability evidence는 <a href="./0018-mcp-oauth-client-boundary.html">ADR 0018</a> release gate에서 검토한다.</li>
+          <li>automatic tool loop는 human confirmation, tenant authorization, durable audit/idempotency, total time/token/tool-call budget의 combined policy가 계약으로 증명될 때만 candidate가 된다.</li>
+        </ul>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes MCP transport support, remote-tool authorization, output handling, or idempotency metadata ownership.</p>
+      </footer>
+    </main>
+  </body>
+</html>

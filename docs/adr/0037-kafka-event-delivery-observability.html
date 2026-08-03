@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ADR 0037: Kafka Event Delivery Observability</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">Rustee</a>
+        <nav class="nav" aria-label="문서">
+          <a href="../design-philosophy.html">철학</a>
+          <a href="../architecture.html">구조</a>
+          <a href="../database.html">데이터베이스</a>
+          <a href="../redis.html">Redis</a>
+          <a href="../mongodb.html">MongoDB</a>
+          <a href="../authentication.html">인증</a>
+          <a href="../queues.html">Queue</a>
+          <a href="../events.html">Event</a>
+          <a href="../ai.html">AI</a>
+          <a href="../testing.html">Test</a>
+          <a href="../operations.html">운영</a>
+          <a href="../roadmap.html">로드맵</a>
+          <a href="../ai-context.html">AI 유지관리</a>
+          <a href="./index.html">ADR</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">ADR 0037</div>
+        <h1>Kafka Event Delivery Observability</h1>
+        <p class="lead">Kafka source settlement lifecycle을 aggregate-only로 관찰하되, topic·offset·replay 운영 권한은 application deployment에 둡니다.</p>
+        <p class="meta">Status: Accepted | Date: 2026-08-04</p>
+      </section>
+
+      <section>
+        <h2>Context</h2>
+        <p>
+          Kafka event consumer는 handler success, failure route broker acknowledgement, source offset commit, rebalance와 cancellation이 서로 다른
+          at-least-once 결과를 만듭니다. handler return만 집계하면 route 또는 commit failure를 success로 오인하고, topic/partition/offset/event ID/error를
+          metric label로 넣으면 cardinality와 payload/endpoint leakage 위험이 생깁니다. delayed-retry relay에는 pass observability가 있지만 일반 consumer
+          delivery의 source settlement는 별도 lifecycle이 필요합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Decision</h2>
+        <div class="decision">
+          <p>
+            <code>rustee-events</code>에 panic-isolated, cancellation-safe <code>EventDeliveryObserver</code>와
+            <code>EventDeliveryObservation</code>을 둡니다. Kafka adapter는 record를 받은 뒤 observation을 시작하고, source offset commit이 성공한 뒤에만
+            <code>acknowledged</code>, <code>retried</code>, <code>dead_lettered</code>를 finish합니다. decode/handler/route/commit failure와 task cancellation은
+            <code>unsettled</code>로 종료합니다.
+          </p>
+        </div>
+        <p>
+          <code>rustee-events-observability</code>는 bounded provider/outcome, in-flight, global duration collector이고,
+          <code>rustee-events-observability-prometheus</code>는 explicit Prometheus text 0.0.4 <code>Cache-Control: no-store</code>
+          response helper입니다. application이 collector 연결, scrape route/isolation, alert/retention과 incident policy를 소유합니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Consequences</h2>
+        <ul>
+          <li>observer result는 handler outcome이 아니라 consumer가 관찰한 source settlement입니다. acknowledged/retried/dead-lettered는 external side effect exactly-once 또는 replay safety를 증명하지 않습니다.</li>
+          <li>metric label은 bounded provider와 fixed outcome뿐입니다. topic, partition, consumer group, offset, event ID/type/version, key, payload, trace carrier, tenant, endpoint와 raw error는 collector와 Prometheus text에 넣지 않습니다.</li>
+          <li>observer panic은 억제되고 source commit/failure route semantics를 바꾸지 않습니다. unfinished observation의 drop은 unsettled이며 exporter implementation은 synchronous aggregate 또는 bounded handoff만 수행해야 합니다.</li>
+          <li>global registry, listener, automatic <code>/metrics</code> route, broker/lag probe, alert threshold, retry/backoff, source group offset modification과 DLQ replay command는 제공하지 않습니다.</li>
+          <li>real Kafka contract는 successful source commit 뒤 acknowledged, retry/DLQ route 및 source commit 뒤 retried/dead-lettered, in-flight rebalance 뒤 source commit failure의 unsettled를 검증합니다. broker container가 없는 local default test는 이를 실행하지 않으며 CI/native qualification이 담당합니다.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Alternatives</h2>
+        <table>
+          <thead><tr><th>대안</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td>handler return 직후 success metric 기록</td><td>Kafka source commit과 failure-route persistence failure를 감추므로 채택하지 않습니다.</td></tr>
+            <tr><td>topic/partition/offset/error를 Prometheus label로 사용</td><td>unbounded cardinality와 operational detail leakage를 만들므로 채택하지 않습니다.</td></tr>
+            <tr><td>Kafka crate 안에 global exporter와 automatic route 제공</td><td>scrape authorization, topology, alert owner를 generic adapter가 결정하게 되므로 채택하지 않습니다.</td></tr>
+            <tr><td>observer가 DLQ를 자동 replay하거나 offset을 이동</td><td>incident approval, side-effect idempotency와 reconciliation boundary를 무너뜨리므로 채택하지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer class="doc-footer">
+        <p>Last updated: 2026-08-04. See <a href="./0034-kafka-postgres-delayed-retry.html">ADR 0034</a>, <a href="./0035-kafka-delayed-retry-observability.html">ADR 0035</a>, and <a href="../events.html">Kafka event stream</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>
