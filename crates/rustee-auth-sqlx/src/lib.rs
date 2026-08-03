@@ -151,10 +151,75 @@ impl PostgresApiKeyStore {
         }
     }
 
+    /// Copies one active record's principal and expiry to a distinct replacement fingerprint.
+    ///
+    /// This is an overlap-preserving primitive for a deployment-owned client-key or pepper
+    /// migration. Callers derive `replacement_fingerprint` in their authorized application flow;
+    /// this method never receives a raw API key, changes the source record, or writes a success
+    /// authentication audit event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresApiKeyStoreError::MissingActiveRecord`] when `source` is absent or
+    /// revoked, or [`PostgresApiKeyStoreError::DuplicateFingerprint`] without overwriting an
+    /// existing credential when the replacement fingerprint is already registered.
+    pub async fn clone_active_record(
+        &self,
+        source: ApiKeyRecordId,
+        replacement_fingerprint: ApiKeyFingerprint,
+    ) -> Result<ApiKeyRecordId, PostgresApiKeyStoreError> {
+        let replacement_id = ApiKeyRecordId(Uuid::new_v4());
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(PostgresApiKeyStoreError::storage)?;
+        let inserted = sqlx::query(
+            "WITH source AS ( \
+             SELECT principal, expires_at FROM rustee_api_key_credentials \
+             WHERE key_id = $1 AND status = 'active' FOR UPDATE \
+             ) \
+             INSERT INTO rustee_api_key_credentials (key_id, fingerprint, principal, expires_at) \
+             SELECT $2, $3, source.principal, source.expires_at FROM source \
+             ON CONFLICT (fingerprint) DO NOTHING",
+        )
+        .bind(source.0)
+        .bind(replacement_id.0)
+        .bind(replacement_fingerprint.as_bytes().as_slice())
+        .execute(&mut *transaction)
+        .await
+        .map_err(PostgresApiKeyStoreError::storage)?;
+        if inserted.rows_affected() == 1 {
+            transaction
+                .commit()
+                .await
+                .map_err(PostgresApiKeyStoreError::storage)?;
+            return Ok(replacement_id);
+        }
+
+        let source_is_active: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM rustee_api_key_credentials WHERE key_id = $1 AND status = 'active')",
+        )
+        .bind(source.0)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(PostgresApiKeyStoreError::storage)?;
+        transaction
+            .rollback()
+            .await
+            .map_err(PostgresApiKeyStoreError::storage)?;
+        if source_is_active {
+            Err(PostgresApiKeyStoreError::DuplicateFingerprint)
+        } else {
+            Err(PostgresApiKeyStoreError::MissingActiveRecord)
+        }
+    }
+
     /// Atomically registers a replacement fingerprint and revokes the previous active record.
     ///
-    /// A replacement can coexist with the current record when callers use [`Self::register`]
-    /// first; this method instead enforces a no-overlap rotation transaction.
+    /// A replacement can coexist with the current record when callers use
+    /// [`Self::clone_active_record`] or [`Self::register`] first; this method instead enforces a
+    /// no-overlap rotation transaction.
     ///
     /// # Errors
     ///

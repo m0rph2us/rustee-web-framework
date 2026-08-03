@@ -175,6 +175,86 @@ async fn rotating_authenticator_reads_a_retained_pepper_record_and_audits_only_t
 
 #[tokio::test]
 #[ignore = "requires a PostgreSQL server; CI provisions one"]
+async fn active_record_clone_preserves_metadata_without_audit_or_source_revocation() {
+    let pool = pool().await;
+    reset_schema(&pool).await;
+    let store = PostgresApiKeyStore::new(pool.clone());
+    let source_fingerprint = fingerprint("api-key-migration-source");
+    let expires_at = SystemTime::now()
+        .checked_add(Duration::from_secs(60))
+        .unwrap();
+    let source_id = store
+        .register(
+            ApiKeyRegistration::new(source_fingerprint.clone(), principal("service-migration"))
+                .expires_at(expires_at),
+        )
+        .await
+        .unwrap();
+    let replacement_fingerprint = ApiKeyPepper::new([12; 32])
+        .unwrap()
+        .fingerprint("api-key-migration-source")
+        .unwrap();
+    let replacement_id = store
+        .clone_active_record(source_id, replacement_fingerprint.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.authenticate(source_fingerprint).await.unwrap(),
+        principal("service-migration")
+    );
+    assert_eq!(
+        store
+            .authenticate(replacement_fingerprint.clone())
+            .await
+            .unwrap(),
+        principal("service-migration")
+    );
+    let copied_expiry: bool = sqlx::query_scalar(
+        "SELECT source.expires_at = replacement.expires_at \
+         FROM rustee_api_key_credentials AS source, rustee_api_key_credentials AS replacement \
+         WHERE source.key_id = $1 AND replacement.key_id = $2",
+    )
+    .bind(source_id.as_uuid())
+    .bind(replacement_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(copied_expiry);
+    let source_audits: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM rustee_api_key_authentication_audit WHERE key_id = $1",
+    )
+    .bind(source_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let replacement_audits: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM rustee_api_key_authentication_audit WHERE key_id = $1",
+    )
+    .bind(replacement_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(source_audits, 1);
+    assert_eq!(replacement_audits, 1);
+
+    assert!(matches!(
+        store
+            .clone_active_record(source_id, replacement_fingerprint)
+            .await,
+        Err(PostgresApiKeyStoreError::DuplicateFingerprint)
+    ));
+    assert!(store.revoke(source_id).await.unwrap());
+    assert!(matches!(
+        store
+            .clone_active_record(source_id, fingerprint("api-key-migration-after-revoke"))
+            .await,
+        Err(PostgresApiKeyStoreError::MissingActiveRecord)
+    ));
+}
+
+#[tokio::test]
+#[ignore = "requires a PostgreSQL server; CI provisions one"]
 async fn expired_and_duplicate_fingerprints_are_rejected_without_overwriting_an_active_record() {
     let pool = pool().await;
     reset_schema(&pool).await;

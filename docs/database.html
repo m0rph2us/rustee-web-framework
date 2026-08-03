@@ -67,7 +67,7 @@
             </tr>
             <tr>
               <td>API-key identity store</td>
-              <td>선택적 <code>rustee-auth-sqlx</code> fingerprint record, bounded readiness, rotation/revocation와 successful-auth audit</td>
+              <td>선택적 <code>rustee-auth-sqlx</code> fingerprint record, bounded readiness, overlap metadata clone, rotation/revocation와 successful-auth audit</td>
               <td>deployment migration, pepper/KMS delivery, principal JSON access/revision, retention, database outage/recovery와 backup policy</td>
             </tr>
             <tr>
@@ -89,7 +89,7 @@
         <p>
           Rustee는 async Tokio 기반과 잘 맞고 SQL을 숨기지 않는 SQLx를 첫 공식 integration 대상으로 삼습니다.
           SQLx는 PostgreSQL, MySQL/MariaDB, SQLite 풀과 타입 기반 row 변환을 제공하며, 선택하면 compile-time query
-          검증도 사용할 수 있습니다. Rustee는 Stage 5에서 선택적 <code>rustee-sqlx</code> crate를 제공합니다. 현재 공식 지원선은 PostgreSQL이며 SQLite는 opt-in candidate입니다. MySQL/MariaDB feature는 upstream RSA 의존성의 무패치 security advisory가 해소될 때까지 제공하지 않습니다. <code>rustee-auth-sqlx</code>는 이 pool 위에서 keyed API-key fingerprint record와 successful-auth audit을 제공하는 optional identity adapter입니다. PostgreSQL 16 CI contract는 bounded pool connect, readiness query, simple query와 pool close, tenant-scoped transaction과 row-level security의 read/write 격리, API-key active/revoked/expiry/rotation/audit 및 retained-pepper dual-read transaction을 확인합니다. CI는 database 중단 중 generic initial-pool과 API-key store 500ms readiness의 credential/endpoint-free failure를 확인하고 restart 뒤 SQLx, API-key store, outbox, AI audit/usage ledger, checkpoint suite를 다시 실행합니다.
+          검증도 사용할 수 있습니다. Rustee는 Stage 5에서 선택적 <code>rustee-sqlx</code> crate를 제공합니다. 현재 공식 지원선은 PostgreSQL이며 SQLite는 opt-in candidate입니다. MySQL/MariaDB feature는 upstream RSA 의존성의 무패치 security advisory가 해소될 때까지 제공하지 않습니다. <code>rustee-auth-sqlx</code>는 이 pool 위에서 keyed API-key fingerprint record와 successful-auth audit을 제공하는 optional identity adapter입니다. PostgreSQL 16 CI contract는 bounded pool connect, readiness query, simple query와 pool close, tenant-scoped transaction과 row-level security의 read/write 격리, API-key active/revoked/expiry/rotation/audit, retained-pepper dual-read와 source-metadata replacement fingerprint clone transaction을 확인합니다. CI는 database 중단 중 generic initial-pool과 API-key store 500ms readiness의 credential/endpoint-free failure를 확인하고 restart 뒤 SQLx, API-key store, outbox, AI audit/usage ledger, checkpoint suite를 다시 실행합니다.
         </p>
         <div class="decision">
           <p>
