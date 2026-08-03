@@ -43,7 +43,7 @@
           <li>credential row에는 32-byte fingerprint, serialized <code>Principal</code>, active/revoked state, optional expiry, created/revoked/last-used metadata만 저장합니다. raw API key, pepper, header name은 schema와 adapter API에 없습니다.</li>
           <li><code>authenticate</code>는 database clock으로 active/expiry condition을 만족하는 row 하나를 update하고 principal을 읽은 뒤 success audit row를 append하고 commit합니다. 어느 단계든 실패하면 sanitized unavailable response가 되고 successful authentication을 반환하지 않습니다.</li>
           <li>unknown, revoked, expired fingerprint는 rejected result이며 audit row를 만들지 않습니다. success audit은 fingerprint가 아니라 opaque record UUID만 참조합니다.</li>
-          <li><code>register</code>는 duplicate fingerprint를 overwrite하지 않습니다. <code>clone_active_record</code>는 replacement fingerprint에 active source principal/expiry를 lock-protected transaction으로 copy하고 source/replacement audit을 만들지 않습니다. <code>rotate</code>는 replacement insert와 previous active record revocation을 one transaction으로 묶고, <code>revoke</code>는 idempotent state transition입니다.</li>
+          <li><code>register</code>는 duplicate fingerprint를 overwrite하지 않습니다. <code>clone_active_record</code>는 replacement fingerprint에 database-clock active/unexpired source principal/expiry를 lock-protected transaction으로 copy하고 source/replacement audit을 만들지 않습니다. <code>rotate</code>도 database-clock active/unexpired previous record만 one transaction에서 revoke하며, <code>revoke</code>는 idempotent state transition입니다.</li>
           <li>adapter는 PostgreSQL restore/outage, migration ordering, backup access, serialized principal evolution, retention, RLS policy, pepper/KMS dual-read migration과 client-key issuance를 소유하지 않습니다.</li>
         </ul>
       </section>
@@ -73,7 +73,7 @@
         <h2>Verification and follow-up</h2>
         <p>
           PostgreSQL 16 container contract는 active last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection,
-          no-overlap rotation, active record metadata clone/no clone audit, repeated revocation, stopped database에서 bounded/redacted store readiness failure와 restart 뒤 requalification을 확인합니다. migration/restore drill, backup/RLS access,
+          database-clock active/unexpired-source only rotation and metadata clone/no clone audit, repeated revocation, stopped database에서 bounded/redacted store readiness failure와 restart 뒤 requalification을 확인합니다. migration/restore drill, backup/RLS access,
           KMS/pepper rotation, audit retention과 alert owner는 qualification register의 deployment-owned gate입니다.
         </p>
       </section>

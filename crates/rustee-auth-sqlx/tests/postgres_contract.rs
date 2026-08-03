@@ -255,12 +255,12 @@ async fn active_record_clone_preserves_metadata_without_audit_or_source_revocati
 
 #[tokio::test]
 #[ignore = "requires a PostgreSQL server; CI provisions one"]
-async fn expired_and_duplicate_fingerprints_are_rejected_without_overwriting_an_active_record() {
+async fn expired_and_duplicate_credentials_reject_unsafe_changes_without_side_effects() {
     let pool = pool().await;
     reset_schema(&pool).await;
     let store = PostgresApiKeyStore::new(pool.clone());
     let active_fingerprint = fingerprint("api-key-active");
-    let active_id = store
+    store
         .register(ApiKeyRegistration::new(
             active_fingerprint.clone(),
             principal("service-active"),
@@ -306,15 +306,30 @@ async fn expired_and_duplicate_fingerprints_are_rejected_without_overwriting_an_
     .await
     .unwrap();
     assert_eq!(expired_audits, 0);
+    assert!(matches!(
+        store
+            .clone_active_record(expired_id, fingerprint("api-key-expired-clone"))
+            .await,
+        Err(PostgresApiKeyStoreError::MissingActiveRecord)
+    ));
+    assert!(matches!(
+        store
+            .rotate(
+                expired_id,
+                ApiKeyRegistration::new(
+                    fingerprint("api-key-expired-rotation"),
+                    principal("service-expired-replacement"),
+                ),
+            )
+            .await,
+        Err(PostgresApiKeyStoreError::MissingActiveRecord)
+    ));
     assert_eq!(
-        sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM rustee_api_key_credentials WHERE key_id = $1",
-        )
-        .bind(active_id.as_uuid())
-        .fetch_one(&pool)
-        .await
-        .unwrap(),
-        1
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM rustee_api_key_credentials")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        2
     );
 }
 

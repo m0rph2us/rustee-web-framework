@@ -151,7 +151,7 @@ impl PostgresApiKeyStore {
         }
     }
 
-    /// Copies one active record's principal and expiry to a distinct replacement fingerprint.
+    /// Copies one active, unexpired record's principal and expiry to a replacement fingerprint.
     ///
     /// This is an overlap-preserving primitive for a deployment-owned client-key or pepper
     /// migration. Callers derive `replacement_fingerprint` in their authorized application flow;
@@ -160,9 +160,10 @@ impl PostgresApiKeyStore {
     ///
     /// # Errors
     ///
-    /// Returns [`PostgresApiKeyStoreError::MissingActiveRecord`] when `source` is absent or
-    /// revoked, or [`PostgresApiKeyStoreError::DuplicateFingerprint`] without overwriting an
-    /// existing credential when the replacement fingerprint is already registered.
+    /// Returns [`PostgresApiKeyStoreError::MissingActiveRecord`] when `source` is absent, revoked,
+    /// or expired according to the database clock, or
+    /// [`PostgresApiKeyStoreError::DuplicateFingerprint`] without overwriting an existing
+    /// credential when the replacement fingerprint is already registered.
     pub async fn clone_active_record(
         &self,
         source: ApiKeyRecordId,
@@ -177,7 +178,8 @@ impl PostgresApiKeyStore {
         let inserted = sqlx::query(
             "WITH source AS ( \
              SELECT principal, expires_at FROM rustee_api_key_credentials \
-             WHERE key_id = $1 AND status = 'active' FOR UPDATE \
+             WHERE key_id = $1 AND status = 'active' \
+               AND (expires_at IS NULL OR expires_at > clock_timestamp()) FOR UPDATE \
              ) \
              INSERT INTO rustee_api_key_credentials (key_id, fingerprint, principal, expires_at) \
              SELECT $2, $3, source.principal, source.expires_at FROM source \
@@ -197,8 +199,10 @@ impl PostgresApiKeyStore {
             return Ok(replacement_id);
         }
 
-        let source_is_active: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM rustee_api_key_credentials WHERE key_id = $1 AND status = 'active')",
+        let source_is_eligible: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM rustee_api_key_credentials \
+             WHERE key_id = $1 AND status = 'active' \
+               AND (expires_at IS NULL OR expires_at > clock_timestamp()))",
         )
         .bind(source.0)
         .fetch_one(&mut *transaction)
@@ -208,7 +212,7 @@ impl PostgresApiKeyStore {
             .rollback()
             .await
             .map_err(PostgresApiKeyStoreError::storage)?;
-        if source_is_active {
+        if source_is_eligible {
             Err(PostgresApiKeyStoreError::DuplicateFingerprint)
         } else {
             Err(PostgresApiKeyStoreError::MissingActiveRecord)
@@ -224,7 +228,8 @@ impl PostgresApiKeyStore {
     /// # Errors
     ///
     /// Returns [`PostgresApiKeyStoreError::MissingActiveRecord`] when the previous record was
-    /// absent or already revoked. In either error case the replacement is not retained.
+    /// absent, revoked, or expired according to the database clock. In either error case the
+    /// replacement is not retained.
     pub async fn rotate(
         &self,
         previous: ApiKeyRecordId,
@@ -260,7 +265,8 @@ impl PostgresApiKeyStore {
         let revoked = sqlx::query(
             "UPDATE rustee_api_key_credentials \
              SET status = 'revoked', revoked_at = clock_timestamp() \
-             WHERE key_id = $1 AND status = 'active'",
+             WHERE key_id = $1 AND status = 'active' \
+               AND (expires_at IS NULL OR expires_at > clock_timestamp())",
         )
         .bind(previous.0)
         .execute(&mut *transaction)
@@ -372,8 +378,8 @@ pub enum PostgresApiKeyStoreError {
     /// A fingerprint was already associated with a different record and was not overwritten.
     #[error("API-key fingerprint is already registered")]
     DuplicateFingerprint,
-    /// A client-key rotation referenced no currently active credential.
-    #[error("API-key rotation requires an active previous record")]
+    /// A client-key rotation referenced no currently active, unexpired credential.
+    #[error("API-key rotation requires an active, unexpired previous record")]
     MissingActiveRecord,
     /// The supplied expiry cannot be represented as a non-negative Unix timestamp.
     #[error("API-key expiry is invalid")]
