@@ -65,6 +65,9 @@
             <tr><td><code>hello-world</code></td><td>public API compile example이며 registry package가 아닙니다.</td></tr>
             <tr><td><code>json-api</code></td><td>typed path/query/JSON/state와 invalid input response를 in-process로 검증하는 public API example이며 registry package가 아닙니다.</td></tr>
             <tr><td><code>middleware-example</code></td><td>explicit CORS/request ID/panic/compression layer composition을 검증하는 public middleware example이며 registry package가 아닙니다.</td></tr>
+            <tr><td><code>security-jwt</code></td><td>HMAC JWT bearer route와 missing credential challenge를 in-process로 검증하는 public security example이며 registry package가 아닙니다.</td></tr>
+            <tr><td><code>jobs-example</code></td><td>typed durable envelope의 local publish/registry dispatch를 in-process로 검증하는 public job example이며 registry package가 아닙니다.</td></tr>
+            <tr><td><code>ai-pipeline</code></td><td>OpenAI-backed HTTP pipeline의 fake-provider response와 failure redaction을 in-process로 검증하는 public AI example이며 registry package가 아닙니다.</td></tr>
           </tbody>
         </table>
       </section>
@@ -164,7 +167,10 @@
           { "name": "rustee-macro-alias-fixture", "track": "workspace", "intent": "workspace-only" },
           { "name": "hello-world", "track": "example", "intent": "workspace-only" },
           { "name": "json-api", "track": "example", "intent": "workspace-only" },
-          { "name": "middleware-example", "track": "example", "intent": "workspace-only" }
+          { "name": "middleware-example", "track": "example", "intent": "workspace-only" },
+          { "name": "security-jwt", "track": "example", "intent": "workspace-only" },
+          { "name": "jobs-example", "track": "example", "intent": "workspace-only" },
+          { "name": "ai-pipeline", "track": "example", "intent": "workspace-only" }
         ]
       }
     </script>

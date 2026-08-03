@@ -153,7 +153,10 @@ fuzz/
 examples/
   hello-world/              quickstart compile check
   json-api/                 typed JSON/API representative in-process flow
-  middleware/               explicit middleware representative in-process flow</code></pre>
+  middleware/               explicit middleware representative in-process flow
+  security-jwt/             signed bearer and missing-credential in-process flow
+  jobs/                     typed publish and registry-dispatch in-process flow
+  ai-pipeline/              fake-provider HTTP pipeline and failure-redaction flow</code></pre>
         <p>
           <code>rustee-test</code>는 dev-dependency로 사용 가능한 작은 helper crate입니다. <code>TestApp</code>은 in-process request,
           JSON/header/body construction, bounded buffered response, JSON/text decode와 body/header value를 render하지 않는 status/header assertion을 제공합니다.
@@ -252,7 +255,7 @@ examples/
           <li>native provider feature: <code>rustee-events-kafka --features rdkafka</code>, <code>rustee-events-kafka-sqlx --features rdkafka</code>, delayed-retry observer와 Prometheus adapter는 librdkafka CMake build와 Kafka broker contract를 포함한 별도 CI lane으로 실행합니다. 로컬에서 CMake 또는 native C++ toolchain이 없으면 기본 workspace test에는 영향을 주지 않지만 feature 검증은 실행할 수 없습니다.</li>
           <li>container: 각 integration의 canonical backend version과 지원 범위 내 최신 backend version을 pinned image로 실행</li>
           <li>platform: Linux full test, macOS/Windows workspace all-target compile plus MCP stdio fixture runtime test; 지원이 확정된 target만 release gate로 승격</li>
-          <li>examples: <code>hello-world</code>, <code>json-api</code>, <code>middleware-example</code> public quickstart/API/middleware 흐름을 compile하고 JSON API와 middleware 대표 흐름을 in-process로 실행합니다. security/job/AI 예제는 별도 tracked expansion입니다.</li>
+          <li>examples: <code>hello-world</code>, <code>json-api</code>, <code>middleware-example</code>, <code>security-jwt</code>, <code>jobs-example</code>, <code>ai-pipeline</code>은 public quickstart/API/middleware/security/job/AI 흐름을 compile합니다. JSON API, middleware, signed/missing JWT, typed publish-to-registry dispatch, fake-provider AI HTTP response와 provider failure redaction을 in-process로 실행합니다. real broker, OIDC/JWKS와 billable AI provider qualification은 각 container 또는 opt-in provider gate에 남습니다.</li>
         </ul>
       </section>
 

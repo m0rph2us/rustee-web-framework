@@ -78,6 +78,9 @@ members = [
   "examples/hello-world",
   "examples/json-api",
   "examples/middleware",
+  "examples/security-jwt",
+  "examples/jobs",
+  "examples/ai-pipeline",
 ]
 default-members = [
   "crates/rustee",

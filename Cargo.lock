@@ -42,6 +42,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-pipeline"
+version = "0.1.0"
+dependencies = [
+ "rustee",
+ "rustee-ai",
+ "rustee-ai-openai",
+ "rustee-ai-test",
+ "rustee-test",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2298,6 +2311,16 @@ checksum = "38c0b942f458fe50cdac086d2f946512305e5631e720728f2a61aabcd47a6264"
 dependencies = [
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jobs-example"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "rustee-jobs",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -4913,6 +4936,22 @@ checksum = "6ce2691df843ecc5d231c0b14ece2acc3efb62c0a398c7e1d875f3983ce020e3"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "security-jwt"
+version = "0.1.0"
+dependencies = [
+ "http 1.5.0",
+ "http-body-util",
+ "jsonwebtoken",
+ "rustee",
+ "rustee-auth",
+ "rustee-auth-jwt",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
 ]
 
 [[package]]

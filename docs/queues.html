@@ -304,6 +304,7 @@ worker
           attempt를 기록합니다. strict decode가 기본이며 older version은 명시적 <code>JobUpcaster</code>를 등록한 handler만 처리합니다.
           credential, raw token, 불필요한 개인정보는 payload와 observability attribute에 넣지 않습니다.
         </p>
+        <p><a href="./examples.html">공식 예제</a>의 <code>jobs-example</code>은 같은 public envelope를 application-owned local publisher에 기록한 뒤 registry가 typed handler로 dispatch하는 대표 흐름을 in-process로 고정합니다. local publisher는 지속성, ack, retry 또는 DLQ를 제공하지 않으므로 운영에서는 NATS, Redis Streams, RabbitMQ, SQS 또는 PostgreSQL outbox adapter와 해당 provider contract를 선택해야 합니다.</p>
       </section>
 
       <section>

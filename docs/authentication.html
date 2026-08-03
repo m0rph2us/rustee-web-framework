@@ -159,6 +159,7 @@ async fn current_user(AuthUser(principal): AuthUser) -&gt; Json&lt;Profile&gt; {
     Json(Profile::from(principal))
 }</code></pre>
         <p><code>App::nest</code>는 <code>/api</code>를 제거한 request URI와 query를 <code>protected</code> service에 넘기므로 inner route는 계속 <code>/me</code>로 선언합니다. nested route의 observability template은 외부 <code>/api/me</code>로 유지하고, prefix 아래의 auth rejection과 fallback은 child service가 소유합니다. <code>rustee-auth</code>는 provider-neutral <code>Principal</code>, <code>AuthUser</code> extractor, bearer <code>AuthLayer</code>, scope/role/permission/tenant policy layer를 구현합니다. <code>rustee-auth-jwt</code>는 위 경로의 static-key verifier를 구현합니다. <code>Principal</code>은 subject, issuer, tenant, 검증된 scope, role, direct permission을 표현하지만 raw token을 보관하거나 재노출하지 않습니다.</p>
+        <p><a href="./examples.html">공식 예제</a>의 <code>security-jwt</code>는 <code>JWT_HMAC_SECRET</code>을 startup에서 읽어 <code>/me</code> route에 bearer layer를 적용합니다. 예제 test는 signed token의 principal-only handler 전달과 missing credential의 <code>WWW-Authenticate: Bearer</code> challenge를 in-process로 확인합니다. 운영 OIDC/JWKS, key rotation과 provider outage evidence는 이 예제의 범위가 아닙니다.</p>
       </section>
 
       <section>

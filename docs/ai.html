@@ -237,6 +237,7 @@ let reply = ai.chat("support.default")
           consumer가 중간에 drop한 stream에는 완료를 추측하지 않습니다. <code>rustee-observability-opentelemetry</code> subscriber layer가 이 span을 export하며,
           exporter, sampling, retention, provider billing reconciliation과 outbound trace header injection은 application이 명시적으로 소유합니다.
         </p>
+        <p><a href="./examples.html">공식 예제</a>의 <code>ai-pipeline</code>은 <code>OPENAI_API_KEY</code>로 <code>OpenAiResponsesProvider</code>를 만들고, <code>support.default</code> model alias를 쓰는 <code>/support/answer</code> HTTP route에 <code>AiPipeline</code>을 주입합니다. test는 billable request 없이 <code>RecordedAiProvider</code>로 response mapping과 provider failure의 generic 500 정규화를 확인합니다. tenant authorization, budget/usage ledger, live credential/spending evidence와 retention은 application 및 release gate가 소유합니다.</p>
         <div class="grid">
           <article class="card">
             <h3>Tenant 및 권한</h3>
