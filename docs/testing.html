@@ -262,7 +262,7 @@ examples/
           API-key header name은 configuration 시 HTTP field-name으로 검증하고 value는 exactly one printable ASCII entry at most 4 KiB로 제한합니다.
           keyed authenticator test는 same key의 stable 32-byte fingerprint, distinct key separation, non-zero pepper requirement, redacted <code>Debug</code>,
           invalid key pre-store rejection과 fake fingerprint store의 principal handoff를 확인합니다. optional <code>rustee-auth-sqlx</code> PostgreSQL 16 contract는
-          active lookup의 last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection, no-overlap rotation와 repeated revocation을 확인합니다.
+          active lookup의 last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection, no-overlap rotation, repeated revocation과 active/retired pepper dual-read의 one-match audit을 확인합니다.
           CI는 이어 PostgreSQL을 중지해 store readiness가 500ms deadline 안에서 endpoint를 render하지 않는 failure로 끝나는지, restart 뒤 같은 durable credential contract가 다시 성공하는지도 확인합니다.
           static API-key mapping은 local/test only이며 real deployment의 client-key/pepper migration, KMS delivery, audit retention과 provider-specific constant-time lookup은 separate provider integration gate입니다.
         </p>

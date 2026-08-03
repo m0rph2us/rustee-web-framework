@@ -3,7 +3,8 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use rustee_auth::{
-    ApiKeyError, ApiKeyFingerprint, ApiKeyFingerprintStore, ApiKeyPepper, Principal,
+    ApiKeyAuthenticator, ApiKeyError, ApiKeyFingerprint, ApiKeyFingerprintStore, ApiKeyPepper,
+    ApiKeyPepperRing, Principal, RotatingKeyedApiKeyAuthenticator,
 };
 use rustee_auth_sqlx::{
     API_KEY_STORE_MIGRATION_SQL, ApiKeyRegistration, PostgresApiKeyStore, PostgresApiKeyStoreError,
@@ -126,6 +127,50 @@ async fn authentication_updates_last_used_and_audit_then_enforces_rotation_and_r
     .await
     .unwrap();
     assert_eq!(replacement_audits, 1);
+}
+
+#[tokio::test]
+#[ignore = "requires a PostgreSQL server; CI provisions one"]
+async fn rotating_authenticator_reads_a_retained_pepper_record_and_audits_only_the_match() {
+    let pool = pool().await;
+    reset_schema(&pool).await;
+    let store = PostgresApiKeyStore::new(pool.clone());
+    let active_pepper = ApiKeyPepper::new([13; 32]).unwrap();
+    let retired_pepper = ApiKeyPepper::new([12; 32]).unwrap();
+    let raw_key = "api-key-pepper-migration";
+    let retired_fingerprint = retired_pepper.fingerprint(raw_key).unwrap();
+    let record_id = store
+        .register(ApiKeyRegistration::new(
+            retired_fingerprint,
+            principal("service-retained-pepper"),
+        ))
+        .await
+        .unwrap();
+    let authenticator = RotatingKeyedApiKeyAuthenticator::new(
+        ApiKeyPepperRing::with_retired(active_pepper, [retired_pepper]).unwrap(),
+        store,
+    );
+
+    assert_eq!(
+        authenticator.authenticate(raw_key).await.unwrap(),
+        principal("service-retained-pepper")
+    );
+    let last_used_count: i64 = sqlx::query_scalar(
+        "SELECT last_used_count FROM rustee_api_key_credentials WHERE key_id = $1",
+    )
+    .bind(record_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM rustee_api_key_authentication_audit WHERE key_id = $1",
+    )
+    .bind(record_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(last_used_count, 1);
+    assert_eq!(audit_count, 1);
 }
 
 #[tokio::test]

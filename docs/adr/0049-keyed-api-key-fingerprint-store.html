@@ -42,7 +42,7 @@
           <li><code>ApiKeyPepper</code>는 application이 protected secret delivery로 공급하는 32-byte, non-zero deployment secret입니다. serializable/displayable하지 않고 <code>Debug</code>에서 redacted되며 drop 시 memory를 zeroize합니다.</li>
           <li><code>KeyedApiKeyAuthenticator</code>는 valid raw key에서 HMAC-SHA-256 <code>ApiKeyFingerprint</code>를 만들고 <code>ApiKeyFingerprintStore</code>에는 opaque binary fingerprint만 전달합니다. existing <code>ApiKeyAuthenticator</code> contract를 구현하므로 HTTP layer의 response semantics는 바꾸지 않습니다.</li>
           <li>store는 active/revoked/expired 판정과 principal mapping을 소유합니다. successful lookup, last-used update와 audit append를 provider transaction에서 원자적으로 처리할 수 있으며 unknown/revoked/expired는 <code>RejectedApiKey</code>, provider failure는 <code>ProviderUnavailable</code>으로 반환합니다.</li>
-          <li>client-key rotation은 하나의 principal에 복수 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부합니다. pepper rotation은 application-owned secret migration이며, retained prior pepper, dual lookup window, backfill/rollback과 retirement 시점을 deployment가 명시합니다. framework는 automatic fallback을 제공하지 않습니다.</li>
+          <li>client-key rotation은 하나의 principal에 복수 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부합니다. <code>ApiKeyPepperRing</code>과 <code>RotatingKeyedApiKeyAuthenticator</code>는 active pepper 뒤 최대 두 개의 distinct retained pepper를 <code>RejectedApiKey</code>일 때만 순차 조회합니다. provider failure는 즉시 반환하므로 outage를 credential miss로 바꾸지 않습니다. replacement fingerprint registration/backfill, rollback과 retirement 시점은 deployment가 명시합니다.</li>
           <li>Rustee는 generic database schema, secret manager/KMS, audit retention, rate-limit fingerprint, event delivery, provider-specific lookup implementation을 규정하지 않습니다. <code>rustee-auth-sqlx</code>는 PostgreSQL reference schema/adapter를 별도 crate로 제공하며 production store는 raw key와 fingerprint를 일반 log/trace에 남기지 않습니다.</li>
         </ul>
       </section>
@@ -51,7 +51,7 @@
         <h2>Consequences</h2>
         <ul>
           <li>provider store API의 credential input이 fixed 32-byte binary value로 제한되고 fake store로 authentication contract를 unit test할 수 있습니다.</li>
-          <li>pepper는 database backup과 독립적으로 보호하고 rotation을 실제 운영 절차로 검증해야 합니다. HMAC fingerprint는 password hashing policy나 API-key entropy policy를 대체하지 않습니다.</li>
+          <li>pepper는 database backup과 독립적으로 보호하고 rotation을 실제 운영 절차로 검증해야 합니다. bounded dual-read는 raw key를 store에 보내거나 old record를 자동 변경하지 않으므로 application은 replacement fingerprint registration과 retained window 종료를 명시합니다. HMAC fingerprint는 password hashing policy나 API-key entropy policy를 대체하지 않습니다.</li>
           <li>key ID/prefix는 diagnostic이나 routing 힌트가 될 수 있지만 authorization 결정이나 secret value의 대체물로 자동 사용하지 않습니다.</li>
         </ul>
       </section>
@@ -72,8 +72,8 @@
         <h2>Verification and follow-up</h2>
         <p>
           unit contract는 deterministic fingerprint, distinct input separation, fixed length, all-zero pepper rejection, redacted debug, invalid-key
-          pre-store rejection과 principal handoff를 확인합니다. optional PostgreSQL adapter contract는 active/revoked/expired behavior, duplicate non-overwrite,
-          no-overlap client-key rotation와 atomic success audit를 확인합니다. pepper rotation and rollback, secret delivery, retention, outage recovery는 별도 gate로 기록합니다.
+          pre-store rejection, bounded/distinct/redacted pepper ring, retired-pepper lookup order, outage fail-closed와 principal handoff를 확인합니다. optional PostgreSQL adapter contract는 active/revoked/expired behavior, duplicate non-overwrite,
+          no-overlap client-key rotation, retained-pepper record의 atomic success audit를 확인합니다. pepper replacement registration/backfill and rollback, secret delivery, retention, outage recovery는 별도 gate로 기록합니다.
         </p>
       </section>
 

@@ -362,8 +362,8 @@ async fn login_callback(
             </tr>
             <tr>
               <td>API key service authentication</td>
-              <td><code>rustee-auth::ApiKeyLayer::header</code>, <code>KeyedApiKeyAuthenticator&lt;ApiKeyFingerprintStore&gt;</code>, optional <code>rustee-auth-sqlx</code></td>
-              <td>explicit header field name, exactly one printable ASCII value at most 4 KiB, no query/cookie credential, HMAC-SHA-256 keyed fingerprint lookup, store-owned rotation/revocation/audit, raw-key-free error/logging</td>
+              <td><code>rustee-auth::ApiKeyLayer::header</code>, <code>KeyedApiKeyAuthenticator&lt;ApiKeyFingerprintStore&gt;</code>, <code>RotatingKeyedApiKeyAuthenticator</code>, optional <code>rustee-auth-sqlx</code></td>
+              <td>explicit header field name, exactly one printable ASCII value at most 4 KiB, no query/cookie credential, HMAC-SHA-256 keyed fingerprint lookup, bounded active/retired pepper dual-read, store-owned rotation/revocation/audit, raw-key-free error/logging</td>
             </tr>
             <tr>
               <td>Cookie session</td>
@@ -404,18 +404,29 @@ let api_key_store = PostgresApiKeyStore::new(pool);
 let api_key_authenticator = KeyedApiKeyAuthenticator::new(pepper, api_key_store);
 let protected = ApiKeyLayer::header("X-API-Key", api_key_authenticator)?
     .layer(App::new().get("/service", handler));</code></pre>
+        <pre><code>use rustee_auth::{
+    ApiKeyPepper, ApiKeyPepperRing, RotatingKeyedApiKeyAuthenticator,
+};
+
+// Retain at most two prior peppers for a time-bounded migration window.
+let peppers = ApiKeyPepperRing::with_retired(
+    ApiKeyPepper::new(active_secret_bytes)?,
+    [ApiKeyPepper::new(retired_secret_bytes)?],
+)?;
+let api_key_authenticator = RotatingKeyedApiKeyAuthenticator::new(peppers, api_key_store);</code></pre>
         <p>
           <code>KeyedApiKeyAuthenticator</code>는 valid raw key에서 HMAC-SHA-256 <code>ApiKeyFingerprint</code>를 만들고
           <code>ApiKeyFingerprintStore</code>에는 그 opaque binary value만 전달합니다. store는 unknown/revoked/expired를 rejection으로,
           infrastructure failure를 unavailable로 정규화하며 successful lookup과 last-used/audit update를 하나의 transaction으로 처리할 수 있습니다.
-          client key rotation은 동일 principal에 여러 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부하는 방식으로 구현합니다.
+          <code>RotatingKeyedApiKeyAuthenticator</code>는 active fingerprint 다음에 최대 두 retained pepper fingerprint를 순서대로 조회하지만
+          rejection일 때만 다음 후보를 시도하고 store unavailable은 즉시 fail-closed 합니다. client key rotation은 동일 principal에 여러 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부하는 방식으로 구현합니다.
         </p>
         <p>
           pepper는 application의 secret manager 또는 protected configuration에서 공급하는 32-byte, non-zero deployment secret입니다. Rustee는
-          pepper rotation migration, KMS policy, audit retention, rate-limit key derivation 또는 provider-specific
+          bounded dual-read helper를 제공하지만 pepper replacement fingerprint의 backfill, KMS policy, audit retention, rate-limit key derivation 또는 provider-specific
           constant-time lookup을 강제하지 않습니다. <code>rustee-auth-sqlx::PostgresApiKeyStore</code>는 optional reference adapter로
           fingerprint unique record, active/revoked/expiry 판정, database-clock last-used update와 successful-auth audit append를 one transaction으로 처리합니다.
-          application은 deployment migration에 migration SQL을 넣고, pepper dual-read/backfill/retirement 정책을 명시합니다. <code>StaticApiKeyAuthenticator</code>는 test/local example만을 위한 raw in-memory mapping입니다.
+          application은 deployment migration에 migration SQL을 넣고, retained pepper duration, replacement fingerprint registration/backfill과 retirement 정책을 명시합니다. <code>StaticApiKeyAuthenticator</code>는 test/local example만을 위한 raw in-memory mapping입니다.
           query parameter와 cookie API key, automatic OpenAPI-to-middleware wiring은 이 layer의 scope가 아닙니다. 설계 이유와 migration 경계는
           <a href="./adr/0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>와 <a href="./adr/0050-postgres-api-key-store.html">ADR 0050</a>에 기록합니다.
         </p>

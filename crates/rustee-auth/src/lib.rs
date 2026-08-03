@@ -270,6 +270,12 @@ pub enum StaticTokenError {
 const MAX_API_KEY_BYTES: usize = 4 * 1024;
 const API_KEY_PEPPER_BYTES: usize = 32;
 
+/// Maximum number of prior peppers retained by [`ApiKeyPepperRing`].
+///
+/// The active pepper is always tried first, so this limit bounds one authentication to at most
+/// three opaque store lookups during a deployment-managed migration window.
+pub const MAX_RETIRED_API_KEY_PEPPERS: usize = 2;
+
 /// Secret material used to derive API-key lookup fingerprints.
 ///
 /// Load this value from a secret manager or a deployment-owned protected configuration source.
@@ -302,6 +308,10 @@ impl ApiKeyPepper {
             return Err(ApiKeyError::InvalidApiKey);
         }
 
+        self.fingerprint_valid_api_key(api_key)
+    }
+
+    fn fingerprint_valid_api_key(&self, api_key: &str) -> Result<ApiKeyFingerprint, ApiKeyError> {
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.0)
             .map_err(|_| ApiKeyError::ProviderUnavailable)?;
         mac.update(api_key.as_bytes());
@@ -333,6 +343,95 @@ pub enum ApiKeyPepperError {
     /// The all-zero value is not a deployment-held secret.
     #[error("API-key pepper must not be all zero")]
     AllZero,
+}
+
+/// A bounded active-and-retired API-key pepper set for a deployment-managed migration window.
+///
+/// This type derives fingerprints only; it does not persist raw keys, add replacement
+/// fingerprints to a store, select a KMS, or decide when a retired pepper can be removed.
+#[derive(Clone)]
+pub struct ApiKeyPepperRing {
+    active: ApiKeyPepper,
+    retired: Vec<ApiKeyPepper>,
+}
+
+impl ApiKeyPepperRing {
+    /// Creates a ring with one active pepper and no dual-read migration window.
+    #[must_use]
+    pub fn new(active: ApiKeyPepper) -> Self {
+        Self {
+            active,
+            retired: Vec::new(),
+        }
+    }
+
+    /// Creates a ring that tries the active pepper before distinct retained peppers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiKeyPepperRingError::TooManyRetired`] when `retired` exceeds
+    /// [`MAX_RETIRED_API_KEY_PEPPERS`], or [`ApiKeyPepperRingError::DuplicatePepper`] when the
+    /// active or any retained pepper repeats.
+    pub fn with_retired(
+        active: ApiKeyPepper,
+        retired: impl IntoIterator<Item = ApiKeyPepper>,
+    ) -> Result<Self, ApiKeyPepperRingError> {
+        let retired: Vec<_> = retired.into_iter().collect();
+        if retired.len() > MAX_RETIRED_API_KEY_PEPPERS {
+            return Err(ApiKeyPepperRingError::TooManyRetired);
+        }
+        if retired
+            .iter()
+            .any(|candidate| candidate.same_material(&active))
+            || retired.iter().enumerate().any(|(index, candidate)| {
+                retired[..index]
+                    .iter()
+                    .any(|previous| candidate.same_material(previous))
+            })
+        {
+            return Err(ApiKeyPepperRingError::DuplicatePepper);
+        }
+        Ok(Self { active, retired })
+    }
+
+    fn fingerprints(&self, api_key: &str) -> Result<Vec<ApiKeyFingerprint>, ApiKeyError> {
+        if !is_valid_api_key_value(api_key) {
+            return Err(ApiKeyError::InvalidApiKey);
+        }
+
+        let mut fingerprints = Vec::with_capacity(1 + self.retired.len());
+        fingerprints.push(self.active.fingerprint_valid_api_key(api_key)?);
+        for pepper in &self.retired {
+            fingerprints.push(pepper.fingerprint_valid_api_key(api_key)?);
+        }
+        Ok(fingerprints)
+    }
+}
+
+impl fmt::Debug for ApiKeyPepperRing {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ApiKeyPepperRing")
+            .field("retired_pepper_count", &self.retired.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ApiKeyPepper {
+    fn same_material(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+/// Invalid active-and-retired pepper configuration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum ApiKeyPepperRingError {
+    /// Retaining more peppers would exceed the bounded authentication lookup contract.
+    #[error("API-key pepper ring has too many retired peppers")]
+    TooManyRetired,
+    /// Repeated pepper material would create redundant store lookups.
+    #[error("API-key pepper ring peppers must be distinct")]
+    DuplicatePepper,
 }
 
 /// Opaque HMAC-SHA-256 lookup value for one API key.
@@ -397,6 +496,35 @@ impl<S> fmt::Debug for KeyedApiKeyAuthenticator<S> {
     }
 }
 
+/// [`ApiKeyAuthenticator`] implementation with a bounded active-and-retired pepper window.
+///
+/// The active fingerprint is looked up first. A retained fingerprint is attempted only after a
+/// store returns [`ApiKeyError::RejectedApiKey`]; any other store result, including provider
+/// unavailability, stops the sequence immediately. This supports dual-read during a
+/// deployment-managed pepper migration without turning a provider outage into a credential miss.
+#[derive(Clone)]
+pub struct RotatingKeyedApiKeyAuthenticator<S> {
+    peppers: ApiKeyPepperRing,
+    store: S,
+}
+
+impl<S> RotatingKeyedApiKeyAuthenticator<S> {
+    /// Creates an API-key authenticator for a bounded pepper migration window.
+    #[must_use]
+    pub fn new(peppers: ApiKeyPepperRing, store: S) -> Self {
+        Self { peppers, store }
+    }
+}
+
+impl<S> fmt::Debug for RotatingKeyedApiKeyAuthenticator<S> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RotatingKeyedApiKeyAuthenticator")
+            .field("store", &std::any::type_name::<S>())
+            .finish_non_exhaustive()
+    }
+}
+
 /// A failure that is safe to render as an API-key authentication rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ApiKeyError {
@@ -432,6 +560,26 @@ where
         let fingerprint = self.pepper.fingerprint(api_key);
         let store = self.store.clone();
         Box::pin(async move { store.authenticate(fingerprint?).await })
+    }
+}
+
+impl<S> ApiKeyAuthenticator for RotatingKeyedApiKeyAuthenticator<S>
+where
+    S: ApiKeyFingerprintStore,
+{
+    fn authenticate(&self, api_key: &str) -> BoxFuture<'static, Result<Principal, ApiKeyError>> {
+        let fingerprints = self.peppers.fingerprints(api_key);
+        let store = self.store.clone();
+        Box::pin(async move {
+            for fingerprint in fingerprints? {
+                match store.authenticate(fingerprint).await {
+                    Ok(principal) => return Ok(principal),
+                    Err(ApiKeyError::RejectedApiKey) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(ApiKeyError::RejectedApiKey)
+        })
     }
 }
 
@@ -1387,7 +1535,10 @@ fn api_key_authentication_response(error: ApiKeyError) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
 
     use http::{HeaderValue, Request as HttpRequest, StatusCode, header::WWW_AUTHENTICATE};
     use rustee_core::empty_body;
@@ -1403,12 +1554,13 @@ mod tests {
 
     use super::{
         ApiKeyAuthenticator, ApiKeyError, ApiKeyFingerprint, ApiKeyFingerprintStore, ApiKeyLayer,
-        ApiKeyLayerError, ApiKeyPepper, ApiKeyPepperError, AuthError, AuthLayer, AuthUser,
-        BearerAuthenticator, HostTenantResolver, HostTenantResolverError, KeyedApiKeyAuthenticator,
+        ApiKeyLayerError, ApiKeyPepper, ApiKeyPepperError, ApiKeyPepperRing, ApiKeyPepperRingError,
+        AuthError, AuthLayer, AuthUser, BearerAuthenticator, HostTenantResolver,
+        HostTenantResolverError, KeyedApiKeyAuthenticator, MAX_RETIRED_API_KEY_PEPPERS,
         PermissionPolicyError, Principal, RequireAuth, RequirePermissionsLayer, RequireScopesLayer,
-        RequireTenantMatchLayer, RolePolicy, RolePolicyError, ScopePolicyError,
-        StaticApiKeyAuthenticator, StaticApiKeyError, StaticTokenAuthenticator, TenantContext,
-        TenantPolicyError, TenantResolutionLayer, TenantResolver,
+        RequireTenantMatchLayer, RolePolicy, RolePolicyError, RotatingKeyedApiKeyAuthenticator,
+        ScopePolicyError, StaticApiKeyAuthenticator, StaticApiKeyError, StaticTokenAuthenticator,
+        TenantContext, TenantPolicyError, TenantResolutionLayer, TenantResolver,
     };
     use futures_util::future;
 
@@ -1449,6 +1601,35 @@ mod tests {
         ) -> futures_util::future::BoxFuture<'static, Result<Principal, ApiKeyError>> {
             let principal = (fingerprint == self.expected).then(|| self.principal.clone());
             Box::pin(future::ready(principal.ok_or(ApiKeyError::RejectedApiKey)))
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingFingerprintStore {
+        accepted: ApiKeyFingerprint,
+        principal: Principal,
+        attempts: Arc<Mutex<Vec<ApiKeyFingerprint>>>,
+        unavailable: Option<ApiKeyFingerprint>,
+    }
+
+    impl ApiKeyFingerprintStore for RecordingFingerprintStore {
+        fn authenticate(
+            &self,
+            fingerprint: ApiKeyFingerprint,
+        ) -> futures_util::future::BoxFuture<'static, Result<Principal, ApiKeyError>> {
+            let accepted = self.accepted.clone();
+            let principal = self.principal.clone();
+            let attempts = self.attempts.clone();
+            let unavailable = self.unavailable.as_ref() == Some(&fingerprint);
+            Box::pin(async move {
+                attempts.lock().unwrap().push(fingerprint.clone());
+                if unavailable {
+                    return Err(ApiKeyError::ProviderUnavailable);
+                }
+                (fingerprint == accepted)
+                    .then_some(principal)
+                    .ok_or(ApiKeyError::RejectedApiKey)
+            })
         }
     }
 
@@ -1609,6 +1790,86 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn rotating_keyed_api_key_authenticator_tries_a_retired_pepper_only_after_a_rejection() {
+        let active = ApiKeyPepper::new([8; 32]).unwrap();
+        let retired = ApiKeyPepper::new([7; 32]).unwrap();
+        let active_fingerprint = active.fingerprint("local-api-key").unwrap();
+        let retired_fingerprint = retired.fingerprint("local-api-key").unwrap();
+        let attempts = Arc::new(Mutex::new(Vec::new()));
+        let principal = Principal::new("service-client").unwrap();
+        let authenticator = RotatingKeyedApiKeyAuthenticator::new(
+            ApiKeyPepperRing::with_retired(active, [retired]).unwrap(),
+            RecordingFingerprintStore {
+                accepted: retired_fingerprint.clone(),
+                principal: principal.clone(),
+                attempts: attempts.clone(),
+                unavailable: None,
+            },
+        );
+
+        assert_eq!(
+            authenticator.authenticate("local-api-key").await.unwrap(),
+            principal
+        );
+        assert_eq!(
+            *attempts.lock().unwrap(),
+            vec![active_fingerprint, retired_fingerprint]
+        );
+    }
+
+    #[tokio::test]
+    async fn rotating_keyed_api_key_authenticator_fails_closed_without_trying_retired_peppers() {
+        let active = ApiKeyPepper::new([8; 32]).unwrap();
+        let retired = ApiKeyPepper::new([7; 32]).unwrap();
+        let active_fingerprint = active.fingerprint("local-api-key").unwrap();
+        let retired_fingerprint = retired.fingerprint("local-api-key").unwrap();
+        let attempts = Arc::new(Mutex::new(Vec::new()));
+        let authenticator = RotatingKeyedApiKeyAuthenticator::new(
+            ApiKeyPepperRing::with_retired(active, [retired]).unwrap(),
+            RecordingFingerprintStore {
+                accepted: retired_fingerprint,
+                principal: Principal::new("service-client").unwrap(),
+                attempts: attempts.clone(),
+                unavailable: Some(active_fingerprint.clone()),
+            },
+        );
+
+        assert_eq!(
+            authenticator
+                .authenticate("local-api-key")
+                .await
+                .unwrap_err(),
+            ApiKeyError::ProviderUnavailable
+        );
+        assert_eq!(*attempts.lock().unwrap(), vec![active_fingerprint]);
+    }
+
+    #[tokio::test]
+    async fn rotating_keyed_api_key_authenticator_rejects_an_invalid_key_before_store_lookup() {
+        let active = ApiKeyPepper::new([8; 32]).unwrap();
+        let expected = active.fingerprint("local-api-key").unwrap();
+        let attempts = Arc::new(Mutex::new(Vec::new()));
+        let authenticator = RotatingKeyedApiKeyAuthenticator::new(
+            ApiKeyPepperRing::new(active),
+            RecordingFingerprintStore {
+                accepted: expected,
+                principal: Principal::new("service-client").unwrap(),
+                attempts: attempts.clone(),
+                unavailable: None,
+            },
+        );
+
+        assert_eq!(
+            authenticator
+                .authenticate("not a valid key")
+                .await
+                .unwrap_err(),
+            ApiKeyError::InvalidApiKey
+        );
+        assert!(attempts.lock().unwrap().is_empty());
+    }
+
     #[test]
     fn api_key_pepper_fingerprint_is_stable_bounded_and_redacted() {
         let pepper = ApiKeyPepper::new([7; 32]).unwrap();
@@ -1626,6 +1887,32 @@ mod tests {
             ApiKeyPepper::new([0; 32]).unwrap_err(),
             ApiKeyPepperError::AllZero
         );
+    }
+
+    #[test]
+    fn api_key_pepper_ring_is_bounded_distinct_and_redacted() {
+        let active = ApiKeyPepper::new([1; 32]).unwrap();
+        let retired = ApiKeyPepper::new([2; 32]).unwrap();
+        let ring = ApiKeyPepperRing::with_retired(active.clone(), [retired]).unwrap();
+        let rendered = format!("{ring:?}");
+        assert!(rendered.contains("retired_pepper_count: 1"));
+        assert!(!rendered.contains("[1, 1"));
+        assert!(matches!(
+            ApiKeyPepperRing::with_retired(active.clone(), [active.clone()]),
+            Err(ApiKeyPepperRingError::DuplicatePepper)
+        ));
+        assert!(matches!(
+            ApiKeyPepperRing::with_retired(
+                active,
+                [
+                    ApiKeyPepper::new([2; 32]).unwrap(),
+                    ApiKeyPepper::new([3; 32]).unwrap(),
+                    ApiKeyPepper::new([4; 32]).unwrap(),
+                ],
+            ),
+            Err(ApiKeyPepperRingError::TooManyRetired)
+        ));
+        assert_eq!(MAX_RETIRED_API_KEY_PEPPERS, 2);
     }
 
     #[tokio::test]
