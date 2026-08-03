@@ -264,6 +264,7 @@ jobs:
       - run: cargo test -p rustee-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-outbox-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored
+      - run: cargo test -p rustee-auth-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored
@@ -285,6 +286,7 @@ jobs:
       - run: cargo test -p rustee-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-outbox-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored
+      - run: cargo test -p rustee-auth-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored
       - run: cargo test -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored

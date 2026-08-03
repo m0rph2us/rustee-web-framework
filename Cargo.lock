@@ -4047,6 +4047,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustee-auth-sqlx"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "rustee-auth",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rustee-config"
 version = "0.1.0"
 dependencies = [

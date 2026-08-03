@@ -43,7 +43,7 @@
           <li><code>KeyedApiKeyAuthenticator</code>는 valid raw key에서 HMAC-SHA-256 <code>ApiKeyFingerprint</code>를 만들고 <code>ApiKeyFingerprintStore</code>에는 opaque binary fingerprint만 전달합니다. existing <code>ApiKeyAuthenticator</code> contract를 구현하므로 HTTP layer의 response semantics는 바꾸지 않습니다.</li>
           <li>store는 active/revoked/expired 판정과 principal mapping을 소유합니다. successful lookup, last-used update와 audit append를 provider transaction에서 원자적으로 처리할 수 있으며 unknown/revoked/expired는 <code>RejectedApiKey</code>, provider failure는 <code>ProviderUnavailable</code>으로 반환합니다.</li>
           <li>client-key rotation은 하나의 principal에 복수 active fingerprint를 잠시 매핑하고 revoked fingerprint를 store에서 거부합니다. pepper rotation은 application-owned secret migration이며, retained prior pepper, dual lookup window, backfill/rollback과 retirement 시점을 deployment가 명시합니다. framework는 automatic fallback을 제공하지 않습니다.</li>
-          <li>Rustee는 database schema, secret manager/KMS, audit retention, rate-limit fingerprint, event delivery, provider-specific lookup implementation을 규정하지 않습니다. production store는 raw key와 fingerprint를 일반 log/trace에 남기지 않습니다.</li>
+          <li>Rustee는 generic database schema, secret manager/KMS, audit retention, rate-limit fingerprint, event delivery, provider-specific lookup implementation을 규정하지 않습니다. <code>rustee-auth-sqlx</code>는 PostgreSQL reference schema/adapter를 별도 crate로 제공하며 production store는 raw key와 fingerprint를 일반 log/trace에 남기지 않습니다.</li>
         </ul>
       </section>
 
@@ -72,8 +72,8 @@
         <h2>Verification and follow-up</h2>
         <p>
           unit contract는 deterministic fingerprint, distinct input separation, fixed length, all-zero pepper rejection, redacted debug, invalid-key
-          pre-store rejection과 principal handoff를 확인합니다. real provider qualification은 chosen store의 active/revoked/expired behavior, atomic audit,
-          client-key/pepper rotation and rollback, secret delivery, retention, outage recovery를 별도 gate로 기록합니다.
+          pre-store rejection과 principal handoff를 확인합니다. optional PostgreSQL adapter contract는 active/revoked/expired behavior, duplicate non-overwrite,
+          no-overlap client-key rotation와 atomic success audit를 확인합니다. pepper rotation and rollback, secret delivery, retention, outage recovery는 별도 gate로 기록합니다.
         </p>
       </section>
 
@@ -86,7 +86,7 @@
       </section>
 
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../authentication.html">인증과 권한</a>, <a href="../testing.html">테스트 전략</a>, <a href="./0005-authentication-and-authorization.html">ADR 0005</a>, and <a href="./0048-api-key-header-authentication-boundary.html">ADR 0048</a>.</p>
+        <p>Last updated: 2026-08-04. See <a href="../authentication.html">인증과 권한</a>, <a href="../testing.html">테스트 전략</a>, <a href="./0005-authentication-and-authorization.html">ADR 0005</a>, <a href="./0048-api-key-header-authentication-boundary.html">ADR 0048</a>, and <a href="./0050-postgres-api-key-store.html">ADR 0050</a>.</p>
       </footer>
     </main>
   </body>
