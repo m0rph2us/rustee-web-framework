@@ -105,7 +105,7 @@
           <li>v1 hard gate: Rust 1.94.1과 stable에서 Linux CI, core/facade의 public API compatibility baseline, format/lint/unit/wire/doctest/example/link 검증, documented proxy trust/cleartext origin boundary, shutdown/redaction regression입니다.</li>
           <li>v1 release gate: canonical reverse-proxy deployment contract, public <a href="./migration-guide.html">migration guide</a>/<a href="./release-notes.html">release notes</a>, dependency advisory triage와 reproducible source artifact입니다.</li>
           <li>v1 비목표: built-in TLS/ACME, HTTP/2, WebSocket upgrade, generic ORM, universal queue facade, automatic schema migration, automatic AI tool loop, cluster control plane입니다. 필요하면 별도 ADR과 feature track으로 진입합니다.</li>
-          <li>macOS/Windows는 F0에서 compile compatibility를 확인하는 candidate platform입니다. runtime and container-backed support를 약속하려면 별도 CI evidence와 support policy가 필요합니다.</li>
+          <li>macOS/Windows는 every-PR Rust 1.94.1 <code>cargo check --workspace --all-targets</code>와 MCP stdio Rust-fixture lifecycle로 compile compatibility를 확인하는 candidate platform입니다. runtime and container-backed support를 약속하려면 별도 CI evidence와 support policy가 필요합니다.</li>
         </ul>
       </section>
 
