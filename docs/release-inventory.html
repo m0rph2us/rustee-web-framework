@@ -63,6 +63,8 @@
             <tr><td><code>rustee-test-support</code></td><td>workspace integration fixture로만 사용하며 registry에 publish하지 않습니다.</td></tr>
             <tr><td><code>rustee-macro-alias-fixture</code></td><td>renamed facade macro expansion을 검증하는 workspace-only consumer fixture입니다.</td></tr>
             <tr><td><code>hello-world</code></td><td>public API compile example이며 registry package가 아닙니다.</td></tr>
+            <tr><td><code>json-api</code></td><td>typed path/query/JSON/state와 invalid input response를 in-process로 검증하는 public API example이며 registry package가 아닙니다.</td></tr>
+            <tr><td><code>middleware-example</code></td><td>explicit CORS/request ID/panic/compression layer composition을 검증하는 public middleware example이며 registry package가 아닙니다.</td></tr>
           </tbody>
         </table>
       </section>
@@ -160,7 +162,9 @@
           { "name": "rustee-ai-batch-sqlx", "track": "I3", "intent": "candidate" },
           { "name": "rustee-test-support", "track": "workspace", "intent": "workspace-only" },
           { "name": "rustee-macro-alias-fixture", "track": "workspace", "intent": "workspace-only" },
-          { "name": "hello-world", "track": "example", "intent": "workspace-only" }
+          { "name": "hello-world", "track": "example", "intent": "workspace-only" },
+          { "name": "json-api", "track": "example", "intent": "workspace-only" },
+          { "name": "middleware-example", "track": "example", "intent": "workspace-only" }
         ]
       }
     </script>

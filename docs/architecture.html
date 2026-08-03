@@ -110,9 +110,9 @@
     rustee-test-support/ workspace-only fixtures, ports, clocks, and containers
     rustee-macros/       optional routes! builder and FromHeader derive macro
   examples/
-    hello-world/
-    json-api/
-    middleware/
+    hello-world/          JSON greeting and OpenAPI document quickstart
+    json-api/             typed path/query/JSON/state and invalid-input response flow
+    middleware/           explicit CORS/request-ID/panic/compression composition
   docs/
     *.html
     adr/*.html
@@ -203,7 +203,7 @@
             <tr>
               <td>Ergonomics</td>
               <td>명시적 API schema, 테스트 헬퍼, 문서 예제를 제공합니다.</td>
-              <td><code>rustee-openapi</code> (Rustee <code>:parameter</code> route를 OpenAPI <code>{parameter}</code> path로 검증·변환하고, explicit operation/schema/security requirement, static OAuth2 flow/global override와 mutual-TLS document를 JSON response로 제공), <code>rustee-test</code>, examples</td>
+              <td><code>rustee-openapi</code> (Rustee <code>:parameter</code> route를 OpenAPI <code>{parameter}</code> path로 검증·변환하고, explicit operation/schema/security requirement, static OAuth2 flow/global override와 mutual-TLS document를 JSON response로 제공), <code>rustee-test</code>, compile-checked examples (<code>hello-world</code>, <code>json-api</code>, <code>middleware-example</code>)</td>
             </tr>
           </tbody>
         </table>

@@ -76,6 +76,8 @@ members = [
   "crates/rustee-test-support",
   "tests/macro-alias-fixture",
   "examples/hello-world",
+  "examples/json-api",
+  "examples/middleware",
 ]
 default-members = [
   "crates/rustee",

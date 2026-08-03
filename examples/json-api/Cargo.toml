@@ -1,0 +1,20 @@
+[package]
+name = "json-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+description = "Compile-checked typed JSON API example for the Rustee web framework"
+
+[dependencies]
+rustee = { path = "../../crates/rustee", version = "0.1.0" }
+serde.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+rustee-test = { path = "../../crates/rustee-test", version = "0.1.0" }
+
+[lints]
+workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "middleware-example"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+description = "Compile-checked explicit middleware composition example for the Rustee web framework"
+
+[dependencies]
+http.workspace = true
+rustee = { path = "../../crates/rustee", version = "0.1.0" }
+rustee-middleware = { path = "../../crates/rustee-middleware", version = "0.1.0" }
+rustee-observability = { path = "../../crates/rustee-observability", version = "0.1.0" }
+serde.workspace = true
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true
