@@ -9,6 +9,7 @@ description = "Exporter-neutral metrics for Rustee event-stream delivery"
 
 [dependencies]
 rustee-events = { path = "../rustee-events", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [lints]
 workspace = true

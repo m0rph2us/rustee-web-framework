@@ -162,7 +162,10 @@ where
 }
 
 /// Sanitized durable evaluation-job failure.
-#[derive(Debug, thiserror::Error)]
+///
+/// Its display and debug forms retain only the failure category. The underlying runner error stays
+/// available through [`std::error::Error::source`] for trusted retry or dead-letter handling.
+#[derive(thiserror::Error)]
 pub enum AiEvaluationJobError<RunnerError> {
     /// The durable envelope's idempotency key was absent or did not bind the evaluation run key.
     #[error("AI evaluation job idempotency key does not match the evaluation run key")]
@@ -176,84 +179,14 @@ pub enum AiEvaluationJobError<RunnerError> {
     },
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{
-        convert::Infallible,
-        sync::{Arc, Mutex},
-    };
-
-    use futures_util::future::BoxFuture;
-    use rustee_ai_eval::AiEvaluationReference;
-    use rustee_jobs::{DeliveryAction, JobEnvelope, JobId, dispatch};
-
-    use super::{
-        AiEvaluationJob, AiEvaluationJobError, AiEvaluationJobHandler, AiEvaluationJobRunner,
-    };
-
-    fn reference() -> AiEvaluationReference {
-        AiEvaluationReference::new("tenant-a.v1", "catalog-7", "run-key-7").unwrap()
-    }
-
-    fn envelope(key: &str) -> JobEnvelope<AiEvaluationJob> {
-        JobEnvelope::with_metadata(JobId::new(), AiEvaluationJob::new(reference()), 123)
-            .with_idempotency_key(key)
-            .unwrap()
-    }
-
-    #[derive(Clone)]
-    struct Runner {
-        calls: Arc<Mutex<usize>>,
-    }
-
-    impl AiEvaluationJobRunner for Runner {
-        type Error = Infallible;
-
-        fn run_evaluation(
-            &self,
-            _reference: AiEvaluationReference,
-            _context: rustee_jobs::JobContext,
-        ) -> BoxFuture<'static, Result<(), Self::Error>> {
-            let calls = self.calls.clone();
-            Box::pin(async move {
-                *calls.lock().unwrap() += 1;
-                Ok(())
-            })
+impl<RunnerError> fmt::Debug for AiEvaluationJobError<RunnerError> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RunKeyMismatch => formatter.write_str("AiEvaluationJobError::RunKeyMismatch"),
+            Self::Runner { .. } => formatter.write_str("AiEvaluationJobError::Runner"),
         }
     }
-
-    #[tokio::test]
-    async fn durable_job_keeps_private_evaluation_work_out_of_the_payload() {
-        let encoded = envelope("run-key-7").encode().unwrap();
-        let payload = String::from_utf8(encoded.clone()).unwrap();
-        assert!(!payload.contains("private prompt"));
-        assert!(!payload.contains("private expected target"));
-        let calls = Arc::new(Mutex::new(0));
-        let handler = AiEvaluationJobHandler::new(Runner {
-            calls: calls.clone(),
-        });
-
-        let action = dispatch(
-            JobEnvelope::<AiEvaluationJob>::decode(&encoded).unwrap(),
-            &handler,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(action, DeliveryAction::Acknowledge);
-        assert_eq!(*calls.lock().unwrap(), 1);
-    }
-
-    #[tokio::test]
-    async fn handler_rejects_a_durable_key_that_does_not_bind_the_evaluation_run() {
-        let calls = Arc::new(Mutex::new(0));
-        let handler = AiEvaluationJobHandler::new(Runner {
-            calls: calls.clone(),
-        });
-
-        let error = dispatch(envelope("other-key"), &handler).await.unwrap_err();
-
-        assert!(matches!(error, AiEvaluationJobError::RunKeyMismatch));
-        assert_eq!(*calls.lock().unwrap(), 0);
-    }
 }
+
+#[cfg(test)]
+mod tests;

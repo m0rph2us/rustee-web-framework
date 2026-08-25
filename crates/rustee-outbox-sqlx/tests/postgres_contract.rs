@@ -7,11 +7,11 @@ use std::{
 };
 
 use futures_util::future::BoxFuture;
-use rustee_events::{Event, EventEnvelope, EventId};
+use rustee_events::{Event, EventEnvelope, EventId, EventMessage, EventPublisher};
 use rustee_jobs::{Job, JobEnvelope, JobMessage, JobPublisher};
 use rustee_outbox_sqlx::{
-    EventSchedule, INBOX_MIGRATION_SQL, InboxConsumer, InboxDecision, InboxMessageId,
-    JobOutboxRelay, JobSchedule, LeaseConfig, LeaseOutcome, OUTBOX_MIGRATION_SQL,
+    EventOutboxRelay, EventSchedule, INBOX_MIGRATION_SQL, InboxConsumer, InboxDecision,
+    InboxMessageId, JobOutboxRelay, JobSchedule, LeaseConfig, LeaseOutcome, OUTBOX_MIGRATION_SQL,
     OUTBOX_PRIORITY_MIGRATION_SQL, OutboxDestination, OutboxMessage, OutboxPriority,
     OutboxRelayObserver, PostgresInbox, PostgresOutbox, RelayConfig, RelayLoopConfig,
     RelayPassFinished, RelayPassKind, RelayPassOutcome, RelayReport, StageOutcome,
@@ -46,11 +46,23 @@ impl Job for SendInvoiceReminder {
 }
 
 #[derive(Clone, Debug)]
-struct RecordingJobPublisher {
+struct RecordingPublisher {
     published: Arc<Notify>,
 }
 
-impl JobPublisher for RecordingJobPublisher {
+impl EventPublisher for RecordingPublisher {
+    type Error = io::Error;
+
+    fn publish(&self, _message: EventMessage) -> BoxFuture<'static, Result<(), Self::Error>> {
+        let published = Arc::clone(&self.published);
+        Box::pin(async move {
+            published.notify_one();
+            Ok(())
+        })
+    }
+}
+
+impl JobPublisher for RecordingPublisher {
     type Error = io::Error;
 
     fn publish(&self, _message: JobMessage) -> BoxFuture<'static, Result<(), Self::Error>> {
@@ -404,7 +416,7 @@ async fn explicit_relay_loop_publishes_a_due_job_then_stops_between_passes() {
     let relay_observer = RecordingRelayObserver::default();
     let relay = JobOutboxRelay::new(
         pool.clone(),
-        RecordingJobPublisher {
+        RecordingPublisher {
             published: Arc::clone(&published),
         },
         destination.clone(),
@@ -451,6 +463,77 @@ async fn explicit_relay_loop_publishes_a_due_job_then_stops_between_passes() {
     assert!(
         PostgresOutbox
             .lease_jobs(&pool, &destination, LeaseConfig::default())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a PostgreSQL server; CI provisions one"]
+async fn explicit_relay_loop_publishes_a_due_event_then_stops_between_passes() {
+    let pool = pool().await;
+    reset_schema(&pool).await;
+    let destination = OutboxDestination::new("events.invoices").unwrap();
+    let message = event(&destination);
+    let mut transaction = pool.begin().await.unwrap();
+    PostgresOutbox
+        .stage(&mut transaction, &message)
+        .await
+        .unwrap();
+    transaction.commit().await.unwrap();
+
+    let published = Arc::new(Notify::new());
+    let relay_observer = RecordingRelayObserver::default();
+    let relay = EventOutboxRelay::new(
+        pool.clone(),
+        RecordingPublisher {
+            published: Arc::clone(&published),
+        },
+        destination.clone(),
+        RelayConfig::default(),
+    )
+    .with_relay_observer(Arc::new(relay_observer.clone()));
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        relay
+            .run_until(
+                RelayLoopConfig::new(Duration::from_secs(30)).unwrap(),
+                async move {
+                    let _ = shutdown_rx.await;
+                },
+            )
+            .await
+    });
+
+    timeout(Duration::from_secs(5), published.notified())
+        .await
+        .expect("relay should publish the due event");
+    shutdown_tx.send(()).unwrap();
+    let report = timeout(Duration::from_secs(5), task)
+        .await
+        .expect("relay should observe shutdown between passes")
+        .unwrap()
+        .unwrap();
+    assert!(report.passes >= 1);
+    assert_eq!(report.claimed, 1);
+    assert_eq!(report.published, 1);
+    assert_eq!(report.retry_scheduled, 0);
+    assert_eq!(report.lease_lost, 0);
+    assert!(relay_observer.finished.lock().unwrap().iter().any(|pass| {
+        pass.kind() == RelayPassKind::Event
+            && pass.outcome() == RelayPassOutcome::Succeeded
+            && pass.report()
+                == Some(RelayReport {
+                    claimed: 1,
+                    published: 1,
+                    retry_scheduled: 0,
+                    lease_lost: 0,
+                })
+    }));
+    assert!(
+        PostgresOutbox
+            .lease_events(&pool, &destination, LeaseConfig::default())
             .await
             .unwrap()
             .is_empty()

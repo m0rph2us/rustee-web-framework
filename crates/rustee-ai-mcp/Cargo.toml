@@ -7,11 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "Bounded Streamable HTTP MCP tool discovery and Rustee AI approval integration"
 
+[features]
+# Exposes minimal parser entry points only to the workspace fuzz harness.
+fuzzing = []
+
 [dependencies]
 base64.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

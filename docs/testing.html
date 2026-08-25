@@ -1,473 +1,254 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee Testing Strategy</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./roadmap.html">Roadmap</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Testing Strategy</div>
-        <h1>동작 계약을 빠르고 실제에 가깝게 검증합니다</h1>
+        <div class="eyebrow">Testing and Verification</div>
+        <h1>Verify Observable Contracts Quickly and Realistically</h1>
         <p class="lead">
-          Rustee의 테스트는 line coverage를 늘리는 활동이 아니라, HTTP와 async lifecycle, feature 조합, 외부 의존성의
-          observable behavior를 안정적으로 고정하는 계약입니다. 빠른 피드백과 실제 transport/dependency 검증을 분리해
-          개발 속도와 신뢰성을 함께 지킵니다.
+          Rustee combines deterministic unit tests with real HTTP and backend contracts. The target
+          is user-observable behavior across cancellation, failure, recovery, and feature
+          combinations.
         </p>
       </section>
-
       <section>
-        <h2>결정 요약</h2>
-        <div class="decision">
-          <p>
-            기본 test runner는 stable Rust의 <code>cargo test</code>입니다. workspace의 빠른 test binary 실행은
-            <code>cargo nextest run</code>으로 병렬화하고 doctest는 별도로 <code>cargo test --doc</code>로 실행합니다.
-            <code>rustee-test</code>는 application과 integration crate를 위한 in-process test client를 제공하지만,
-            실제 TCP/HTTP end-to-end test를 대체하지 않습니다.
-          </p>
-        </div>
-        <p>
-          모든 public behavior에는 가장 싼 층의 test를 먼저 둡니다. protocol, cancellation, shutdown, network backpressure,
-          broker/client interoperability처럼 in-process test로 증명할 수 없는 위험만 실제 socket 또는 container-backed test에서 다룹니다.
-          test 범위와 비용은 crate feature별로 독립적으로 관리합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>테스트 계층</h2>
+        <h2>Test Layers</h2>
         <table>
           <thead>
             <tr>
-              <th>계층</th>
-              <th>목적</th>
-              <th>실행 위치</th>
+              <th>Layer</th>
+              <th>Purpose</th>
+              <th>Typical scope</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Unit</td>
-              <td>router match, extractor parse, response/error mapping, middleware order, config validation처럼 작은 순수 계약을 확인합니다.</td>
-              <td>crate 내부 <code>#[cfg(test)]</code>; 항상 실행</td>
+              <td>Fast deterministic behavior</td>
+              <td>
+                Extractors, routing, responses, policies, serialization, redaction, and error
+                mapping
+              </td>
             </tr>
             <tr>
-              <td>In-process integration</td>
-              <td><code>Service</code> 경로에서 request/response, state, cookie, extension, timeout policy를 확인합니다.</td>
-              <td><code>rustee-test</code>와 <code>tests/</code>; 항상 실행</td>
+              <td>In-process application</td>
+              <td>HTTP contract without a socket</td>
+              <td>
+                Routes, layers, state, auth outcomes, OpenAPI, examples, and bounded
+                <code>TestApp</code> origin-form request/response, cookie-jar, or deliberate
+                repeated-header flows
+              </td>
             </tr>
             <tr>
-              <td>Wire end-to-end</td>
-              <td>실제 TCP listener, HTTP serialization, keep-alive, client disconnect, graceful shutdown, SSE를 검증합니다.</td>
-              <td>독립 test binary; pull request CI</td>
-            </tr>
-            <tr>
-              <td>Dependency contract</td>
-              <td>실제 DB, Redis, MongoDB, NATS, RabbitMQ, Kafka, LocalStack SQS, AI test server와의 driver/protocol 의미를 검증합니다.</td>
-              <td>Testcontainers profile; Linux CI와 로컬 opt-in</td>
-            </tr>
-            <tr>
-              <td>Compile and docs</td>
-              <td>macro diagnostic, invalid API usage, public example, doctest가 기대한 compile behavior를 갖는지 확인합니다.</td>
-              <td><code>trybuild</code>, examples, <code>cargo test --doc</code>; pull request CI</td>
+              <td>Transport</td>
+              <td>Real server lifecycle</td>
+              <td>Bound port, request/response, shutdown, cancellation, and peer/proxy behavior</td>
             </tr>
             <tr>
               <td>Property and fuzz</td>
-              <td><code>rustee-router</code>는 path grammar, parameter preservation, static precedence를, <code>rustee-openapi</code>는 Rustee-to-OpenAPI parameter/render conversion을 <code>proptest</code>로 확인합니다. <code>route_pattern</code>/<code>openapi_route</code>/<code>openapi_security_scheme</code> libFuzzer target은 route construction과 API-key header-name metadata parser를 탐색하며 query/cookie runtime, body/range/state machine은 후속 target입니다.</td>
-              <td>property는 pull request CI, fuzz는 Linux nightly scheduled/manual</td>
+              <td>Parser and state-machine resilience</td>
+              <td>
+                Route patterns, OpenAPI conversion, query, path, and JSON extraction, test-cookie
+                parsing, static byte-range and trusted-proxy forwarded-header handling, event and
+                job envelope restoration, MCP client SSE and stdio JSON-RPC parsing, MCP server
+                JSON-RPC request parsing, OpenAI SSE and Batch JSONL parsing, and MCP OAuth
+                challenge parsing
+              </td>
             </tr>
             <tr>
-              <td>Performance and soak</td>
-              <td>throughput/latency regression, cancellation leak, connection/worker lifecycle, long-running retry/backoff를 측정합니다.</td>
-              <td>scheduled/release qualification; 초기에는 hard gate가 아님</td>
+              <td>Benchmark</td>
+              <td>Repeatable performance baseline</td>
+              <td>
+                <a href="./benchmarks.html">Manual route-dispatch harness</a> with a fixed warmup
+                and explicit iteration count
+              </td>
+            </tr>
+            <tr>
+              <td>Container contract</td>
+              <td>Provider-specific behavior</td>
+              <td>
+                PostgreSQL, Redis, MongoDB, NATS, Kafka, RabbitMQ, and LocalStack where enabled
+              </td>
+            </tr>
+            <tr>
+              <td>External qualification</td>
+              <td>Deployment and vendor evidence</td>
+              <td>
+                Identity providers, AI providers, cloud topology, edge delivery, and operational
+                drills
+              </td>
             </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>출하 게이트와 CI lane</h2>
-        <p>
-          <a href="./release-plan.html">출하 계획</a>의 지원 단계는 단일 <code>cargo test</code> 결과로 승격하지 않습니다.
-          빠른 pull request gate, provider contract gate, release qualification을 분리하고 각 lane이 어떤 약속을 증명하는지 기록합니다.
-        </p>
-        <table>
-          <thead>
-            <tr><th>lane</th><th>빈도</th><th>증명하는 것</th><th>현재 보강 작업</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Fast PR</td><td>모든 pull request</td><td>Rust 1.94.1/stable format, clippy, workspace unit/wire, doctest, public example compile, HTML local-link check, release inventory/Cargo metadata, direct workflow action full-SHA check, candidate-only source archive assembly, facade <code>openapi</code> route/schema/security-metadata runtime contract, <code>macros</code> feature의 derive/route runtime and diagnostic contract와 native Kafka opt-in compile profile</td><td>public API compatibility baseline을 추가</td></tr>
-            <tr><td>Platform candidate</td><td>모든 pull request</td><td>macOS/Windows Rust 1.94.1의 <code>cargo check --workspace --all-targets</code>와 <code>rustee-ai-mcp</code> stdio Rust-fixture initialize/discovery/approved execution/close runtime contract</td><td>supported target별 runtime, container backend와 deployment topology evidence를 추가</td></tr>
-            <tr><td>Dependency advisory</td><td>dependency manifest/lockfile PR, main push, daily</td><td>SHA-pinned RustSec <code>cargo audit</code> action이 current <code>Cargo.lock</code> advisory를 검사</td><td>first published baseline 이후 semver/API diff를 추가</td></tr>
-            <tr><td>Dependency policy</td><td>dependency manifest/lockfile/policy PR, main push, daily</td><td><code>cargo-deny</code>가 all-feature graph의 approved SPDX license, yanked advisory, wildcard dependency와 unknown registry/git source를 검사</td><td>duplicate transitive dependency를 reduce/allow/deny로 분류</td></tr>
-            <tr><td>Backend contract</td><td>모든 pull request 또는 변경 영향 lane</td><td>pinned NATS, Redis, RabbitMQ, LocalStack SQS, Kafka, PostgreSQL, MongoDB, OTLP collector와의 protocol/lifecycle contract. Kafka delayed retry는 Kafka와 PostgreSQL을 같은 lane에서 실행해 stage-before-commit, retry-table plus retry/DLQ topic readiness, database-clock delay, relay confirmation을 확인하고 native feature unit suite는 bounded readiness and batch/idle-delay loop configuration을 확인합니다. Redis/NATS/RabbitMQ/Kafka는 stopped backend의 bounded/redacted connection 또는 delivery failure와 restart 뒤 full contract recovery도 확인</td><td>provider별 broader outage, duplicate, credential/TLS/ACL evidence를 추가</td></tr>
-            <tr><td>Scheduled fuzz</td><td>weekly 및 manual dispatch</td><td>pinned nightly와 <code>cargo-fuzz</code> sanitizer가 tracked <code>route_pattern</code>/<code>openapi_route</code>/<code>openapi_security_scheme</code> corpus를 bounded 시간 탐색하고 failure artifact를 보존</td><td>query/cookie/body/range/state-machine target과 fuzz coverage review를 추가</td></tr>
-            <tr><td>Release qualification</td><td><code>v*</code> tag와 manual dispatch</td><td>stable format/lint/test/doctest, HTML/inventory, native Kafka profile, candidate-only source archive SHA-256, CycloneDX 1.5 SBOM archive와 source/SBOM keyless provenance</td><td>first publish 뒤 <code>verify-published-release-candidates.mjs</code> registry source consumer compile verification, prior tag 또는 published version이 생긴 뒤의 public API compatibility, supported platform matrix, property/fuzz, benchmark/soak, upgrade/rollback rehearsal</td></tr>
-          </tbody>
-        </table>
-        <p>
-          Contract-verified는 해당 provider의 real backend lane을 요구합니다. Supported는 그것에 더해 failure evidence,
-          observability와 operator procedure를 요구하며, Enterprise-qualified는 workload topology의 별도 release qualification을 요구합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Workspace test 구조</h2>
-        <pre><code>crates/
-  rustee-core/
-    src/...                 unit tests next to behavior
-    tests/...               crate-level integration tests
-  rustee-test/              published dev helper: TestApp, bounded cookie-jar, request/JSON/header/body helpers
-  rustee-test-support/      workspace-only fixtures, ports, temp dirs, container setup
-tests/
-  e2e/                      real TCP/HTTP server behavior
-  contracts/                provider-neutral contract suites
-  containers/               Testcontainers-backed adapter tests
-fuzz/
-  fuzz_targets/             independent libFuzzer targets
-  corpus/route_pattern/     tracked router parser seeds
-  corpus/openapi_route/     tracked OpenAPI route conversion seeds
-  corpus/openapi_security_scheme/  tracked OpenAPI API-key header-name seeds
-examples/
-  hello-world/              quickstart compile check
-  json-api/                 typed JSON/API representative in-process flow
-  middleware/               explicit middleware representative in-process flow
-  security-jwt/             signed bearer and missing-credential in-process flow
-  jobs/                     typed publish and registry-dispatch in-process flow
-  ai-pipeline/              fake-provider HTTP pipeline and failure-redaction flow</code></pre>
-        <p>
-          <code>rustee-test</code>는 dev-dependency로 사용 가능한 작은 helper crate입니다. <code>TestApp</code>은 in-process request,
-          JSON/header/body construction, bounded buffered response, JSON/text decode와 body/header value를 render하지 않는 status/header assertion을 제공합니다.
-          <code>TestApp::with_cookie_jar()</code>는 session-style test를 위해 response <code>Set-Cookie</code>의 valid ASCII name/value만 보존하여 다음 request의
-          <code>Cookie</code>로 보냅니다. <code>Max-Age=0</code> 삭제, 64개/합계 8 KiB bound, successful response buffer 뒤 atomic update와 explicit request
-          <code>Cookie</code> header 우선만 지원합니다. jar는 value를 debug/inspection API에 노출하지 않습니다. Domain, Path, Secure, SameSite, Expires,
-          redirect, HTTP version, SSE와 cancellation은 wire/browser contract에 남기며 사용자의 production API를 흉내 내는 거대한 DSL은 만들지 않습니다.
-          <code>rustee-test-support</code>는 공개 API가 아니며 test fixture와 container setup을 한곳에 둡니다.
-        </p>
-        <p>
-          <code>rustee-router</code>는 96-case <code>proptest</code> contract로 accepted route grammar, parameter value preservation과 static-route precedence를,
-          <code>rustee-openapi</code>는 accepted Rustee template의 parameter set과 rendered OpenAPI path를 fast test lane에서 확인합니다. <code>fuzz/</code>는 publishable Cargo workspace와 분리되어 있으며, <code>route_pattern</code> target은 arbitrary UTF-8 input을
-          <code>App::try_route</code>/<code>App::try_nest</code>에, <code>openapi_route</code> target은 <code>OpenApiRoute::from_rustee</code>에, <code>openapi_security_scheme</code> target은 header 위치의 <code>OpenApiSecurityScheme::api_key</code>에 전달합니다. seed corpus는 review 가능한 input만 유지하고 artifact/target output은 ignore합니다.
-          sanitizer 실행은 nightly와 C++ standard library header가 필요하므로 local toolchain이 없으면 <code>Fuzz</code> CI의 bounded Linux run을 사용합니다.
-          범위와 crash-to-regression 절차는 <a href="./adr/0044-router-property-fuzz-boundary.html">ADR 0044</a>에서 관리합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>결정론과 async 규칙</h2>
+        <h2>Rules for Deterministic Async Tests</h2>
         <ul>
-          <li>test는 wall-clock <code>sleep</code>과 순서 우연에 의존하지 않습니다. timeout, retry, delayed job은 Tokio paused time 또는 명시적 synchronization signal로 제어합니다.</li>
-          <li>시간, random ID, port, 환경 변수, network client는 subsystem의 test construction에서 대체할 수 있게 하되, production 사용자에게 범용 mock trait를 강요하지 않습니다.</li>
-          <li>병렬 test는 tenant/namespace, database/schema, Redis key prefix, topic/queue name, temp directory를 고유하게 생성하고 cleanup을 검증합니다.</li>
-          <li>flaky test를 retry로 숨기지 않습니다. CI retry는 container startup 같은 infrastructure failure의 진단 보조에만 쓰고, product race는 재현 fixture와 원인 수정으로 해결합니다.</li>
-          <li>cancellation, panic, timeout, graceful shutdown 뒤에는 task leak, unacked job, uncommitted offset, connection leak이 없는지 observable outcome으로 확인합니다.</li>
+          <li>
+            Use bounded timeouts and explicit synchronization. Do not use arbitrary sleeps to prove
+            a state transition.
+          </li>
+          <li>
+            Local socket fixtures signal readiness explicitly and close completed responses with a
+            transport shutdown; they do not keep a connection open for a guessed delay.
+          </li>
+          <li>
+            Inject clocks, IDs, ports, and provider fakes where a deterministic contract needs them.
+          </li>
+          <li>
+            Every task started by a test must be drained, joined, or cancelled. A passing test must
+            not leak a background task.
+          </li>
+          <li>
+            Test cancellation, shutdown, and recovery as first-class outcomes. Retries must not mask
+            flaky behavior.
+          </li>
+          <li>
+            When a container contract resets a shared durable table, serialize that package's tests
+            or isolate the schema explicitly. Test-runner timing must not determine the observed
+            storage behavior.
+          </li>
+          <li>
+            Run feature-sensitive coverage in an explicit matrix; a default-feature build does not
+            prove an optional adapter.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>기능별 필수 계약</h2>
+        <h2>Required Contract Coverage</h2>
         <div class="grid">
           <article class="card">
-            <h3>HTTP Core</h3>
-            <p>direct route와 longest-prefix nesting precedence, prefix-stripped URI/query, full route template, child-owned fallback/405, percent-decoding, body limit, malformed request, extractor rejection, response header/body, middleware short-circuit와 content-coding cache variation을 다룹니다.</p>
-          </article>
-          <article class="card">
-            <h3>Server</h3>
-            <p>실제 listener와 client로 keep-alive, concurrent request, disconnect cancellation, readiness, zero-downtime drain과 Nginx를 통과한 active request drain을 확인합니다.</p>
+            <h3>HTTP core and server</h3>
+            <p>
+              Route matching, method behavior, extraction failures, response conversion, service
+              nesting, graceful shutdown, trusted proxy handling, compression, and static delivery.
+            </p>
           </article>
           <article class="card">
             <h3>Security</h3>
-            <p>401/403 mapping, real loopback HTTPS transport failure에서 JWKS/opaque introspection이 raw token/endpoint 없이 반환하는 provider-unavailable 503, issuer/audience/signature/JWKS cache와 unknown-<code>kid</code> rotation, opaque introspection의 active/time/revocation-cache 경계, OIDC discovery/PKCE/state replay/nonce/session issuance, Redis TTL/GETDEL transaction consume, session rotation/CSRF, direct permission/role grant bypass, configured-host tenant resolution의 mismatch/unknown/duplicate/outage와 PostgreSQL tenant RLS read/write isolation을 integration test로 고정합니다.</p>
+            <p>
+              Authentication success and fail-closed outage paths, authorization, tenant mismatch,
+              session/CSRF behavior, secret redaction, and API-key rotation.
+            </p>
           </article>
           <article class="card">
             <h3>Storage</h3>
-            <p>migration은 deployment step으로 검증하고, connection failure/readiness/transaction/TTL/index 정책은 real backend contract에서 확인합니다.</p>
+            <p>
+              Bounded readiness, tenant isolation, transaction boundaries, migration assumptions,
+              delayed relay recovery, and checkpoint behavior.
+            </p>
           </article>
           <article class="card">
-            <h3>Jobs and Events</h3>
-            <p>duplicate delivery, retry/backoff, DLQ, drain, outbox, consumer reclaim과 Kafka rebalance/offset/replay 및 PostgreSQL durable delayed retry relay를 provider별 실제 backend에서 다룹니다.</p>
+            <h3>Jobs and events</h3>
+            <p>
+              Success settlement, retry, DLQ, malformed input, drain, duplicate redelivery, offset
+              commit, schema rollout, and approved replay procedures.
+            </p>
           </article>
           <article class="card">
             <h3>AI</h3>
-            <p><code>rustee-ai-test</code>의 deterministic provider script/recorded stream과 application fake store로 structured output, tool permission, budget, RAG citation/ACL을 결정론적으로 검증하고 provider protocol test는 opt-in으로 둡니다.</p>
+            <p>
+              Deterministic provider streams, approval and audit ordering, RAG ACL revalidation,
+              budget reservations, cache behavior, batch reconciliation, and no-replay MCP behavior.
+            </p>
           </article>
         </div>
       </section>
-
       <section>
-        <h2>Feature와 provider matrix</h2>
-        <p>
-          <code>--all-features</code> 한 번의 성공을 전체 호환성 증명으로 보지 않습니다. 각 optional integration crate는 default feature 없이
-          compile/test하고, facade의 지원 feature profile과 dependency adapter의 contract profile을 따로 실행합니다. 지원하지 않는 feature 조합은
-          <code>Cargo.toml</code> compile error와 compile-fail test로 명시합니다.
-        </p>
+        <h2>CI and Release Gates</h2>
         <ul>
-          <li>core: Rust 1.94.1 MSRV, stable latest, <code>--no-default-features</code>, default facade</li>
-          <li>integration: SQLx, Redis, MongoDB, auth, each job provider, Kafka, AI adapter를 독립 package/profile로 실행</li>
-          <li>request correlation and metrics contract: <code>rustee-observability</code>은 generated UUID request ID의 request extension/response header 연결과 untrusted inbound ID 무시를 in-process layer와 real TCP server test로 검증합니다. <code>rustee-observability-opentelemetry</code>는 in-memory SDK exporter로 server span kind, correlation ID, method/status/bounded route attribute와 raw query string 미노출을 검증하고, valid W3C remote parent가 request span의 직접 parent가 되는지와 explicit outbound child injection을 확인합니다. duplicate <code>traceparent</code>는 new root trace가 되고 incoming <code>tracestate</code>를 forward하지 않아야 합니다. <code>rustee-router</code>는 configured <code>RouteTemplate</code>을 handler request와 response layer에 전달하고, nested app에서도 prefix를 포함한 template, child-owned fallback/405와 raw URI 없는 reserved <code>RouteClassification</code>을 남기는지 검증합니다. <code>MetricsLayer</code>는 완료 요청의 status-class/router-classification/total-duration 집계, strictly increasing bounded latency bucket과 cancelled future의 in-flight 회수를 검증합니다. <code>rustee-observability-prometheus</code>는 text 0.0.4 syntax, histogram <code>_bucket</code>/<code>_sum</code>/<code>_count</code>, content type/cache header, label escaping, raw unmatched path 미노출을 검증합니다. <code>rustee-server</code>은 transport peer <code>ConnectionInfo</code> injection을 real TCP로 검증합니다. <code>rustee-middleware</code>는 default <code>Forwarded</code와 explicit <code>X-Forwarded-*</code> mode의 trusted CIDR, bounded chain, family isolation, duplicate/missing/malformed rejection을 in-process로 검증합니다. Linux CI의 <code>nginx:1.30.4-alpine</code> contract는 Nginx가 client-supplied <code>Forwarded</code>를 덮어쓴 뒤 Rustee가 trusted context만 복원하고, <code>proxy_cache</code>가 gzip/identity <code>Vary: Accept-Encoding</code> representation을 섞지 않는지 확인합니다. vendor CDN purge/TLS/cache-control test는 별도 release gate입니다.</li>
-          <li>OTLP Collector contract: CI는 pinned <code>otel/opentelemetry-collector:0.153.0</code> HTTP receiver와 debug exporter를 <code>.github/fixtures/otel-collector.yaml</code>으로 실행합니다. <code>rustee-observability-opentelemetry</code>의 ignored test는 <code>opentelemetry-otlp</code> HTTP binary exporter로 request span을 batch flush하고, workflow는 Collector log의 <code>HTTP request</code>까지 확인합니다. 로컬도 Docker daemon과 <code>RUSTEE_OTLP_ENDPOINT</code>로 같은 suite를 opt-in 실행합니다.</li>
-          <li>OIDC transport outage contract: <code>rustee-auth-oidc</code>은 비어 있는 loopback HTTPS port를 실제로 호출해 JWKS fetch와 opaque introspection 양쪽이 <code>authentication_unavailable</code> 503으로 fail-closed되고 response body가 bearer credential 또는 provider address를 포함하지 않는지 확인합니다. external IdP의 revocation lifecycle은 별도 provider release gate입니다.</li>
-          <li>static file contract: <code>rustee-static</code>은 configured prefix의 GET/HEAD content type, length, cache and nosniff header, weak <code>ETag</code>/<code>Last-Modified</code>, <code>If-None-Match</code>/<code>If-Modified-Since</code> 304와 ETag precedence, single/multipart bytes 206/416, <code>If-Range</code> date와 normalized range set을 검증합니다. multipart는 exact <code>Content-Length</code>, per-part header, HEAD empty body, malformed/excessive set 416을 확인합니다. opt-in precompressed variant는 quality negotiation, missing preferred sibling fallback, representation validator/304와 Range identity fallback을 검증합니다. opt-in streaming은 large full/single-range/selected variant body가 bounded chunk로 전송되고 header contract를 유지하는지 검증합니다. prefix 밖과 non-GET/HEAD는 inner service로 전달하며, decoded traversal, directories, canonical root 밖 symlink target과 maximum-size 초과는 filesystem detail 없이 404가 되어야 합니다.</li>
-          <li>response compression contract: <code>CompressionLayer</code>는 actual gzip/Brotli decode, quality negotiation, identity representation의 <code>Vary: Accept-Encoding</code>, existing coding 보존, <code>Range</code>/<code>HEAD</code>/<code>no-transform</code> bypass, <code>Content-Length</code> 제거와 trailer 전달을 in-process로 검증합니다. Nginx <code>proxy_cache</code> integration은 gzip과 identity 표현의 MISS/HIT separation을 확인하며 vendor CDN purge/TLS/cache-control test는 별도 gate로 남습니다.</li>
-          <li>runtime panic boundary contract: <code>PanicCatchLayer</code>의 in-process와 real TCP suite는 handler panic이 fixed <code>internal_error</code> 500 body로 바뀌고 private panic text가 response에 없음을 확인합니다. post-commit body panic, <code>panic = &quot;abort&quot;</code>, global panic hook redaction과 process restart는 application/deployment test가 소유합니다.</li>
-          <li>OpenAI adapter contract: <code>rustee-ai-openai</code>은 local ephemeral TCP server로 Responses request authorization/body, completed response, SSE text/usage normalization과 Embeddings batch authorization/body, provider <code>index</code> reordering 및 duplicate/missing rejection을 credential 없이 검증합니다. 실제 OpenAI call은 opt-in secret과 spending limit을 가진 별도 profile로 추가합니다.</li>
-          <li>AI pipeline advisor contract: <code>rustee-ai</code> unit suite는 advisor-enriched request가 final input policy를 다시 통과해야 provider가 호출되는지, non-streaming response와 every stream event가 advisor hook을 지나는지 확인합니다. combined advisor/usage-ledger path는 final enriched request metadata를 reserve하고 raw terminal stream usage를 advisor output 전에 settle하는지 고정합니다.</li>
-          <li>AI budget, usage ledger and tool-audit contract: <code>rustee-ai</code> unit suite는 blank tenant/subject와 blank tool/provider idempotency key를 거부하고 trusted context의 Debug redaction, budget denial 시 provider 미호출과 content-free <code>AiBudgetRequest</code>, usage reservation 뒤 completed response/stream의 actual <code>Usage</code>만 settle되는지, pending retry가 provider 전에 차단되는지, settlement failure가 response 또는 stream reconciliation error로 반환되는지 확인합니다. 또한 approval identity와 handler/audit key 전달, approved audit persistence가 handler보다 먼저이고 audit 실패 시 side effect handler가 호출되지 않는지, terminal <code>Succeeded</code>/<code>Failed</code> outcome이 handler 뒤 기록되는지도 검증합니다.</li>
-          <li>PostgreSQL AI audit and usage contract: CI의 <code>rustee-ai-audit-sqlx</code> suite는 deployment migration 뒤 approval-only row가 oldest-first pending query에 나타나는지, same tenant/idempotency action의 duplicate approval/outcome이 멱등인지, 다른 call identity가 handler 전 거부되는지, first terminal outcome이 이후 다른 outcome으로 바뀌지 않는지 확인합니다. 같은 suite는 usage reservation이 one provider attempt만 허용하고 completed usage를 durable하게 기록하며, settled duplicate의 재호출 차단, same usage replay, changed usage/identity rejection, pending usage query와 redaction도 확인합니다.</li>
-          <li>AI observability contract: <code>rustee-ai</code>은 in-memory OpenTelemetry exporter에서 completion/stream/tool span의 client/internal kind, aggregate request count/character count, usage, risk class, normalized outcome을 확인합니다. 같은 exporter가 prompt, completion, model alias, tenant/subject, provider/call ID, idempotency key, tool name와 tool result를 전혀 포함하지 않는지 고정합니다. stream consumer drop은 terminal outcome을 추측하지 않습니다.</li>
-          <li>AI recorded provider contract: <code>rustee-ai-test</code>은 queued completion/stream event/error의 FIFO replay, stream-open failure와 prompt/completion을 보관하지 않는 invocation metadata를 확인합니다.</li>
-          <li>AI web stream contract: <code>rustee-ai-web</code>은 in-process body collection으로 SSE/NDJSON content type, framing, usage event와 provider error redaction을 검증합니다.</li>
-          <li>MCP remote-tool/context contract: <code>rustee-ai-mcp</code>은 HTTP JSON/SSE와 local stdio subprocess의 initialize/discovery/approved tool execution/close, response/message bound와 error redaction을 검증합니다. HTTP는 session 404 invalidation, DELETE close를 고정하며 opt-in automatic recovery fixture가 bounded replacement initialize/notification을 준비해도 expired list request를 재전송하지 않고 next explicit request만 새 session으로 보내는지 확인합니다. opt-in SSE resumption fixture는 valid event ID 뒤 <code>Last-Event-ID</code> GET이 protocol/session header를 보존하는지, result 수신 및 bounded retry 종료, GET 404 뒤 session clear를 확인하며 origin POST를 재전송하지 않습니다. explicit standalone GET fixture는 initialized session/protocol header, untrusted notification 전달과 Debug redaction, event-ID reconnect의 POST 미재전송, server request 거부와 GET 404 session clear를 확인합니다. stdio는 newline JSON-RPC, bounded command/request/shutdown configuration, approved execution, request timeout 뒤 connection discard와 prior tool call을 replay하지 않는 explicit restart를 fixture process로 확인합니다. opt-in automatic restart fixture는 failed tool call을 원래 오류로 끝내고, bounded backoff의 replacement handshake가 완료돼도 call을 재전송하지 않으며 다음 explicit request만 새 process에 전달하는지 확인합니다. 같은 HTTP/stdio fixture는 negotiated capability 뒤 bounded resource list/template list/read와 prompt list/get, URI/cursor/session propagation, decoded data Debug redaction, capability 없는 server에 context request를 보내지 않는 contract를 확인합니다. Rust fixture integration test는 macOS/Windows CI에서 initialize/discovery/approved execution/close 공통 경로를 실행합니다. server-initiated request와 Windows advanced stdio lifecycle은 별도 contract가 필요합니다.</li>
-          <li>MCP server contract: <code>rustee-mcp</code>은 in-process Tower service에서 initialize/notification, protocol header, absent Origin pass-through와 explicit Origin allowlist/default 403, access-filtered <code>tools/list</code>, approved <code>tools/call</code>의 pre/post terminal audit, denied/hidden/handler-failed call의 generic <code>isError</code>, request bound, nested <code>App::nest</code> prefix stripping을 검증합니다. opt-in authenticated <code>McpContextProvider</code>는 capability advertisement, <code>resources/list</code>/<code>resources/templates/list</code>/<code>resources/read</code>와 <code>prompts/list</code>/<code>prompts/get</code>, default denial, item-limit와 read-URI mismatch rejection까지 고정합니다. session/SSE GET, stdio, subscription/completion와 OAuth authorization은 아직 지원하지 않습니다.</li>
-          <li>RAG retrieval and ingestion contract: <code>rustee-ai-rag</code>은 non-empty tenant/document scope, bounded context, store가 반환한 out-of-scope chunk의 fail-closed rejection과 citation retention을 deterministic fake store로 검증합니다. ingestion suite는 content-free durable request Debug/serialization, revision metadata preservation, vector capability declaration, embedding count mismatch가 index upsert를 막는지를 확인하고 <code>rustee-ai-rag-jobs</code>는 typed job payload에 원문을 넣지 않으며 job idempotency context를 runner로 전달하는지 검증합니다. <code>rustee-ai-rag-advisor</code>는 application-rendered context만 request에 추가하고 scope violation이면 renderer 전에 fail-closed 하는지 확인합니다.</li>
-          <li>Redis contract: CI는 <code>redis:7-alpine</code> container에서 <code>rustee-redis</code>의 PING, JSON cache round trip, atomic <code>GETDEL</code>, delete와 <code>rustee-auth-session-redis</code>의 opaque session write/read 및 HTTP restoration suite를 실행합니다. <code>rustee-rate-limit-redis</code>는 concurrent fixed-window check가 limit만 허용하고 나머지를 deny하는 Lua atomic contract를, <code>rustee-auth-oidc-redis</code>는 one-time transaction consume을 같은 container에서 확인합니다. CI는 Redis를 중지한 뒤 500ms bounded/redacted initial connect failure를 확인하고, 재시작 뒤 이 전체 Redis adapter suite를 다시 실행합니다. 로컬도 Docker daemon과 <code>RUSTEE_REDIS_URL</code>로 같은 suite를 opt-in 실행합니다.</li>
-          <li>Job observability contract: <code>rustee-jobs-observability</code> unit suite는 start/finish, cancellation drop의 <code>unsettled</code> outcome, in-flight 회수, bounded duration histogram과 invalid histogram configuration을 확인합니다. <code>rustee-jobs-observability-prometheus</code> suite는 bounded provider/fixed outcome label, provider escaping, duration histogram과 <code>no-store</code> response만 인코드하는지 확인합니다. NATS/Redis Streams/RabbitMQ/SQS의 real broker contract는 success settlement 뒤 acknowledged 1회, retry budget exhaustion 뒤 retried 1회와 dead-lettered 1회를 각각 assertion합니다. settlement error 또는 abort는 unsettled로 남겨야 합니다. metric에는 provider/outcome/global duration만 남고 payload, job ID/type, queue route, receipt handle, trace carrier, idempotency key와 raw error가 없어야 합니다.</li>
-          <li>NATS job contract: CI는 <code>nats:2.10-alpine</code> JetStream container에서 <code>rustee-jobs-nats</code>의 typed success ack, retry-to-DLQ, unknown registry job의 acknowledged DLQ publish, graceful drain ignored contract suite를 실행합니다. core unit suite는 bounded W3C job carrier round-trip/context 전달, strict current-version decode, explicit older-payload upcast와 newer-version rejection, registry duplicate rejection, provider attempt injection, unknown/malformed envelope의 sanitized outcome을 확인합니다. <code>rustee-jobs-opentelemetry</code>는 in-process exporter로 valid carrier가 handler span의 parent가 되는지 확인합니다. 로컬도 Docker daemon과 <code>RUSTEE_NATS_URL</code>로 같은 suite를 opt-in 실행합니다.</li>
-          <li>RabbitMQ job contract: CI는 <code>rabbitmq:4.3.4-management</code> container에서 <code>rustee-jobs-rabbitmq</code>의 direct exchange publisher confirm, quorum queue manual ack, <code>delayed-retry-type=failed</code> native delay 뒤 retry budget DLQ, unknown registry job의 confirmed DLQ route와 separate worker connection abort 뒤 unacknowledged delivery의 attempt-2 redelivery/ack를 실행합니다. fixture가 queue type/policy/delivery limit/DLX exchange+routing key를 명시적으로 provision하며 worker는 passive readiness만 수행합니다. <code>rustee-jobs-rabbitmq-management</code>은 같은 broker의 Management API가 반환한 실제 queue snapshot으로 quorum/durability/effective retry+delivery-limit+DLX route를 audit하고, loopback unit suite는 encoded queue GET와 Basic credential redaction을 credential 없이 고정합니다. 로컬도 Docker daemon과 <code>RUSTEE_RABBITMQ_URL</code>/<code>RUSTEE_RABBITMQ_MANAGEMENT_URL</code>로 같은 ignored suite를 opt-in 실행합니다.</li>
-          <li>RabbitMQ outage contract: CI는 broker를 중지한 뒤 <code>RabbitMqConnectionConfig</code>의 500ms connect deadline이 bounded <code>Connect</code> failure로 끝나고 error가 AMQP endpoint/credential을 포함하지 않는지 확인합니다. broker 재시작과 readiness 확인 뒤 전체 RabbitMQ suite를 다시 실행합니다.</li>
-          <li>SQS job contract: CI는 <code>localstack/localstack:2026.7.0</code> SQS container에서 <code>rustee-jobs-sqs</code>의 Standard handler success source delete, whole-second visibility retry 뒤 direct DLQ, unknown registry job의 direct DLQ, FIFO message group/deduplication ID를 실행합니다. publisher와 worker는 기본 25초의 설정 가능한 요청 deadline을 가지며 worker deadline은 long poll보다 길어야 합니다. CI는 LocalStack을 중지해 500ms readiness deadline의 endpoint-free failure를 확인하고, 재시작 뒤 full suite를 다시 실행합니다. fixture가 source/DLQ와 matching redrive policy를 명시적으로 provision하며 worker readiness는 queue mode, DLQ ARN, max receive count만 읽기 전용으로 확인합니다. 로컬도 Docker daemon과 <code>RUSTEE_LOCALSTACK_URL</code>로 같은 ignored suite를 opt-in 실행합니다.</li>
-          <li>Kafka event contract: core unit suite는 strict current-version decode, explicit older-payload upcast와 newer-version rejection, retry topic/DLQ topic collision rejection과 bounded delivery transition을 확인합니다. <code>rustee-events-schema</code> unit suite는 typed event JSON Schema artifact의 bound/fingerprint redaction, subject/version/policy drift rejection, object-safe registry acknowledgement exact-match/mismatch를 확인합니다. <code>rustee-events-schema-confluent</code> local HTTP contract는 HTTPS-or-loopback/redacted credential configuration, effective policy mismatch, exact JSON artifact lookup, absent artifact register와 registration 뒤 relookup을 확인합니다. approved non-production registry에서는 <code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE=1</code>, URL 및 Basic key/secret 또는 bearer token으로 ignored live contract를 opt-in 실행합니다. 이 test는 retained unique subject를 만들며 effective <code>BACKWARD</code> policy와 write/read ACL을 요구합니다. native feature unit suite는 delayed-retry readiness, relay loop와 observer duration configuration을 확인하고 immediate shutdown이 PostgreSQL을 건드리기 전 종료되는지를 고정합니다. CI는 <code>apache/kafka:4.3.1</code> container에서 unique topic/group을 사용해 successful handler의 synchronous commit 뒤 no-replay, failed handler의 uncommitted record redelivery, shutdown signal 뒤 active handler drain과 commit, two-member group의 quiescent partition handoff, poll interval을 넘긴 in-flight handler의 commit failure와 duplicate redelivery, committed record의 lag-zero snapshot, three failed deliveries 뒤 terminal record의 DLQ arrival을 실행합니다. 같은 lane의 <code>postgres:16-alpine</code>은 <code>rustee-events-kafka-sqlx</code> failure가 source offset commit 전에 durable stage되고 retry table plus retry/DLQ topic readiness와 aggregate backlog를 확인하며 due 전에는 relay되지 않으며 due row가 stored retry topic/header로 Kafka acknowledgement 뒤 confirm되는지를 확인합니다. observer/Prometheus unit suite는 cancellation-safe abandoned outcome과 fixed outcome/state label, endpoint/payload 없는 text export를 고정합니다. 이어 broker를 중지해 500ms producer delivery deadline과 delayed-retry Kafka readiness failure가 endpoint 없이 끝나는지 확인하고 restart 뒤 full contract를 다시 실행합니다. <code>rustee-events-opentelemetry</code>는 in-process exporter로 valid W3C envelope carrier가 handler span의 parent가 되는지 확인합니다. 로컬도 Docker daemon과 <code>RUSTEE_KAFKA_BOOTSTRAP_SERVERS</code>/<code>RUSTEE_DATABASE_URL</code>로 같은 ignored suite를 opt-in 실행합니다. relay alert/backoff, migration/restore procedure, replay operation, real registry provider/version/credential/ACL/outage compatibility와 consumer-first rollout rehearsal은 별도 release gate입니다.</li>
-          <li>PostgreSQL contract: CI는 <code>postgres:16-alpine</code> container에서 <code>rustee-sqlx</code>의 bounded pool connect, readiness query, simple query와 pool close를 실행합니다. tenant suite는 transaction-local <code>rustee.tenant_id</code> setting, RLS-protected cross-tenant read의 빈 결과와 cross-tenant write 거부를 runtime role에서 확인합니다. <code>rustee-auth-sqlx</code> suite는 raw key 없이 fingerprint record를 register하고 active last-used/audit transaction, duplicate non-overwrite, expired/revoked rejection, database-clock active/unexpired source only metadata clone/no-overlap rotation와 idempotent revocation을 확인합니다. <code>rustee-outbox-sqlx</code> suite는 outbox/inbox/priority migration, uncommitted outbox row invisibility, same source-message deduplication, PostgreSQL-clock delayed-job invisibility와 due lease release, priority claim order, broker publish failure 뒤 zero-delay release/redelivery와 new lease attempt, explicit relay loop의 due-job publish, shutdown-between-passes aggregate report와 successful pass observer emission, inbox receipt rollback 후 reprocessing과 commit 뒤 duplicate suppression을 확인합니다. <code>rustee-jobs-cron-sqlx</code> suite는 UTC default/validated IANA time-zone definition의 exact duplicate registration, time-zone definition conflict, spring DST gap skip, fall overlap earlier-once, pause/resume no-catch-up, due schedule의 atomic fresh-job outbox stage/next occurrence advance와 shared fixed-window의 one stage/one defer, no-outbox defer, registration policy conflict를 확인합니다. <code>rustee-mongodb-checkpoint-sqlx</code>는 opaque BSON resume token의 first load, consumer-scoped upsert/replace와 corrupt-byte rejection, database-clock writer-lease contention/renewal/expiry/stale-write rejection을 확인합니다. CI는 이어 PostgreSQL을 중지해 checkpoint-store readiness가 deadline 안의 sanitized storage failure로 끝나는지, 재시작 뒤 durable checkpoint contract가 다시 성공하는지도 확인합니다. <code>rustee-outbox-observability</code> unit suite는 reportable/abandoned pass의 bounded kind/outcome/count/duration collection을 고정합니다. 로컬도 Docker daemon과 <code>RUSTEE_DATABASE_URL</code>로 같은 suite를 opt-in 실행합니다.</li>
-          <li>MongoDB contract: CI는 replica set으로 초기화한 <code>mongo:8.0</code>과 PostgreSQL 16 container에서 <code>rustee-mongodb</code>의 client connect, selected-database ping, isolated collection I/O, explicit session transaction commit/abort, change-stream event/resume-token checkpoint와 shutdown 우선순위, trusted tenant A/B BSON scope의 cross-tenant read/update/delete/first-match aggregation exclusion과 tenant-field mutation rejection을 실행합니다. combined checkpoint contract는 PostgreSQL에 first event token을 저장한 뒤 MongoDB client/stream을 새로 만들고 resume 이후 next event만 수신하는지 확인합니다. CI는 이어 replica set을 중지해 configured deadline 안의 readiness failure를 확인하고, 재시작/primary readiness 뒤 전체 MongoDB suite를 다시 실행합니다. 로컬도 Docker daemon과 replica-set <code>RUSTEE_MONGODB_URI</code>, checkpoint는 <code>RUSTEE_DATABASE_URL</code>로 같은 suite를 opt-in 실행합니다. broader recovery와 raw driver, aggregation <code>$lookup</code>/<code>$unionWith</code>, change-stream tenant review는 별도 release gate이며 lease owner identity와 renewal scheduler는 application이 명시합니다.</li>
-          <li>MongoDB foreign aggregation contract: 같은 join key를 가진 tenant B item을 포함한 fixture에서 <code>MongoTenantScope::lookup_stage</code>가 foreign pipeline의 first match로 tenant B join result를 배제하고, <code>union_with_stage</code>가 tenant B archive document를 배제하는지 replica-set CI가 확인합니다. returned <code>Client</code>와 re-exported driver는 이미 raw migration/admin API를 제공하지만, 그 authorization과 nested aggregation/change-stream access review는 release gate로 남습니다.</li>
-          <li>native provider feature: <code>rustee-events-kafka --features rdkafka</code>, <code>rustee-events-kafka-sqlx --features rdkafka</code>, delayed-retry observer와 Prometheus adapter는 librdkafka CMake build와 Kafka broker contract를 포함한 별도 CI lane으로 실행합니다. 로컬에서 CMake 또는 native C++ toolchain이 없으면 기본 workspace test에는 영향을 주지 않지만 feature 검증은 실행할 수 없습니다.</li>
-          <li>container: 각 integration의 canonical backend version과 지원 범위 내 최신 backend version을 pinned image로 실행</li>
-          <li>platform: Linux full test, macOS/Windows workspace all-target compile plus MCP stdio fixture runtime test; 지원이 확정된 target만 release gate로 승격</li>
-          <li>examples: <code>hello-world</code>, <code>json-api</code>, <code>middleware-example</code>, <code>security-jwt</code>, <code>jobs-example</code>, <code>ai-pipeline</code>은 public quickstart/API/middleware/security/job/AI 흐름을 compile합니다. JSON API, middleware, signed/missing JWT, typed publish-to-registry dispatch, fake-provider AI HTTP response와 provider failure redaction을 in-process로 실행합니다. real broker, OIDC/JWKS와 billable AI provider qualification은 각 container 또는 opt-in provider gate에 남습니다.</li>
+          <li>
+            Every pull request runs the supported MSRV workspace build, formatter, warning-free
+            Clippy, all-feature bans on panic-prone <code>unwrap()</code> across library and
+            first-party binary targets, explicit content-safe <code>Debug</code> for public errors
+            that retain a source, warning-free and complete public Rustdoc build across every
+            workspace feature, targeted unit and integration checks, incomplete-source-marker
+            checks, a workspace-member plus root-policy lint check, and HTML link plus
+            document-structure checks.
+          </li>
+          <li>
+            Feature, native, container, sanitizer, and platform lanes are explicit. CI runs default
+            and all-feature workspace Clippy, test, and doctest matrices, including the
+            application-facing facade quick-start compile check, plus one public Rustdoc build with
+            every workspace feature enabled. macOS and Windows validate workspace compilation and
+            MCP stdio fixture lifecycle; Linux hosts required container and native lanes. CI rejects
+            an ignored provider-contract package unless a workflow invokes it with
+            <code>--ignored</code>, keeps the scheduled fuzz matrix aligned with the fuzz manifest,
+            and requires a non-empty seed corpus for every target.
+          </li>
+          <li>
+            Container suites verify recovery as well as the happy path: bounded and redacted
+            stopped-backend failure, restart, and the full contract after recovery.
+          </li>
+          <li>
+            Benchmark recording uses the committed dependency graph so a baseline can be reproduced
+            from the reviewed lockfile.
+          </li>
+          <li>
+            Release qualification validates the exact inventory-approved source archives before
+            their checksums and attestations are created; release promotion also requires documented
+            support status, compatibility evidence, operational runbook, rollback guidance, and
+            owner approval. It does not infer production support from a mock suite.
+          </li>
+          <li>
+            External provider, edge, and cloud evidence stays in the
+            <a href="./qualification-register.html">qualification register</a> and is reviewed
+            against the <a href="./release-plan.html">release plan</a>. Live OpenAI Batch and
+            Confluent Registry workflows are manual, environment-protected, and opt in to a provider
+            side effect.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Authentication Contract</h2>
-        <p>
-          <code>rustee-auth</code> unit suite는 bearer와 header-only API-key layer가 validated <code>Principal</code>만 handler에 전달하고,
-          missing/repeated/malformed API key를 provider 호출 전에 sanitized 401로, provider outage를 credential detail 없는 503으로 처리하는지 확인합니다.
-          별도 real loopback HTTP/1.1 contract는 duplicate <code>X-API-Key</code> field가 transport parser를 지나도 401로 거부되고 어느 raw key도 response에 echo되지 않는지 고정합니다.
-          API-key header name은 configuration 시 HTTP field-name으로 검증하고 value는 exactly one printable ASCII entry at most 4 KiB로 제한합니다.
-          keyed authenticator test는 same key의 stable 32-byte fingerprint, distinct key separation, non-zero pepper requirement, redacted <code>Debug</code>,
-          invalid key pre-store rejection과 fake fingerprint store의 principal handoff를 확인합니다. optional <code>rustee-auth-sqlx</code> PostgreSQL 16 contract는
-          active lookup의 last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection, database-clock active/unexpired-source only no-overlap rotation, repeated revocation, active/retired pepper dual-read의 one-match audit과 metadata clone의 no-audit/duplicate/revoked/expired-source rejection을 확인합니다.
-          CI는 이어 PostgreSQL을 중지해 store readiness가 500ms deadline 안에서 endpoint를 render하지 않는 failure로 끝나는지, restart 뒤 같은 durable credential contract가 다시 성공하는지도 확인합니다.
-          static API-key mapping은 local/test only이며 real deployment의 client-key/pepper migration, KMS delivery, audit retention과 provider-specific constant-time lookup은 separate provider integration gate입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>OpenAPI Contract</h2>
-        <p>
-          <code>rustee-openapi</code> unit suite는 Rustee <code>:parameter</code> route를 OpenAPI <code>{parameter}</code> path로 변환하고, 누락 또는 초과한 path parameter, duplicate parameter, response 없는 operation, non-object/oversized schema를 fail-closed로 거부하는지 확인합니다. JSON document shape는 deterministic component/reference와 status response content, HTTP/API key/OIDC/Authorization Code/Client Credentials OAuth2/<code>mutualTLS</code> scheme, API-key header field-name, declared OAuth scope, mutual-TLS scope 거부, document-wide default와 anonymous/clear operation override를 확인합니다. handler response contract는 <code>application/json; charset=utf-8</code> content type을 확인하고 <code>rustee</code> facade의 opt-in <code>openapi</code> feature는 same contract를 compile/run합니다. route conversion과 API-key header-name metadata는 property/fuzz target을 갖습니다. route/document drift의 build-time discovery, external validator compatibility, runtime OAuth security, TLS/client-certificate handling, hosted UI와 generated client는 별도 feature/release gate입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>MCP OAuth Contract</h2>
-        <p>
-          <code>rustee-ai-mcp-oauth</code> package suite는 protected-resource/issuer discovery URL priority, Bearer challenge parsing, metadata URL/PKCE S256 validation, redacted resource-bound token과 expiry handoff을 검증합니다. authorization test는 redirect의 <code>resource</code>/<code>state</code>/<code>code_challenge</code>, callback state의 atomic one-time consume, provider rejection의 code 미교환을 고정합니다. token lifecycle test는 explicit refresh의 replacement, expired token read의 no implicit refresh, refresh-token-first revocation과 successful local delete/unsupported-endpoint local retention을 확인하고 loopback HTTP token/revocation forms의 expected parameters를 검증합니다. <code>rustee-ai-mcp-oauth-redis</code> Redis 7 contract는 AES-256-GCM envelope에 state/access/refresh plaintext가 없고 state가 atomic consume되며 token load/delete가 동작하는지를 확인합니다. <code>rustee-mcp-oauth</code> in-process contract는 metadata GET/method boundary, missing/invalid Bearer <code>resource_metadata</code> challenge, verified-but-insufficient scope의 403, verified principal handoff와 verifier outage 503/no challenge를 고정합니다. KMS/key-delivery, revoke/rotation/consent rollback runbook, multi-instance refresh, authorization-server/JWKS/introspection outage/key-rotation matrix와 representative provider/live credential evidence는 release gate입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>AI Evaluation Contract</h2>
-        <p>
-          <code>rustee-ai-eval</code> suite는 safe/unique/bounded case ID, application-owned target과 trusted generic grader, declaration 순서의 sequential execution을 고정합니다. runner는 executor 또는 grader 오류에서 뒤 case를 실행하지 않고, provider retry나 parallel fan-out을 만들지 않습니다. report는 case ID, model alias, usage와 bounded grade만 포함하며 debug 출력에 prompt, expected target, completion을 넣지 않습니다. deterministic <code>RecordedAiProvider</code> contract는 성공 집계와 첫 provider failure 뒤 no-retry/no-later-case를 확인합니다. durable evaluation catalog/job reference, human 또는 LLM grader의 trust·spend·redaction, comparative baseline, semantic cache, provider asynchronous batch의 idempotency/reconciliation은 별도 release gate입니다.
-          <code>AiEvaluationReference</code> contract는 raw suite가 없는 payload와 run-key-bound job idempotency를, in-memory ledger suite는 first run의 completion reuse와 failure 뒤 pending 상태에서 second provider call이 없음을 확인합니다. <code>rustee-ai-eval-sqlx</code> PostgreSQL contract는 pending preservation, exact catalog identity conflict rejection, idempotent completion reuse와 redacted pending reference를 확인합니다. Docker-backed PostgreSQL CI가 이 ignored suite를 초기 backend와 restart 뒤 모두 실행하며, local default suite는 provider/database container 없이 unit contract만 실행합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>AI Response Cache Contract</h2>
-        <p>
-          <code>rustee-ai-cache</code> suite는 unsafe scope/raw prompt fingerprint 및 zero/overlong TTL을 거부하고, preloaded exact-key hit이 provider를 호출하지 않으며 redacted debug에 prompt/completion을 넣지 않는지를 검증합니다. miss는 한 번만 provider를 호출한 뒤 usage를 보존한 entry를 저장하고 later hit으로 전환합니다. declared tool과 tool-result request, model tool-call response는 cache lookup/store에서 제외됩니다. cache write failure는 provider retry로 바뀌지 않고 status로만 surface해야 하며 fail-closed/bypass read policy와 exact invalidation은 application observability/erase policy에 연결합니다. <code>rustee-ai-cache-redis</code> unit suite는 namespace/size/TTL-second bound를, opt-in Redis 7 contract는 serialized response round-trip과 selected exact key deletion을 고정합니다. Redis TLS/encryption, tenant erase, retention, outage/restart, Cluster/Sentinel, stampede/stale-answer UX와 live provider cost accounting은 release gate입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>AI Provider Batch Contract</h2>
-        <p>
-          <code>rustee-ai-batch</code> suite는 raw prompt가 아닌 safe scope/catalog/run-key reference만 받고, first reservation이 catalog load와 one provider submit 뒤 receipt를 기록하는지 확인합니다. same reference의 later delivery는 catalog/provider를 다시 호출하지 않고 receipt를 재사용합니다. provider failure는 ambiguous <code>Pending</code>으로 남아 automatic second submit을 막습니다. artifact suite는 serialized reference에 raw output이 없고, first reservation만 loader/processor를 호출하며 recorded reconciliation은 artifact access를 다시 하지 않는지, processor failure가 <code>Pending</code>으로 남아 automatic replay를 막는지 확인합니다. <code>rustee-ai-batch-jobs</code> contract는 serialized submission/artifact payload에 raw work 또는 result가 없고 envelope idempotency key가 run key 또는 reconciliation key와 다르면 handler 전에 거부함을 확인합니다. <code>rustee-ai-batch-sqlx</code> PostgreSQL contract는 pending preservation, exact identity completion reuse, conflicting reconciliation key rejection, bounded pending query와 redacted output을 확인합니다. <code>rustee-ai-openai</code> local TCP suite는 safe unique-ID/endpoint/object-body JSONL builder와 typed <code>ChatRequest</code> Responses/ordered <code>EmbeddingInput</code> Embeddings row mapping, explicit bounded multipart upload, uploaded file ID의 Batch create body/run-key metadata, retrieve/cancel/delete paths, safe state/count/file-ID decode, explicit bounded file download, raw-content debug redaction, bounded output JSONL iterator 및 explicit <code>ChatResponse</code>/<code>Embedding</code> conversion의 malformed/over-limit fail-closed contract를 확인합니다. ignored live lifecycle contract는 <code>RUSTEE_OPENAI_BATCH_LIVE=1</code>, <code>OPENAI_API_KEY</code>, model, unique run key와 explicit spend/retention approval이 있을 때만 upload/submit/retrieve/cancel을 수행합니다. catalog/artifact authorization/erase, row-level domain idempotency, broker retry/DLQ/operator reconciliation, PostgreSQL outage/recovery, provider-only input-body validation, domain response semantics/side effect, partial result, receipt/billing reconciliation, provider outage/version matrix는 release gate입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Outbox Prometheus contract</h2>
-        <p>
-          <code>rustee-outbox-observability-prometheus</code> unit suite는 relay pass가 fixed kind/outcome, aggregate row count와 histogram으로만
-          인코드되고 destination 또는 payload label이 생기지 않는지, Prometheus content type과 <code>no-store</code> scrape response를 확인합니다.
-          PostgreSQL relay semantics와 stopped-database/restart contract는 기존 container suite가 별도로 검증합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Scheduler observability contract</h2>
-        <p>
-          <code>rustee-jobs-cron-sqlx</code> unit suite는 IANA name validation, UTC default, DST spring gap skip와 fall overlap earlier-once,
-          fire observation의 success report와 cancellation/drop <code>abandoned</code> terminal path를 확인합니다. <code>rustee-jobs-cron-observability</code> unit suite는 fixed outcome,
-          aggregate scheduler count, in-flight 회수, bounded duration histogram과 invalid histogram configuration을 고정합니다.
-          Prometheus suite는 fixed outcome/count label과 histogram, content type 및 <code>no-store</code> response만 검증하며 schedule key,
-          destination 또는 payload series가 생기지 않는지 확인합니다. PostgreSQL atomic stage/defer semantics는 scheduler container contract가
-          별도로 검증합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Edge deployment qualification</h2>
-        <p>
-          Linux Nginx contract는 Rustee origin의 trusted proxy, <code>Vary</code> representation 분리와 graceful drain만 증명합니다.
-          chosen CDN 또는 edge topology는 별도의 opt-in integration 또는 game-day evidence로 public TLS/certificate renewal, origin isolation,
-          forwarded-header overwrite, cache key/bypass, identity/gzip/Brotli separation, purge or fingerprint rollout, cached error, outage/drain/rollback과
-          redacted edge telemetry를 확인해야 합니다. 이 evidence는 vendor와 configuration revision을 release record에 연결하며,
-          exact acceptance rule은 <a href="./edge-delivery.html">edge delivery policy</a>를 따릅니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>CI와 release gate</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>시점</th>
-              <th>필수 검증</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>개발 중</td>
-              <td><code>cargo nextest run --workspace</code>, <code>cargo test --doc</code>, 변경한 crate의 focused test</td>
-            </tr>
-            <tr>
-              <td>pull request fast lane</td>
-              <td>fmt, clippy warning gate, unit/in-process/wire test, doctest/examples, trybuild, supported feature profiles, HTML link check</td>
-            </tr>
-            <tr>
-              <td>pull request Linux integration lane</td>
-              <td>Testcontainers dependency contracts, race/cancellation regression, security and adapter-specific integration test</td>
-            </tr>
-            <tr>
-              <td>scheduled</td>
-              <td>property stress, fuzz corpus, soak/performance, external cloud provider opt-in test, dependency update compatibility matrix</td>
-            </tr>
-            <tr>
-              <td>release</td>
-              <td>MSRV, stable, lockfile, semver/API checks, full supported matrix, known flaky test audit, benchmark regression review</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>
-          <code>cargo-nextest</code>는 빠른 test binary 실행과 CI reporting에 사용하지만 doctest는 지원하지 않으므로 별도 Cargo 단계로 유지합니다.
-          coverage는 변경 위험을 읽는 보조 지표로 기록하되, 줄 수치만을 release gate로 삼지 않습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>의도적으로 하지 않는 것</h2>
+        <h2>Intentional Limits</h2>
         <ul>
-          <li>모든 test를 mock으로만 수행하고 실제 socket/broker/database protocol 검증을 생략하는 것</li>
-          <li>sleep, shared port, shared queue, 실행 순서에 의존하는 flaky test</li>
-          <li>coverage percentage만 맞추려고 내부 구현 세부사항을 고정하는 snapshot</li>
-          <li>사용자의 public application test API를 깨뜨릴 수 있는 거대한 assertion DSL을 성급히 안정화하는 것</li>
-          <li>실제 cloud credential이나 비용이 드는 provider call을 일반 pull request에서 실행하는 것</li>
-          <li>compile-fail diagnostic 변경을 검토 없이 자동 승인하는 것</li>
+          <li>Line coverage is not a release criterion by itself.</li>
+          <li>
+            Mock-only tests do not replace wire-level or real-backend contracts where a provider's
+            semantics matter.
+          </li>
+          <li>
+            A container suite does not qualify a real managed provider, identity provider, model
+            provider, CDN, or production network topology.
+          </li>
+          <li>
+            Weekly fuzzing covers route patterns, OpenAPI route/security grammar, public query,
+            path, and JSON extractors, the public test-cookie path, the public static-service
+            byte-range path, the trusted-proxy <code>Forwarded</code> and
+            <code>X-Forwarded-*</code> paths, strict and compatible event/job envelope restoration,
+            bounded MCP client SSE and stdio JSON-RPC parsing, MCP server JSON-RPC request parsing,
+            OpenAI SSE and Batch JSONL parsing, and MCP OAuth
+            <code>WWW-Authenticate</code> challenge admission. Fuzzing complements deterministic
+            regression tests; it does not replace a documented contract or a minimized regression
+            case.
+          </li>
+          <li>
+            The manual route-dispatch benchmark reports a baseline only. Follow the
+            <a href="./benchmarks.html">benchmark recording rules</a> before comparing results.
+          </li>
+          <li>Automatic retries do not make a flaky test acceptable.</li>
         </ul>
       </section>
-
-      <section>
-        <h2>Kafka delivery-observer contract</h2>
-        <p>
-          <code>rustee-events</code> unit suite와 <code>rustee-events-observability</code> collector suite는 start/finish,
-          cancellation drop의 <code>unsettled</code>, in-flight recovery, bounded duration histogram, invalid histogram configuration과
-          observer panic isolation을 확인합니다. Prometheus suite는 bounded provider/fixed outcome label, label escaping, duration histogram,
-          <code>Cache-Control: no-store</code>와 event ID/type, topic, partition, group, offset, key, payload, endpoint와 raw error 미노출을
-          확인합니다.
-        </p>
-        <p>
-          native Kafka container contract는 subscribed source topic metadata readiness, successful handler의 source offset synchronous commit 뒤
-          <code>acknowledged</code>를, failure routing의 retry/DLQ broker acknowledgement와 source commit 뒤 각각
-          <code>retried</code>/<code>dead_lettered</code>를 assertion하고, in-flight rebalance 뒤 source commit failure가
-          <code>unsettled</code>가 되는지도 확인합니다. broker 없는 local default profile은 이 ignored suite를 실행하지
-          않으며 CI 또는 approved local Docker fixture가 담당합니다. observer result는 external side effect exactly-once가 아니라 source
-          settlement라는 점은 replay/idempotency qualification에서 별도로 검증합니다.
-        </p>
-        <p>
-          stopped-broker contract는 producer delivery deadline뿐 아니라 <code>KafkaEventConsumer::readiness</code>가 500ms timeout 안에
-          sanitized <code>KafkaError::Readiness</code>로 끝나고 endpoint를 render하지 않는지도 확인합니다. consumer readiness는 group assignment,
-          lag, handler와 downstream side-effect readiness를 뜻하지 않는 read-only metadata probe입니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>PostgreSQL Recovery Contract</h2>
-        <p>
-          <code>rustee-sqlx</code>는 기본 5초 initial-pool deadline을 사용합니다. PostgreSQL 16 CI는 database를
-          중지한 상태에서 500ms deadline의 connection failure가 URL credential 또는 endpoint를 render하지 않는지
-          확인합니다. restart와 readiness 확인 뒤 SQLx, transactional outbox, keyed API-key store, AI audit/usage ledger, MongoDB checkpoint PostgreSQL
-          contracts를 다시 실행합니다. application은 이 low-level error를 HTTP response로 변환할 때 별도의 status와
-          body policy를 소유합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Redis Streams Deadline Contract</h2>
-        <p>
-          <code>rustee-jobs-redis</code>의 Redis 7 contract는 normal ack/retry/reclaim/DLQ와 별도로
-          <code>CLIENT PAUSE</code>로 backend command 처리를 의도적으로 멈춥니다. 500ms operation deadline의
-          readiness가 endpoint 또는 credential을 포함하지 않는 <code>RedisStreamsError::Readiness</code>로 끝나는지
-          확인한 뒤 pause가 자동 해제된 상태에서 fixture를 정리합니다. 이 검증은 injected connection manager의
-          reconnect policy가 아니라 Rustee command boundary를 증명합니다. 의도적 outage/pause 계약은 CI가 해당
-          <code>RUSTEE_*_EXPECT_*</code> 환경 변수를 줄 때만 fault injection을 수행하므로, 정상 backend의 전체
-          ignored suite는 healthy container를 중단시키지 않습니다. <code>CLIENT PAUSE</code>는 server-global이므로
-          CI는 이 계약을 filtered single test로 실행합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>구현 순서</h2>
-        <ol>
-          <li>Stage 1에서 workspace test convention, lint/format, <code>rustee-test-support</code>, CI fast profile을 설정합니다.</li>
-          <li>Stage 2에서 router와 real TCP server end-to-end fixture를 구현합니다.</li>
-          <li>Stage 3에서 lifecycle, readiness, trusted proxy와 transport deployment contract regression test를 추가합니다.</li>
-          <li>Stage 4에서 extractor/middleware unit/property test, <code>rustee-test</code>의 bounded response와 opt-in session-style cookie jar, example/doctest, <code>rustee-macros::FromHeader</code> valid parse와 missing attribute/wrong shape/invalid header-name, <code>routes!</code> dynamic registration/renamed facade와 unsupported method/no-route <code>trybuild</code> diagnostic test를 추가했습니다. cookie jar의 browser semantics, attribute route macro와 wider derive는 separate feature track입니다.</li>
-          <li>각 optional integration Stage에서 Testcontainers-backed contract suite와 failure/cancellation test를 함께 추가합니다.</li>
-          <li>Stage 9C에서 <code>rustee-ai-test</code> deterministic recorded-stream helper를 구현했습니다. Stage 10의 <code>rustee-jobs-redis</code>는 Redis 7 CI에서 success ack, delayed retry-to-DLQ, abandoned pending reclaim의 cumulative attempt, unknown registry job DLQ와 paused-backend command deadline/redaction을 실행합니다. <code>rustee-jobs-rabbitmq</code>는 RabbitMQ 4.3 CI에서 manual success ack, native delayed retry-to-DLQ, unknown registry DLQ를 실행합니다. <code>rustee-jobs-sqs</code>는 LocalStack CI에서 Standard delete/retry-direct-DLQ/unknown-registry-DLQ와 FIFO route, stopped-backend deadline/redaction/restart recovery를 실행합니다. macOS/Windows CI는 every-PR workspace all-target compile과 MCP stdio Rust fixture lifecycle을 실행합니다. router는 PR property contract와 weekly/manual libFuzzer parser run을 시작했고 header/query/body/range/state machine target, soak/benchmark, full provider/platform/release matrix를 계속 확장합니다.</li>
-        </ol>
-      </section>
-
-      <section>
-        <h2>외부 문서</h2>
-        <ul>
-          <li><a href="https://doc.rust-lang.org/cargo/commands/cargo-test.html">Cargo test and doctests</a></li>
-          <li><a href="https://www.nexte.st/">cargo-nextest</a></li>
-          <li><a href="https://docs.rs/trybuild/latest/trybuild/">trybuild compile-fail tests</a></li>
-          <li><a href="https://proptest-rs.github.io/proptest/">Proptest</a></li>
-          <li><a href="https://docs.rs/testcontainers/latest/">Testcontainers for Rust</a></li>
-          <li><a href="https://docs.rs/tokio/latest/tokio/time/fn.pause.html">Tokio paused test time</a></li>
-          <li><a href="https://rust-fuzz.github.io/book/">Rust Fuzz Book</a></li>
-        </ul>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when test layers, public test helpers, feature matrix, CI gate, backend contract, deterministic-time policy, or release qualification changes.</p>
+        <p>
+          Last updated: 2026-08-25. Update this document when CI lanes, test contracts, or release
+          gates change.
+        </p>
       </footer>
     </main>
   </body>

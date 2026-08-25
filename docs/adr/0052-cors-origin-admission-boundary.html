@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0052: CORS Origin Admission Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0052: CORS Origin Admission Boundary</h1>
+        <p class="meta">Status: Accepted</p>
+      </section>
+      <section>
+        <h2>Context</h2>
+        <p>
+          CORS is a browser interoperability response policy, not authentication or authorization. A
+          layer that attaches configured CORS headers without validating the request Origin leaves
+          its actual admission and cache behavior implicit.
+        </p>
+      </section>
+      <section>
+        <h2>Decision</h2>
+        <p>
+          <code>CorsLayer</code> accepts exactly one request Origin whose header value equals its
+          configured origin. It short-circuits only matching preflight requests, applies
+          actual-response and preflight-response headers separately, and adds
+          <code>Vary: Origin</code> without duplicating an existing variation. Missing, unmatched,
+          or duplicate Origin input passes to the inner service unchanged.
+        </p>
+      </section>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Applications retain endpoint authorization, CSRF policy, allowed method selection, cache
+          deployment, and error behavior for non-CORS requests. An application needing more than one
+          origin or dynamic tenant policy provides a focused, explicit layer rather than relying on
+          wildcard inference.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-11.</p></footer>
+    </main>
+  </body>
+</html>

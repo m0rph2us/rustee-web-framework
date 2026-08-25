@@ -1,35 +1,157 @@
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readWorkspaceReleaseInventory } from "./workspace-release-inventory.mjs";
 
-const inventoryPath = resolve(process.argv[2] ?? "docs/release-inventory.html");
-const document = await readFile(inventoryPath, "utf8");
-const match = document.match(
-  /<script id="workspace-release-inventory" type="application\/json">\s*([\s\S]*?)\s*<\/script>/,
-);
+const REQUIRED_LICENSE_EXPRESSION = "MIT OR Apache-2.0";
 
-if (!match) {
-  throw new Error(`${inventoryPath}: workspace release inventory JSON was not found`);
+function parseCommandArguments(commandArguments) {
+  const selfTestCount = commandArguments.filter((argument) => argument === "--self-test").length;
+  const selfTest = selfTestCount === 1;
+  const unsupportedOptions = commandArguments.filter(
+    (argument) => argument.startsWith("-") && argument !== "--self-test",
+  );
+  const inventoryArguments = commandArguments.filter((argument) => !argument.startsWith("-"));
+
+  if (
+    selfTestCount > 1 ||
+    unsupportedOptions.length > 0 ||
+    inventoryArguments.length > 1 ||
+    (selfTest && inventoryArguments.length > 0)
+  ) {
+    throw new Error(
+      "usage: node scripts/check-release-inventory.mjs [inventory.html] | --self-test",
+    );
+  }
+
+  return { selfTest, inventoryArguments };
 }
 
-let inventory;
-try {
-  inventory = JSON.parse(match[1]);
-} catch (error) {
-  throw new Error(`${inventoryPath}: invalid workspace release inventory JSON`, {
-    cause: error,
-  });
+function localDependencyFailures(packageName, dependencies, inventoryByName) {
+  const failures = [];
+
+  for (const dependency of dependencies) {
+    if (dependency.path && dependency.req === "*") {
+      failures.push(`${packageName}: local dependency ${dependency.name} must declare a package version requirement`);
+    }
+    if (!dependency.path || dependency.kind === "dev") {
+      continue;
+    }
+
+    const dependencyEntry = inventoryByName.get(dependency.name);
+    if (dependencyEntry?.intent === "workspace-only") {
+      failures.push(
+        `${packageName}: publish candidate cannot depend on workspace-only package ${dependency.name} outside dev-dependencies`,
+      );
+    }
+  }
+
+  return failures;
 }
 
-if (inventory.schema !== 1 || !Array.isArray(inventory.packages)) {
-  throw new Error(`${inventoryPath}: unsupported workspace release inventory schema`);
+function requiredLicenseExpressionFailure(packageName, license) {
+  if (license !== REQUIRED_LICENSE_EXPRESSION) {
+    return `${packageName}: publish candidate must use ${REQUIRED_LICENSE_EXPRESSION} as its SPDX license expression`;
+  }
+  return undefined;
 }
 
+function runSelfTest() {
+  const defaultArguments = parseCommandArguments([]);
+  const selfTestArguments = parseCommandArguments(["--self-test"]);
+  if (
+    defaultArguments.selfTest ||
+    defaultArguments.inventoryArguments.length > 0 ||
+    !selfTestArguments.selfTest
+  ) {
+    throw new Error("valid command-line arguments were not parsed as expected");
+  }
+
+  for (const invalidArguments of [
+    ["--unknown"],
+    ["--self-test", "--self-test"],
+    ["first-inventory.html", "second-inventory.html"],
+    ["--self-test", "inventory.html"],
+  ]) {
+    try {
+      parseCommandArguments(invalidArguments);
+      throw new Error(`${invalidArguments.join(" ")}: accepted invalid command-line arguments`);
+    } catch (error) {
+      if (!String(error).includes("usage:")) {
+        throw error;
+      }
+    }
+  }
+
+  const inventoryByName = new Map([
+    ["candidate", { intent: "candidate" }],
+    ["workspace-only", { intent: "workspace-only" }],
+  ]);
+  const workspaceOnlyDependency = {
+    name: "workspace-only",
+    path: "/fixture/workspace-only",
+    req: "^0.1.0",
+  };
+  const cases = [
+    {
+      name: "normal dependency",
+      dependencies: [{ ...workspaceOnlyDependency, kind: null }],
+      expected: [
+        "candidate: publish candidate cannot depend on workspace-only package workspace-only outside dev-dependencies",
+      ],
+    },
+    {
+      name: "build dependency",
+      dependencies: [{ ...workspaceOnlyDependency, kind: "build" }],
+      expected: [
+        "candidate: publish candidate cannot depend on workspace-only package workspace-only outside dev-dependencies",
+      ],
+    },
+    {
+      name: "dev dependency",
+      dependencies: [{ ...workspaceOnlyDependency, kind: "dev" }],
+      expected: [],
+    },
+    {
+      name: "unversioned local dependency",
+      dependencies: [{ name: "candidate", path: "/fixture/candidate", req: "*", kind: null }],
+      expected: ["candidate: local dependency candidate must declare a package version requirement"],
+    },
+  ];
+
+  for (const testCase of cases) {
+    const actual = localDependencyFailures("candidate", testCase.dependencies, inventoryByName);
+    if (JSON.stringify(actual) !== JSON.stringify(testCase.expected)) {
+      throw new Error(`${testCase.name}: expected ${JSON.stringify(testCase.expected)}, got ${JSON.stringify(actual)}`);
+    }
+  }
+
+  if (requiredLicenseExpressionFailure("candidate", REQUIRED_LICENSE_EXPRESSION)) {
+    throw new Error("the required license expression was rejected");
+  }
+  if (!requiredLicenseExpressionFailure("candidate", "MIT")) {
+    throw new Error("a different license expression was accepted");
+  }
+
+  console.log("release inventory dependency, license, and command-line boundaries OK");
+}
+
+const { selfTest, inventoryArguments } = parseCommandArguments(process.argv.slice(2));
+
+if (selfTest) {
+  runSelfTest();
+  process.exit(0);
+}
+
+const inventoryPath = resolve(inventoryArguments[0] ?? "docs/release-inventory.html");
 const metadata = JSON.parse(
-  execFileSync("cargo", ["metadata", "--no-deps", "--format-version=1", "--offline"], {
-    encoding: "utf8",
-  }),
+  execFileSync(
+    "cargo",
+    ["metadata", "--no-deps", "--format-version=1", "--locked", "--offline"],
+    { encoding: "utf8" },
+  ),
 );
+const inventory = await readWorkspaceReleaseInventory(inventoryPath, metadata.packages);
 const licenseArtifacts = await Promise.all([
   readFile(resolve(metadata.workspace_root, "LICENSE-APACHE"), "utf8"),
   readFile(resolve(metadata.workspace_root, "LICENSE-MIT"), "utf8"),
@@ -45,18 +167,6 @@ if (!licenseArtifacts[1].includes("MIT License")) {
 }
 
 for (const entry of inventory.packages) {
-  if (
-    typeof entry?.name !== "string" ||
-    !["candidate", "workspace-only"].includes(entry.intent) ||
-    typeof entry.track !== "string"
-  ) {
-    failures.push(`invalid inventory entry: ${JSON.stringify(entry)}`);
-    continue;
-  }
-  if (inventoryByName.has(entry.name)) {
-    failures.push(`duplicate inventory entry: ${entry.name}`);
-    continue;
-  }
   inventoryByName.set(entry.name, entry);
 }
 
@@ -95,6 +205,10 @@ for (const [name, pkg] of metadataByName) {
   if (!pkg.license?.trim()) {
     failures.push(`${name}: publish candidate needs a license expression`);
   }
+  const licenseExpressionFailure = requiredLicenseExpressionFailure(name, pkg.license);
+  if (licenseExpressionFailure) {
+    failures.push(licenseExpressionFailure);
+  }
   if (!pkg.repository?.startsWith("https://")) {
     failures.push(`${name}: publish candidate needs an HTTPS repository URL`);
   }
@@ -104,11 +218,7 @@ for (const [name, pkg] of metadataByName) {
   if (!pkg.targets.some((target) => target.kind.includes("lib") || target.kind.includes("proc-macro"))) {
     failures.push(`${name}: publish candidate must expose a library or procedural macro target`);
   }
-  for (const dependency of pkg.dependencies) {
-    if (dependency.path && dependency.req === "*") {
-      failures.push(`${name}: local dependency ${dependency.name} must declare a package version requirement`);
-    }
-  }
+  failures.push(...localDependencyFailures(name, pkg.dependencies, inventoryByName));
 }
 
 if (failures.length > 0) {

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0051: Enterprise Deployment Readiness Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0051: Enterprise Deployment Readiness Boundary</h1>
+        <p class="meta">Status: Accepted</p>
+      </section>
+      <section>
+        <h2>Context</h2>
+        <p>
+          An enterprise framework must be deployable by organizations with different cloud accounts,
+          providers, network topologies, data policies, credentials, and operating teams. Requiring
+          the framework repository to qualify one shared environment would confuse reusable
+          implementation completion with an adopter's production operation.
+        </p>
+      </section>
+      <section>
+        <h2>Decision</h2>
+        <p>
+          Rustee is enterprise deployment-ready when it supplies typed contracts, secure boundaries,
+          tests, protected live-workflow paths, runbooks, source-release controls, and a validated
+          qualification-record format. Each adopter owns selection and qualification of its
+          provider, topology, credentials, data policy, operational process, and deployment-specific
+          Enterprise-qualified claim.
+        </p>
+      </section>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Pending framework qualification records are expected adoption work, not missing Rustee
+          features. A generic framework release does not require every record to be qualified. A
+          named deployment must supply current evidence before claiming Enterprise-qualified status.
+          Documentation and AI maintenance rules must keep these two claims distinct.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-09.</p></footer>
+    </main>
+  </body>
+</html>

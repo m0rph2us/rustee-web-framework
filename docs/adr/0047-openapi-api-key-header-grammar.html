@@ -1,86 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0047: OpenAPI API-key Header Grammar Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0047: OpenAPI API-Key Header Grammar Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../openapi.html">OpenAPI</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../testing.html">Test</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0047 · Accepted · 2026-08-04</div>
-        <h1>OpenAPI API-key header grammar boundary</h1>
-        <p class="lead">header에 선언하는 API key 이름은 HTTP field-name으로 검증하되, document metadata를 runtime credential parser로 확장하지 않습니다.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0047: OpenAPI API-Key Header Grammar Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          OpenAPI API key component의 <code>name</code>은 header, query, cookie 중 한 위치에 나타납니다. 기존 bounded text validation만으로는
-          header 위치에 공백이나 제어문자를 넣을 수 있어 generated client와 real HTTP request가 다른 contract가 될 수 있습니다.
-          반면 query/cookie key의 application semantics를 one framework grammar로 정하면 runtime parser와 cookie policy를 암묵적으로 약속하게 됩니다.
+          API-key documentation must accept only valid HTTP header names and must not confuse a
+          header grammar with authentication enforcement.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <ul>
-          <li><code>OpenApiSecurityScheme::api_key(name, Header)</code>는 Rustee의 existing HTTP <code>HeaderName</code> parser로 <code>name</code>을 검증합니다.</li>
-          <li>blank, oversized, NUL을 포함한 name은 기존 bounded metadata error로 거부합니다. Header parser가 거부하는 공백, separator, control character도 <code>InvalidMetadata { field: &quot;API key header name&quot; }</code>으로 fail-closed 합니다.</li>
-          <li>valid header name의 application-provided spelling은 OpenAPI output에 유지합니다. Header field names의 runtime case-insensitive matching, duplicate header handling, actual API-key parsing과 secret redaction은 application middleware가 소유합니다.</li>
-          <li>query/cookie location은 bounded public metadata로 유지합니다. query encoding, duplicate handling, cookie-name/path/domain/same-site/secure semantics를 이 builder가 해석하거나 검증하지 않습니다.</li>
-          <li>이 결정은 HTTP authentication middleware를 붙이지 않으며 API key value, credential, tenant/subject 또는 route runtime policy를 document에 넣지 않습니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Consequences</h2>
-        <ul>
-          <li>header API key를 사용하는 client generator는 invalid wire name이 없는 deterministic component를 받을 수 있습니다.</li>
-          <li>application은 custom query/cookie conventions를 문서화할 수 있지만 Rustee가 cross-framework cookie contract를 구현한다고 오해하지 않습니다.</li>
-          <li>unit과 facade contract는 valid mixed-case header name, invalid header name rejection, query metadata preservation을 고정합니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>모든 API-key name을 generic metadata로만 취급</td><td>invalid header declaration이 OpenAPI output에 남으므로 채택하지 않습니다.</td></tr>
-            <tr><td>header/query/cookie에 하나의 strict token grammar 사용</td><td>query/cookie wire semantics와 application conventions를 framework가 임의로 제한하므로 채택하지 않습니다.</td></tr>
-            <tr><td>OpenAPI API key 선언으로 parser와 authentication layer 자동 구성</td><td>문서와 credential verification/tenant authorization ownership을 섞으므로 채택하지 않습니다.</td></tr>
-            <tr><td>header name을 lowercase로 정규화해 output에 저장</td><td>HTTP matching에는 불필요하고 application의 public documentation spelling을 바꾸므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
         <p>
-          API-key runtime parser, duplicate/combined header policy, query encoding and duplicate policy, cookie serialization/browser scope,
-          secret storage/rotation/redaction, runtime route-document drift와 external OpenAPI validator/client generation은 separate security owner와
-          integration evidence를 포함한 ADR에서 검토합니다.
+          Validate explicit API-key header names against the supported HTTP token grammar when
+          creating OpenAPI security metadata.
         </p>
       </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../openapi.html">OpenAPI</a>, <a href="../testing.html">테스트</a>, <a href="./0043-openapi-security-metadata-boundary.html">ADR 0043</a>, <a href="./0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>, and <a href="./0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>.</p>
-      </footer>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Invalid documentation fails early. Runtime key extraction, validation, storage, and
+          authorization stay in the authentication layer.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

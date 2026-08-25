@@ -1,3 +1,5 @@
+//! Compile fixture that verifies Rustee derives work through a renamed dependency alias.
+
 use app::FromHeader;
 
 #[derive(app::FromHeader, Debug, Eq, PartialEq)]

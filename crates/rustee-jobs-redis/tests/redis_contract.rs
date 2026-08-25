@@ -20,7 +20,7 @@ use rustee_redis::{RedisConfig, connect};
 use serde::{Deserialize, Serialize};
 use tokio::{
     sync::Notify,
-    time::{Instant, sleep, timeout},
+    time::{Instant, timeout},
 };
 use uuid::Uuid;
 
@@ -337,7 +337,6 @@ async fn registry_worker_reclaims_an_abandoned_pending_delivery_with_a_new_attem
         .unwrap();
     assert_eq!(reply.keys[0].ids.len(), 1);
 
-    tokio::time::sleep(Duration::from_millis(35)).await;
     let observed = Arc::new(Notify::new());
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let mut registry = JobRegistry::new();
@@ -460,6 +459,14 @@ async fn paused_redis_fails_within_the_operation_deadline_without_endpoint_detai
     assert!(!detail.contains("127.0.0.1"));
     assert!(!detail.contains("6379"));
 
-    sleep(Duration::from_millis(1_100)).await;
+    let mut connection = fixture.connection.clone();
+    let response = timeout(
+        Duration::from_secs(3),
+        redis::cmd("PING").query_async::<String>(&mut connection),
+    )
+    .await
+    .expect("Redis should resume before fixture cleanup")
+    .unwrap();
+    assert_eq!(response, "PONG");
     fixture.cleanup().await;
 }

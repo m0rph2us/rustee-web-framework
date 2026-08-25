@@ -12,12 +12,12 @@ use futures_util::{StreamExt, future, stream};
 use opentelemetry::trace::{SpanKind, TracerProvider};
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
 use rustee_ai::{
-    AiAdvisor, AiEventStream, AiEventStreamFuture, AiExecutionContext, AiPipeline, AiProvider,
-    AiStreamEvent, AiUsageLedger, AiUsageReservation, AiUsageReservationDecision,
+    AiAdvisor, AiEventStream, AiEventStreamFuture, AiExecutionContext, AiPipeline, AiPolicy,
+    AiProvider, AiStreamEvent, AiUsageLedger, AiUsageReservation, AiUsageReservationDecision,
     AiUsageSettlement, ChatMessage, ChatRequest, ChatResponse, MessageRole, ToolApprovalAuditEvent,
     ToolApprovalAuditSink, ToolApprovalDecision, ToolApprovalPolicy, ToolCall, ToolDefinition,
-    ToolExecutionAuditEvent, ToolExecutionAuditSink, ToolExecutionContext, ToolRegistry, ToolRisk,
-    TypedTool, Usage,
+    ToolExecutionAuditEvent, ToolExecutionAuditSink, ToolExecutionContext, ToolRegistry,
+    ToolResult, ToolRisk, TypedTool, Usage,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -198,6 +198,31 @@ async fn run_public_workflow() {
         .await;
     assert_eq!(stream_events.len(), 2);
 
+    let rejected = AiPipeline::new(Provider)
+        .with_policy(AiPolicy {
+            max_input_characters: 1,
+            max_tools: 1,
+            max_tool_results: 1,
+        })
+        .complete(
+            request().with_tool_results([
+                serde_json::from_value::<ToolResult>(json!({
+                    "call_id":"call-one",
+                    "name":"lookup_order",
+                    "content":{"private":"x".repeat(1_024)},
+                }))
+                .unwrap(),
+                serde_json::from_value::<ToolResult>(json!({
+                    "call_id":"call-two",
+                    "name":"lookup_order",
+                    "content":{"private":"y".repeat(1_024)},
+                }))
+                .unwrap(),
+            ]),
+        )
+        .await;
+    assert!(rejected.is_err());
+
     let ledger = Ledger;
     let advisor = ContextAdvisor;
     let response = AiPipeline::new(Provider)
@@ -288,6 +313,17 @@ fn assert_exported_spans(spans: &[SpanData]) {
     let stream_attributes = format!("{:?}", stream_span.attributes);
     assert!(stream_attributes.contains("ai.usage.input_tokens"));
     assert!(stream_attributes.contains("succeeded"));
+
+    let rejected_span = spans
+        .iter()
+        .find(|span| {
+            span.name == "AI request"
+                && format!("{:?}", span.attributes).contains("policy_rejected")
+        })
+        .unwrap_or_else(|| panic!("AI rejected-request span must be exported: {spans:#?}"));
+    let rejected_attributes = format!("{:?}", rejected_span.attributes);
+    assert!(rejected_attributes.contains("ai.request.tool_result_count"));
+    assert!(!rejected_attributes.contains("ai.request.input_characters"));
 
     let tool_span = spans
         .iter()

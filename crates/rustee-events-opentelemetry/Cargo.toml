@@ -10,8 +10,8 @@ description = "Optional OpenTelemetry W3C trace propagation for Rustee events"
 [dependencies]
 futures-util.workspace = true
 opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
 rustee-events = { path = "../rustee-events", version = "0.1.0" }
+rustee-observability-opentelemetry = { path = "../rustee-observability-opentelemetry", version = "0.1.0" }
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
 

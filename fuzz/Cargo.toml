@@ -10,8 +10,22 @@ cargo-fuzz = true
 [dependencies]
 http = "1.2"
 libfuzzer-sys = "0.4"
+rustee-core = { path = "../crates/rustee-core" }
+rustee-ai-mcp = { path = "../crates/rustee-ai-mcp", features = ["fuzzing"] }
+rustee-ai-mcp-oauth = { path = "../crates/rustee-ai-mcp-oauth", features = ["fuzzing"] }
+rustee-ai-openai = { path = "../crates/rustee-ai-openai", features = ["fuzzing"] }
+rustee-events = { path = "../crates/rustee-events" }
+rustee-jobs = { path = "../crates/rustee-jobs" }
+rustee-middleware = { path = "../crates/rustee-middleware" }
+rustee-mcp = { path = "../crates/rustee-mcp", features = ["fuzzing"] }
 rustee-router = { path = "../crates/rustee-router" }
 rustee-openapi = { path = "../crates/rustee-openapi" }
+rustee-static = { path = "../crates/rustee-static" }
+rustee-test = { path = "../crates/rustee-test" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.43", features = ["rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
 
 # Use independent workspace for fuzzers
 [workspace]
@@ -34,6 +48,104 @@ bench = false
 [[bin]]
 name = "openapi_security_scheme"
 path = "fuzz_targets/openapi_security_scheme.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "static_range"
+path = "fuzz_targets/static_range.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "query_extractor"
+path = "fuzz_targets/query_extractor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "path_extractor"
+path = "fuzz_targets/path_extractor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "json_extractor"
+path = "fuzz_targets/json_extractor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "test_cookie_jar"
+path = "fuzz_targets/test_cookie_jar.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trusted_proxy_headers"
+path = "fuzz_targets/trusted_proxy_headers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mcp_sse_frame"
+path = "fuzz_targets/mcp_sse_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mcp_stdio_message"
+path = "fuzz_targets/mcp_stdio_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mcp_server_request"
+path = "fuzz_targets/mcp_server_request.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mcp_oauth_www_authenticate"
+path = "fuzz_targets/mcp_oauth_www_authenticate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openai_sse_input"
+path = "fuzz_targets/openai_sse_input.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openai_batch_output_jsonl"
+path = "fuzz_targets/openai_batch_output_jsonl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_envelope"
+path = "fuzz_targets/event_envelope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "job_envelope"
+path = "fuzz_targets/job_envelope.rs"
 test = false
 doc = false
 bench = false

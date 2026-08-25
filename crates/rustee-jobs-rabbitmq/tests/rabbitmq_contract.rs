@@ -325,10 +325,16 @@ async fn broker_outage_fails_within_the_connect_deadline_and_redacts_the_endpoin
 async fn successful_handler_acknowledges_a_manual_delivery() {
     let fixture = Fixture::new("success").await;
     let metrics = JobMetrics::new();
+    fixture
+        .publisher()
+        .await
+        .readiness(Duration::from_secs(1))
+        .await
+        .unwrap();
     let worker = fixture
         .worker()
         .with_delivery_observer(Arc::new(metrics.clone()));
-    worker.readiness().await.unwrap();
+    worker.readiness(Duration::from_secs(1)).await.unwrap();
     let completed = Arc::new(Notify::new());
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let handler = {

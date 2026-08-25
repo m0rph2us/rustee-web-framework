@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Enterprise Deployment Readiness</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./operations.html">Operations</a
+          ><a href="./qualification-register.html">Qualification</a>
+        </nav>
+      </div>
+    </header>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Enterprise Deployment Readiness</div>
+        <h1>Ship a Framework That Lets Each Adopter Qualify Its Own Environment</h1>
+        <p class="lead">
+          Rustee is deployment-ready when its reusable code, contracts, test paths, runbooks,
+          release controls, and qualification records let an organization deploy safely without the
+          framework owning that organization's accounts or infrastructure.
+        </p>
+      </section>
+      <section>
+        <h2>What Rustee Provides</h2>
+        <ul>
+          <li>
+            Typed, optional adapters with bounded readiness, timeout, shutdown, retry, redaction,
+            and recovery behavior.
+          </li>
+          <li>
+            In-process, transport, property, fuzz, platform, and provider-contract test paths,
+            including protected opt-in workflows for live provider side effects.
+          </li>
+          <li>
+            Configuration, secret-redaction, observability, tenant, authentication, delivery, AI,
+            supply-chain, and release boundaries that do not assume a global cloud account.
+          </li>
+          <li>
+            HTML runbooks, support policy, and a machine-validated qualification ledger that record
+            safe evidence without storing credentials or customer data.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>What Each Adopter Owns</h2>
+        <ul>
+          <li>
+            Provider and version selection, account and network topology, resource provisioning,
+            least-privilege credentials, keys, TLS, and data-retention policy.
+          </li>
+          <li>
+            Application authorization, domain idempotency, migrations, alerting, on-call ownership,
+            incident handling, cost controls, and recovery decisions.
+          </li>
+          <li>
+            Execution of the applicable live contracts and recording provider/topology-specific
+            evidence in its qualification record before making a deployment-specific
+            Enterprise-qualified claim.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Readiness Boundary</h2>
+        <p>
+          Pending entries in the framework
+          <a href="./qualification-register.html">qualification register</a> are intentionally
+          adopter-owned. They do not mean a Rustee feature is missing. They mean no single provider,
+          account, network, data policy, or operator can be assumed by every user. The
+          <code>--require-qualified</code> verifier is for a named adopter deployment claim, not for
+          ordinary framework development or a generic source release.
+        </p>
+      </section>
+      <section>
+        <h2>Adoption Sequence</h2>
+        <ol>
+          <li>Select the adapters and provider versions required by the service.</li>
+          <li>
+            Apply the focused configuration and operations runbooks in an approved non-production
+            environment.
+          </li>
+          <li>
+            Run the relevant container and protected live qualification workflows with
+            least-privilege credentials.
+          </li>
+          <li>
+            Record safe evidence, recovery outcome, owner, reviewer, scope, and expiry in the
+            adopter's qualification register.
+          </li>
+          <li>Promote only the adapters and topology evidenced for that deployment.</li>
+        </ol>
+      </section>
+      <section>
+        <h2>Related Documents</h2>
+        <p>
+          Use the <a href="./support-matrix.html">support matrix</a> for framework contracts, the
+          <a href="./testing.html">testing strategy</a> for evidence layers, the
+          <a href="./operations.html">operations guide</a> for deployment ownership, and the
+          <a href="./release-plan.html">release plan</a> for generic versus deployment-specific
+          claims.
+        </p>
+      </section>
+      <footer class="doc-footer">
+        <p>
+          Last updated: 2026-08-09. Update this page when framework deployment readiness or adopter
+          responsibilities change.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

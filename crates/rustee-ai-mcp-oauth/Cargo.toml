@@ -7,11 +7,16 @@ license.workspace = true
 repository.workspace = true
 description = "Bounded OAuth 2.1 authorization discovery and PKCE handoff for Rustee MCP clients"
 
+[features]
+# Exposes minimal parser entry points only to the workspace fuzz harness.
+fuzzing = []
+
 [dependencies]
 base64.workspace = true
 futures-util.workspace = true
 reqwest.workspace = true
 rustee-ai-mcp = { path = "../rustee-ai-mcp", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

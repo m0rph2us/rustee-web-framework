@@ -20,16 +20,51 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --all-targets
-      - run: cargo test --doc --workspace
-      - run: cargo test -p rustee --features openapi --test openapi_facade
-      - run: cargo test -p rustee --features macros --test from_header_derive --test from_header_ui --test routes_macro --test routes_ui
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --workspace --lib --all-features -- -D warnings -D clippy::unwrap_used
+      - run: cargo clippy --locked --workspace --bins --all-features -- -D warnings -D clippy::unwrap_used
+      - run: RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --locked --workspace --all-features --no-deps
+      - run: cargo test --locked --workspace --all-targets
+      - run: cargo test --locked --workspace --all-features --all-targets
+      - run: cargo test --locked -p rustee --no-default-features --features macros
+      - run: cargo test --locked -p rustee --no-default-features --features openapi
+      - run: cargo test --locked --doc --workspace
+      - run: cargo test --locked --doc --workspace --all-features
+      - run: node scripts/check-english-content.mjs
+      - run: node scripts/check-no-unimplemented-source.mjs
+      - run: node scripts/check-tracing-redaction-gate.mjs
+      - run: node scripts/check-tracing-redaction-gate.mjs --self-test
+      - run: node scripts/check-public-generic-debug-gate.mjs
+      - run: node scripts/check-public-generic-debug-gate.mjs --self-test
+      - run: node scripts/check-public-error-debug-redaction-gate.mjs
+      - run: node scripts/check-public-error-debug-redaction-gate.mjs --self-test
+      - run: node scripts/check-public-wildcard-reexports.mjs
+      - run: node scripts/check-public-wildcard-reexports.mjs --self-test
+      - run: node scripts/check-http-redirect-gate.mjs
+      - run: node scripts/check-http-redirect-gate.mjs --self-test
       - run: node scripts/check-html-links.mjs
+      - run: node scripts/check-html-document-structure.mjs
+      - run: node scripts/check-html-document-formatting.mjs
+      - run: node scripts/check-ai-context-module-boundaries.mjs
+      - run: node scripts/check-core-dependency-boundaries.mjs
+      - run: node scripts/check-core-dependency-boundaries.mjs --self-test
+      - run: node scripts/check-workflow-cargo-lock.mjs
+      - run: node scripts/check-workspace-lint-inheritance.mjs
+      - run: node scripts/check-feature-test-gate.mjs
+      - run: node scripts/check-feature-gated-test-targets.mjs
+      - run: node scripts/check-feature-clippy-gate.mjs
+      - run: node scripts/check-production-unwrap-gate.mjs
+      - run: node scripts/check-rustdoc-quality-gate.mjs
+      - run: node scripts/check-qualification-register.mjs
+      - run: node scripts/check-qualification-register.mjs --self-test
       - run: node scripts/check-release-inventory.mjs
+      - run: node scripts/check-release-inventory.mjs --self-test
       - run: node scripts/check-workflow-action-pins.mjs
+      - run: node scripts/check-workflow-container-image-pins.mjs
+      - run: node scripts/check-contract-workflow-coverage.mjs
+      - run: node scripts/check-fuzz-workflow-targets.mjs
       - run: node scripts/package-release-candidates.mjs
-      - run: cargo check -p rustee-events-kafka --features rdkafka
 
   platform-compile:
     name: Platform compile ${{ matrix.os }}
@@ -43,8 +78,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: 1.94.1
-      - run: cargo check --workspace --all-targets
-      - run: cargo test -p rustee-ai-mcp --all-targets
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked -p rustee-ai-mcp --all-targets
 
   nats-contract:
     name: NATS JetStream contract
@@ -54,7 +89,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-nats --publish 4222:4222 nats:2.10-alpine -js -sd /data
+      - run: docker run --detach --name rustee-nats --publish 4222:4222 nats:2.10-alpine@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927 -js -sd /data
       - run: |
           for _ in $(seq 1 60); do
             if nc -z 127.0.0.1 4222; then
@@ -64,9 +99,9 @@ jobs:
           done
           docker logs rustee-nats
           exit 1
-      - run: cargo test -p rustee-jobs-nats --test jetstream_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-nats --test jetstream_contract -- --ignored
       - run: docker stop rustee-nats
-      - run: RUSTEE_NATS_EXPECT_OUTAGE=1 cargo test -p rustee-jobs-nats --test jetstream_contract broker_outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
+      - run: RUSTEE_NATS_EXPECT_OUTAGE=1 cargo test --locked -p rustee-jobs-nats --test jetstream_contract broker_outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
       - run: docker start rustee-nats
       - run: |
           for _ in $(seq 1 60); do
@@ -77,7 +112,7 @@ jobs:
           done
           docker logs rustee-nats
           exit 1
-      - run: cargo test -p rustee-jobs-nats --test jetstream_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-nats --test jetstream_contract -- --ignored
 
   nginx-proxy-contract:
     name: Nginx reverse-proxy contract
@@ -87,7 +122,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: cargo test -p rustee-server --test nginx_proxy_contract -- --ignored
+      - run: cargo test --locked -p rustee-server --test nginx_proxy_contract -- --ignored
         env:
           RUSTEE_NGINX_PROXY_CONTRACT: "1"
 
@@ -99,7 +134,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-rabbitmq --publish 5672:5672 --publish 15672:15672 rabbitmq:4.3.4-management
+      - run: docker run --detach --name rustee-rabbitmq --publish 5672:5672 --publish 15672:15672 rabbitmq:4.3.4-management@sha256:eb5295d083325da5929a5ade766684d4019ffd2bce8bc7e43d6f9a05cafc8646
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-rabbitmq rabbitmq-diagnostics -q ping && curl --fail --silent --user guest:guest http://127.0.0.1:15672/api/overview > /dev/null; then
@@ -109,12 +144,12 @@ jobs:
           done
           docker logs rustee-rabbitmq
           exit 1
-      - run: cargo test -p rustee-jobs-rabbitmq --test rabbitmq_contract -- --ignored
-      - run: cargo test -p rustee-jobs-rabbitmq-management --test rabbitmq_management_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-rabbitmq --test rabbitmq_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-rabbitmq-management --test rabbitmq_management_contract -- --ignored
         env:
           RUSTEE_RABBITMQ_MANAGEMENT_URL: http://127.0.0.1:15672/
       - run: docker stop rustee-rabbitmq
-      - run: RUSTEE_RABBITMQ_EXPECT_OUTAGE=1 cargo test -p rustee-jobs-rabbitmq --test rabbitmq_contract broker_outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
+      - run: RUSTEE_RABBITMQ_EXPECT_OUTAGE=1 cargo test --locked -p rustee-jobs-rabbitmq --test rabbitmq_contract broker_outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
       - run: docker start rustee-rabbitmq
       - run: |
           for _ in $(seq 1 60); do
@@ -125,7 +160,7 @@ jobs:
           done
           docker logs rustee-rabbitmq
           exit 1
-      - run: cargo test -p rustee-jobs-rabbitmq --test rabbitmq_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-rabbitmq --test rabbitmq_contract -- --ignored
 
   sqs-contract:
     name: SQS job contract
@@ -135,7 +170,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-localstack --publish 4566:4566 --env SERVICES=sqs localstack/localstack:2026.7.0
+      - run: docker run --detach --name rustee-localstack --publish 4566:4566 --env SERVICES=sqs localstack/localstack:2026.7.0@sha256:2a81e5da4c32bb53e8d86e92050a12937f9be1915c5a4afad0931f75c112fc7e
       - run: |
           for _ in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:4566/_localstack/health | grep -Fq '"sqs": "available"'; then
@@ -145,11 +180,11 @@ jobs:
           done
           docker logs rustee-localstack
           exit 1
-      - run: cargo test -p rustee-jobs-sqs --test sqs_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-sqs --test sqs_contract -- --ignored
         env:
           RUSTEE_LOCALSTACK_URL: http://127.0.0.1:4566
       - run: docker stop rustee-localstack
-      - run: cargo test -p rustee-jobs-sqs --test sqs_contract stopped_localstack_fails_within_the_request_deadline_without_endpoint_details -- --ignored
+      - run: cargo test --locked -p rustee-jobs-sqs --test sqs_contract stopped_localstack_fails_within_the_request_deadline_without_endpoint_details -- --ignored
         env:
           RUSTEE_LOCALSTACK_URL: http://127.0.0.1:4566
           RUSTEE_SQS_EXPECT_OUTAGE: "1"
@@ -163,7 +198,7 @@ jobs:
           done
           docker logs rustee-localstack
           exit 1
-      - run: cargo test -p rustee-jobs-sqs --test sqs_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-sqs --test sqs_contract -- --ignored
         env:
           RUSTEE_LOCALSTACK_URL: http://127.0.0.1:4566
 
@@ -175,7 +210,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-redis --publish 6379:6379 redis:7-alpine
+      - run: docker run --detach --name rustee-redis --publish 6379:6379 redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-redis redis-cli ping | grep -Fxq PONG; then
@@ -185,17 +220,21 @@ jobs:
           done
           docker logs rustee-redis
           exit 1
-      - run: cargo test -p rustee-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-rate-limit-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-auth-session-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-auth-oidc-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-ai-mcp-oauth-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-jobs-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-jobs-redis --test redis_contract paused_redis_fails_within_the_operation_deadline_without_endpoint_details -- --ignored
+      - run: cargo test --locked -p rustee-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-rate-limit-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-auth-session-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-auth-oidc-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-ai-mcp-oauth-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-ai-cache-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-redis --test redis_contract paused_redis_fails_within_the_operation_deadline_without_endpoint_details -- --ignored
         env:
           RUSTEE_REDIS_JOBS_EXPECT_PAUSE: "1"
+      - run: cargo test --locked -p rustee-redis --test redis_contract readiness_fails_within_the_deadline_when_redis_is_paused -- --ignored
+        env:
+          RUSTEE_REDIS_EXPECT_PAUSE: "1"
       - run: docker stop rustee-redis
-      - run: RUSTEE_REDIS_EXPECT_OUTAGE=1 cargo test -p rustee-redis --test redis_contract outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
+      - run: RUSTEE_REDIS_EXPECT_OUTAGE=1 cargo test --locked -p rustee-redis --test redis_contract outage_fails_within_the_connect_deadline_and_redacts_the_endpoint -- --ignored
       - run: docker start rustee-redis
       - run: |
           for _ in $(seq 1 60); do
@@ -206,12 +245,13 @@ jobs:
           done
           docker logs rustee-redis
           exit 1
-      - run: cargo test -p rustee-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-rate-limit-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-auth-session-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-auth-oidc-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-ai-mcp-oauth-redis --test redis_contract -- --ignored
-      - run: cargo test -p rustee-jobs-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-rate-limit-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-auth-session-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-auth-oidc-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-ai-mcp-oauth-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-ai-cache-redis --test redis_contract -- --ignored
+      - run: cargo test --locked -p rustee-jobs-redis --test redis_contract -- --ignored
 
   kafka-contract:
     name: Kafka and PostgreSQL event contract
@@ -221,8 +261,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-kafka --publish 9092:9092 apache/kafka:4.3.1
-      - run: docker run --detach --name rustee-kafka-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine
+      - run: docker run --detach --name rustee-kafka --publish 9092:9092 apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+      - run: docker run --detach --name rustee-kafka-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-kafka-postgres pg_isready --quiet --username rustee --dbname rustee; then
@@ -232,17 +272,17 @@ jobs:
           done
           docker logs rustee-kafka-postgres
           exit 1
-      - run: cargo test -p rustee-events-kafka --features rdkafka --test kafka_contract -- --ignored
-      - run: cargo test -p rustee-events-kafka-sqlx --features rdkafka --lib
-      - run: cargo test -p rustee-events-kafka-sqlx-observability --features rdkafka --lib
-      - run: cargo test -p rustee-events-kafka-sqlx-observability-prometheus --features rdkafka --lib
-      - run: cargo test -p rustee-events-kafka-sqlx --features rdkafka --test delayed_retry_contract -- --ignored
+      - run: cargo test --locked -p rustee-events-kafka --features rdkafka --test kafka_contract -- --ignored
+      - run: cargo test --locked -p rustee-events-kafka-sqlx --features rdkafka --lib
+      - run: cargo test --locked -p rustee-events-kafka-sqlx-observability --features rdkafka --lib
+      - run: cargo test --locked -p rustee-events-kafka-sqlx-observability-prometheus --features rdkafka --lib
+      - run: cargo test --locked -p rustee-events-kafka-sqlx --features rdkafka --test delayed_retry_contract -- --ignored
       - run: docker stop rustee-kafka
-      - run: RUSTEE_KAFKA_EXPECT_OUTAGE=1 cargo test -p rustee-events-kafka --features rdkafka --test kafka_contract broker_outage_fails_within_the_delivery_deadline_and_redacts_the_endpoint -- --ignored
-      - run: RUSTEE_KAFKA_EXPECT_OUTAGE=1 cargo test -p rustee-events-kafka --features rdkafka --test kafka_contract consumer_readiness_fails_within_its_timeout_and_redacts_the_endpoint -- --ignored
-      - run: cargo test -p rustee-events-kafka-sqlx --features rdkafka --test delayed_retry_contract readiness_fails_within_its_kafka_timeout_without_endpoint_details -- --ignored
+      - run: RUSTEE_KAFKA_EXPECT_OUTAGE=1 cargo test --locked -p rustee-events-kafka --features rdkafka --test kafka_contract broker_outage_fails_within_the_delivery_deadline_and_redacts_the_endpoint -- --ignored
+      - run: RUSTEE_KAFKA_EXPECT_OUTAGE=1 cargo test --locked -p rustee-events-kafka --features rdkafka --test kafka_contract consumer_readiness_fails_within_its_timeout_and_redacts_the_endpoint -- --ignored
+      - run: cargo test --locked -p rustee-events-kafka-sqlx --features rdkafka --test delayed_retry_contract readiness_fails_within_its_kafka_timeout_without_endpoint_details -- --ignored
       - run: docker start rustee-kafka
-      - run: cargo test -p rustee-events-kafka --features rdkafka --test kafka_contract -- --ignored
+      - run: cargo test --locked -p rustee-events-kafka --features rdkafka --test kafka_contract -- --ignored
 
   postgres-contract:
     name: PostgreSQL contract
@@ -252,7 +292,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine
+      - run: docker run --detach --name rustee-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-postgres pg_isready --quiet --username rustee --dbname rustee; then
@@ -262,19 +302,20 @@ jobs:
           done
           docker logs rustee-postgres
           exit 1
-      - run: cargo test -p rustee-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-outbox-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-auth-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoints_are_durable_per_consumer_and_reject_corrupt_bytes -- --ignored
-      - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract lease_blocks_contenders_and_rejects_a_stale_checkpoint_writer -- --ignored
+      # Each package resets shared durable tables within its PostgreSQL contract binary.
+      - run: cargo test --locked -p rustee-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-outbox-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-auth-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoints_are_durable_per_consumer_and_reject_corrupt_bytes -- --ignored
+      - run: cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test postgres_contract lease_blocks_contenders_and_rejects_a_stale_checkpoint_writer -- --ignored
       - run: docker stop rustee-postgres
-      - run: RUSTEE_SQLX_EXPECT_OUTAGE=1 cargo test -p rustee-sqlx --test postgres_contract initial_pool_connect_is_bounded_and_does_not_render_database_credentials -- --ignored
-      - run: RUSTEE_AUTH_SQLX_EXPECT_OUTAGE=1 cargo test -p rustee-auth-sqlx --test postgres_contract api_key_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
-      - run: RUSTEE_CHECKPOINT_EXPECT_OUTAGE=1 cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoint_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
+      - run: RUSTEE_SQLX_EXPECT_OUTAGE=1 cargo test --locked -p rustee-sqlx --test postgres_contract initial_pool_connect_is_bounded_and_does_not_render_database_credentials -- --ignored
+      - run: RUSTEE_AUTH_SQLX_EXPECT_OUTAGE=1 cargo test --locked -p rustee-auth-sqlx --test postgres_contract api_key_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
+      - run: RUSTEE_CHECKPOINT_EXPECT_OUTAGE=1 cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoint_store_readiness_fails_within_the_deadline_during_an_outage -- --ignored
       - run: docker start rustee-postgres
       - run: |
           for _ in $(seq 1 60); do
@@ -285,15 +326,15 @@ jobs:
           done
           docker logs rustee-postgres
           exit 1
-      - run: cargo test -p rustee-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-outbox-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-auth-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored
-      - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoints_are_durable_per_consumer_and_reject_corrupt_bytes -- --ignored
-      - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test postgres_contract lease_blocks_contenders_and_rejects_a_stale_checkpoint_writer -- --ignored
+      - run: cargo test --locked -p rustee-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-outbox-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-jobs-cron-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-auth-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-audit-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-batch-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-ai-eval-sqlx --test postgres_contract -- --ignored --test-threads=1
+      - run: cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test postgres_contract checkpoints_are_durable_per_consumer_and_reject_corrupt_bytes -- --ignored
+      - run: cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test postgres_contract lease_blocks_contenders_and_rejects_a_stale_checkpoint_writer -- --ignored
 
   mongodb-contract:
     name: MongoDB contract
@@ -303,7 +344,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-mongodb-checkpoint-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine
+      - run: docker run --detach --name rustee-mongodb-checkpoint-postgres --env POSTGRES_DB=rustee --env POSTGRES_USER=rustee --env POSTGRES_PASSWORD=rustee --publish 5432:5432 postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-mongodb-checkpoint-postgres pg_isready --quiet --username rustee --dbname rustee; then
@@ -313,7 +354,7 @@ jobs:
           done
           docker logs rustee-mongodb-checkpoint-postgres
           exit 1
-      - run: docker run --detach --name rustee-mongodb --publish 27017:27017 mongo:8.0 --replSet rs0 --bind_ip_all
+      - run: docker run --detach --name rustee-mongodb --publish 27017:27017 mongo:8.0@sha256:02a0cc7939f5ed38f30f9bc714ef5f682d49baf9350c54acf302ce833087fe8a --replSet rs0 --bind_ip_all
       - run: |
           for _ in $(seq 1 60); do
             if docker exec rustee-mongodb mongosh --quiet --eval 'try { rs.status().ok === 1 } catch (error) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "127.0.0.1:27017"}]}); false }' | grep -Fq true; then
@@ -323,10 +364,10 @@ jobs:
           done
           docker logs rustee-mongodb
           exit 1
-      - run: cargo test -p rustee-mongodb --test mongodb_contract -- --ignored
-      - run: cargo test -p rustee-mongodb-checkpoint-sqlx --test mongodb_postgres_contract -- --ignored
+      - run: cargo test --locked -p rustee-mongodb --test mongodb_contract -- --ignored
+      - run: cargo test --locked -p rustee-mongodb-checkpoint-sqlx --test mongodb_postgres_contract -- --ignored
       - run: docker stop rustee-mongodb
-      - run: cargo test -p rustee-mongodb --test mongodb_contract readiness_fails_within_the_server_selection_deadline_during_an_outage -- --ignored
+      - run: cargo test --locked -p rustee-mongodb --test mongodb_contract readiness_fails_within_the_server_selection_deadline_and_redacts_the_endpoint -- --ignored
       - run: docker start rustee-mongodb
       - run: |
           for _ in $(seq 1 60); do
@@ -337,7 +378,7 @@ jobs:
           done
           docker logs rustee-mongodb
           exit 1
-      - run: cargo test -p rustee-mongodb --test mongodb_contract -- --ignored
+      - run: cargo test --locked -p rustee-mongodb --test mongodb_contract -- --ignored
 
   otlp-contract:
     name: OpenTelemetry Collector contract
@@ -347,8 +388,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
-      - run: docker run --detach --name rustee-otel-collector --publish 4318:4318 --volume "${{ github.workspace }}/.github/fixtures/otel-collector.yaml:/etc/otelcol/config.yaml:ro" otel/opentelemetry-collector:0.153.0 --config=/etc/otelcol/config.yaml
-      - run: cargo test -p rustee-observability-opentelemetry --test otlp_contract -- --ignored
+      - run: docker run --detach --name rustee-otel-collector --publish 4318:4318 --volume "${{ github.workspace }}/.github/fixtures/otel-collector.yaml:/etc/otelcol/config.yaml:ro" otel/opentelemetry-collector:0.153.0@sha256:6ed874ea083d67a3085acfc75343f2ad11d9abe6006d7ea4a16e2dba9af14e49 --config=/etc/otelcol/config.yaml
+      - run: cargo test --locked -p rustee-observability-opentelemetry --test otlp_contract -- --ignored
       - run: |
           for _ in $(seq 1 20); do
             if docker logs rustee-otel-collector 2>&1 | grep -Fq "HTTP request"; then

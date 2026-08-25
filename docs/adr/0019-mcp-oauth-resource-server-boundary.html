@@ -1,104 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0019: MCP OAuth Resource Server Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0019</div>
-        <h1>MCP OAuth resource-server boundary</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0019: MCP OAuth Resource-Server Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          MCP HTTP client OAuth와 MCP server bearer authorization은 반대 방향의 credential lifecycle이다. client는 user consent,
-          state/PKCE와 resource-bound token store를 소유하지만 server는 access token을 발급하거나 저장하지 않고 accepted resource,
-          authorization-server issuer, audience와 scope를 공개하고 검증해야 한다. 기존 <code>rustee-auth</code>는 검증된
-          <code>Principal</code> 경계를 제공하지만 MCP protected-resource metadata와 challenge 형식은 소유하지 않는다.
+          An MCP server needs standard protected-resource metadata and a reliable bearer challenge
+          without taking ownership of the deployment's authorization server.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            optional <code>rustee-mcp-oauth</code>를 추가한다. 이 crate는 public protected-resource metadata service와
-            mounted <code>rustee-mcp</code> service에 적용하는 bearer/scope layer만 제공한다. JWT/JWKS/introspection,
-            issuer와 exact resource audience 검증은 계속 application-configured <code>rustee-auth::BearerAuthenticator</code>
-            가 맡는다.
-          </p>
-        </div>
-        <ul>
-          <li><code>McpOAuthResourceServerConfig</code>은 canonical MCP resource URL, public metadata URL, bounded explicit authorization-server issuer allowlist와 optional required scopes를 갖는다. HTTPS만 허용하고 local contract를 위한 loopback HTTP만 예외로 둔다.</li>
-          <li><code>McpOAuthProtectedResourceMetadata</code>는 <code>resource</code>, <code>authorization_servers</code>, <code>scopes_supported</code>, header bearer method만 unauthenticated JSON으로 제공한다. tool, context, tenant, principal, token과 policy detail은 노출하지 않는다.</li>
-          <li><code>McpOAuthResourceServerLayer</code>는 missing/invalid token에 401 <code>WWW-Authenticate: Bearer resource_metadata=...</code>, insufficient verified scope에 403 plus <code>insufficient_scope</code> challenge를 만든다. verified <code>Principal</code> issuer도 normalized authorization-server allowlist와 대조한다. verifier outage는 issuer/token detail 없는 503으로 끝낸다.</li>
-          <li>layer는 validated <code>Principal</code>만 request extension에 넣는다. <code>McpToolAccessPolicy</code>, <code>McpContextProvider</code>, tenant resolver, approval과 terminal audit은 그대로 application-owned authorization boundary다.</li>
-          <li>application은 issued access token의 <code>aud</code>가 config의 exact resource URL인지 verifier에서 강제하고, configured issuer allowlist와 verifier trust/key source가 일치하는지 deployment configuration으로 검토한다.</li>
-        </ul>
+        <p>
+          Provide public protected-resource metadata, fail-closed 401/403 Bearer challenge and scope
+          behavior, and verified principal handoff to the application.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>server는 client-side token store, refresh, dynamic registration, consent UI나 automatic request replay를 소유하지 않는다. 이는 <a href="./0018-mcp-oauth-client-boundary.html">ADR 0018</a>의 client lifecycle과 의도적으로 분리된다.</li>
-          <li>JWT static key, remote JWKS 또는 introspection adapter를 선택할 수 있지만 resource-server deployment는 token algorithm, issuer/key rotation, audience, scope mapping, clock skew와 outage policy를 명시해야 한다.</li>
-          <li>metadata endpoint와 MCP endpoint의 externally visible HTTPS URL은 reverse proxy/base URL configuration과 같아야 한다. internal bind address나 untrusted forwarded header에서 자동으로 추론하지 않는다.</li>
-        </ul>
+        <p>
+          Token issuance, storage, refresh, verification settings, audience/issuer trust, and
+          authorization-server policy remain external to the crate.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>generic <code>AuthLayer</code>만 MCP endpoint에 적용</td><td>generic 401은 MCP client가 authorization metadata를 발견할 수 없으므로 채택하지 않는다.</td></tr>
-            <tr><td><code>rustee-mcp</code> core가 JWT/JWKS와 token parsing까지 직접 소유</td><td>application identity trust와 server protocol adapter가 결합되고 OIDC/introspection 선택이 경직되므로 채택하지 않는다.</td></tr>
-            <tr><td>access token만 있으면 모든 MCP tool/context를 허용</td><td>OAuth scope는 application resource authorization과 side-effect approval을 대체할 수 없으므로 채택하지 않는다.</td></tr>
-            <tr><td>metadata URL/resource를 incoming Host 또는 forwarded header에서 생성</td><td>proxy trust misconfiguration이 discovery와 audience를 바꿀 수 있으므로 canonical config URL만 사용한다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>in-process contract는 metadata GET/method gate, no-token/invalid-token challenge, required-scope 403, validated principal handoff와 verifier outage 503을 고정한다.</li>
-          <li>Supported 승격 전에는 external authorization-server version matrix, JWT/JWKS/introspection outage and key rotation contract, reverse-proxy canonical URL check, scope/tenant authorization review, opt-in live credentials와 operator revoke/incident procedure를 추가한다.</li>
-          <li>MCP Streamable HTTP session/SSE server lifecycle과 metadata cache/CORS deployment policy는 별도 protocol and operations ADR에서 확장한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Update this ADR whenever MCP resource metadata, bearer challenge, token validation ownership, scope semantics, or deployment trust changes.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

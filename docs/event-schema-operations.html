@@ -1,115 +1,115 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee Event Schema 운영 Runbook</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Event Schema Operations</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./events.html">Events</a
+          ><a href="./qualification-register.html">Qualification</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Operations Runbook</div>
+        <div class="eyebrow">Event Schema Operations</div>
         <h1>Event Schema Rollout</h1>
-        <p class="lead">source-controlled JSON Schema artifact와 application-owned registry adapter를 사용해 event version을 배포하는 절차입니다.</p>
+        <p class="lead">
+          Schema artifacts and registry acknowledgement are explicit deployment contracts. They
+          never replace consumer compatibility, replay policy, or producer/consumer operational
+          ownership.
+        </p>
       </section>
-
       <section>
-        <h2>운영 전제</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-events-schema</code>는 registry service가 아닙니다. typed <code>Event::TYPE</code>/<code>VERSION</code>, subject,
-            declared compatibility, exact JSON Schema source와 fingerprint를 local catalog로 검증하고 registry adapter의 acknowledgement가 정확히 같은 artifact인지 확인합니다.
-            remote compatibility semantics, endpoint/credential, topic mapping, schema ID wire header와 runtime registration timing은 application deployment가 정합니다.
-            optional <code>rustee-events-schema-confluent</code>는 Confluent-compatible REST contract를 구현하지만 deployment authority를 가져오지 않습니다.
-          </p>
-        </div>
+        <h2>Operational Preconditions</h2>
         <ul>
-          <li>subject는 하나의 stable event type에만 연결합니다. version duplicate와 subject의 event type/compatibility policy drift는 catalog build에서 거부됩니다.</li>
-          <li>fingerprint는 format identifier와 exact schema source bytes의 SHA-256입니다. whitespace-only 변경도 reviewed artifact change로 취급합니다.</li>
-          <li>Confluent adapter는 non-loopback HTTPS endpoint, bounded per-request timeout과 redacted Basic/bearer authentication을 요구합니다. effective compatibility policy를 local declaration과 비교하고 exact lookup, absent artifact register, exact relookup을 수행하지만 registry config를 mutation하지 않습니다.</li>
-          <li>schema definition에는 product field가 드러날 수 있습니다. source artifact는 review 가능해야 하지만, raw definition을 generic log, metric label이나 incident ticket에 무제한 복사하지 않습니다.</li>
-          <li>schema registry 성공은 consumer upcaster, external side-effect idempotency, replay safety 또는 Kafka offset correctness를 보장하지 않습니다.</li>
+          <li>
+            Maintain typed JSON Schema artifacts, exact fingerprints, stable subject/version catalog
+            entries, owners, compatibility policy, and retention/replay policy in source control.
+          </li>
+          <li>
+            Determine the producer, every consumer, consumer group, topic, partition key, rollout
+            window, rollback owner, and external side-effect idempotency before publication.
+          </li>
+          <li>
+            Use bounded HTTPS or loopback registry operations with redacted endpoint and credential
+            diagnostics. The registry deadline remains enforced even when an application supplies an
+            mTLS or proxy HTTP client. The registry must not receive raw production payloads as a
+            verification shortcut.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>배포 순서</h2>
+        <h2>Deployment Order</h2>
         <ol>
-          <li>event type, subject, source/current version, compatibility direction, affected topic/consumer groups, retention window와 rollback deadline을 change record에서 승인합니다.</li>
-          <li>JSON Schema artifact와 typed <code>EventSchema</code> declaration을 source control에서 함께 변경하고 catalog unit test로 subject/version/policy drift와 registry acknowledgement mismatch를 확인합니다.</li>
-          <li>non-production registry에서 application adapter를 이용해 compatibility check/register-or-verify를 실행합니다. Confluent adapter는 effective policy, lookup/register/relookup의 subject/version/exact source evidence를 남깁니다. registry ACL/credential scope와 prior artifact inventory도 함께 남깁니다.</li>
-          <li>backward-compatible 변경은 new consumer와 explicit <code>EventUpcaster</code>를 먼저 배포하고 current/older retained record를 replay group에서 dry-run 합니다. forward-only 또는 full policy는 old consumer fleet, separate topic 또는 additional migration plan을 명시적으로 검토합니다.</li>
-          <li>production registry verification을 approved deployment phase에서 실행한 뒤 producer를 전환합니다. Rustee는 consumer loop 중 자동 등록, topic 생성, schema header 삽입 또는 source group offset reset을 수행하지 않습니다.</li>
-          <li>rollout 동안 decode failure, upcast rejection, consumer lag, retry/DLQ age, downstream duplicate suppression을 확인하고 rollback deadline을 넘기기 전에 producer/consumer compatibility window를 닫습니다.</li>
+          <li>
+            Review the artifact, fingerprint, subject/version, declared compatibility policy, and
+            consumer impact.
+          </li>
+          <li>
+            Deploy or validate consumers that can read the intended version. Add explicit upcasters
+            where older payloads remain supported.
+          </li>
+          <li>
+            Run exact registry lookup, compare effective policy, register only an absent exact
+            artifact, and relookup the resulting identity.
+          </li>
+          <li>
+            Deploy producers after consumer readiness is proven. Observe decode failures, lag,
+            retry/DLQ backlog, and external effects.
+          </li>
+          <li>
+            Record version, fingerprint, registry identity, rollout time, owner, verification
+            evidence, and rollback decision.
+          </li>
         </ol>
       </section>
-
       <section>
-        <h2>Rollback과 Replay</h2>
+        <h2>Rollback and Replay</h2>
         <ul>
-          <li>schema artifact를 원격 registry에서 임의 삭제하거나 subject compatibility policy를 in-place로 낮추지 않습니다. retained record를 읽는 consumer와 replay group이 기존 artifact를 계속 요구할 수 있습니다.</li>
-          <li>producer rollback은 retained newest payload를 old consumer가 해석할 수 있는지와 downstream idempotency를 먼저 확인합니다. 검증되지 않은 경우 new consumer group 또는 versioned topic으로 isolate합니다.</li>
-          <li>replay는 source topic, partition/offset range, schema versions, upcaster, registry artifact fingerprints, consumer group, side-effect idempotency key와 rate limit을 승인 record에 남깁니다.</li>
-          <li>registry outage는 application deployment policy에 따라 schema rollout을 멈추거나 pre-verified immutable artifact로 제한합니다. framework가 cached schema를 성공으로 추측하거나 provider retry policy를 선택하지 않습니다.</li>
+          <li>
+            Stop or roll back the producer before assuming a registry change fixes consumer
+            behavior.
+          </li>
+          <li>
+            Use a compatible consumer version or an explicit upcaster; do not guess semantic
+            compatibility from two JSON Schema documents.
+          </li>
+          <li>
+            Replay follows the event-stream approval procedure with a new consumer group, bounded
+            scope, idempotency evidence, stop condition, and reconciliation record.
+          </li>
+          <li>
+            Registry publication does not create topics, publish records, change offsets, or perform
+            replay.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Confluent live qualification</h2>
+        <h2>Confluent Live Qualification</h2>
         <p>
-          <code>rustee-events-schema-confluent</code>에는 실제 Confluent-compatible registry를 위한 ignored contract test가 있습니다.
-          이 test는 unique <code>rustee-live-qualification-*-value</code> subject에 version 1 JSON Schema를 등록하고 삭제하지 않습니다.
-          approval된 non-production registry와 subject write/read, configuration read 권한이 있는 credential에서만 실행합니다.
+          The Confluent adapter is verified through local bounded transport contracts. The
+          <code>confluent-schema-live-qualification.yml</code> workflow runs one retained
+          generated-subject contract only after the <code>registry_write_approved</code> input is
+          true and the protected <code>confluent-schema-registry-qualification</code> environment
+          supplies credentials. Its required authentication choice injects exactly one Basic pair or
+          Bearer token. Promotion beyond Experimental still requires owner-approved live endpoint,
+          compatible provider version, TLS and credential handling, ACL evidence, outage/recovery
+          exercise, consumer-first rehearsal, and rollback evidence without sensitive artifacts in
+          reports.
         </p>
-        <pre><code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE=1 \
-RUSTEE_CONFLUENT_SCHEMA_REGISTRY_URL=https://registry.example.test/ \
-RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_KEY=... \
-RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_SECRET=... \
-cargo test -p rustee-events-schema-confluent --test confluent_live_contract -- --ignored</code></pre>
-        <ul>
-          <li>Basic key/secret 대신 <code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_BEARER_TOKEN</code> 하나를 사용할 수 있습니다. 두 방식은 같이 설정하지 않습니다.</li>
-          <li>test는 effective compatibility가 <code>BACKWARD</code>인지를 먼저 확인합니다. 다른 global/subject policy를 쓰는 환경은 이 test를 변경하지 말고 해당 policy의 reviewed catalog와 별도 qualification case를 만듭니다.</li>
-          <li>registry URL, credential 값, raw schema source를 CI log나 ticket에 출력하지 않습니다. provider/version, subject, policy, test run ID, result와 retained-subject cleanup/retention owner만 release evidence로 남깁니다.</li>
-        </ul>
       </section>
-
-      <section>
-        <h2>증거와 소유자</h2>
-        <table>
-          <thead><tr><th>항목</th><th>필요한 증거</th><th>소유자</th></tr></thead>
-          <tbody>
-            <tr><td>artifact</td><td>typed declaration, exact fingerprint, compatibility direction, source review</td><td>event producer owner</td></tr>
-            <tr><td>registry</td><td>provider version, subject/ACL/credential scope, local HTTP contract와 non-production live qualification, production verification result</td><td>messaging platform owner</td></tr>
-            <tr><td>consumer</td><td>older-record upcast/decode suite, consumer-first rollout, rollback window and lag/DLQ observation</td><td>projection owner</td></tr>
-            <tr><td>replay</td><td>approved range, isolated-group dry-run, downstream idempotency and reconciliation result</td><td>application and domain owner</td></tr>
-          </tbody>
-        </table>
-        <p>Confluent-compatible local HTTP contract가 있어도 실제 registry provider/version, credential lifecycle, remote compatibility semantics, wire format and schema ID, multi-region replication evidence가 없으면 integration은 Contract-verified보다 높게 선언하지 않습니다.</p>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="./adr/0036-event-schema-registry-boundary.html">ADR 0036</a> and <a href="./events.html">Kafka event stream</a>.</p>
+        <p>
+          Last updated: 2026-08-10. Update this runbook when schema rollout, registry support, or
+          replay procedures change.
+        </p>
       </footer>
     </main>
   </body>

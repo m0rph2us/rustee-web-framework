@@ -1,0 +1,39 @@
+name: Published release consumer verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      publication_complete:
+        description: "The selected release tag has been published to the public registry"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-release-consumer-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  registry-consumer:
+    name: Registry-source consumer compile
+    if: ${{ inputs.publication_complete }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Require a release tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ] || [ "${GITHUB_REF_NAME#v}" = "$GITHUB_REF_NAME" ]; then
+            echo "Run this workflow from the published v* release tag." >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.94.1
+      - name: Verify the selected tag inventory
+        run: node scripts/check-release-inventory.mjs
+      - name: Compile a registry-source consumer
+        run: node scripts/verify-published-release-candidates.mjs

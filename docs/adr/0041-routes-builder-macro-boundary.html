@@ -1,86 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0041: routes Builder Macro Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../macros.html">매크로</a>
-          <a href="../testing.html">Test</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0041 · Accepted · 2026-08-04</div>
-        <h1>routes builder macro boundary</h1>
-        <p class="lead">route macro는 handler를 등록하는 새 모델이 아니라, existing App builder chain을 읽기 쉽게 쓰는 선택적 문법입니다.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0041: routes Builder Macro Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          application은 여러 <code>App::get</code>/<code>post</code>/<code>route</code> 호출을 순서대로 작성합니다. 이 형태는 explicit하지만
-          route table이 길어지면 method/path/handler의 시각적 구분이 약해집니다. 반대로 attribute macro가 function signature에서 route를 추론하거나
-          global registry에 등록하면 module initialization, route order, extractor, fallback, middleware와 authorization ownership이 숨겨집니다.
+          Route declaration syntax can be made more concise without creating an alternative routing
+          system.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <ul>
-          <li><code>rustee::routes!</code>는 facade <code>macros</code> feature의 function-like builder macro입니다.</li>
-          <li>input은 one <code>App</code> builder expression, semicolon, one or more <code>METHOD path =&gt; handler</code> entries입니다.</li>
-          <li>standard methods GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE, CONNECT만 syntax로 지원하고 direct <code>App::get</code>/<code>post</code> 또는 <code>App::route(Method::...)</code> calls로 expand합니다.</li>
-          <li>path와 handler는 ordinary expressions입니다. route pattern validity, duplicate behavior, handler/extractor bounds, state, fallback, layer order, panic/error policy는 existing App implementation이 판단합니다.</li>
-          <li>custom method는 <code>App::route</code>를 explicit하게 사용합니다. macro는 at least one route와 supported method만 compile-time diagnostics로 확인합니다.</li>
-          <li>generated code resolves a renamed Rustee facade dependency and this is verified by the workspace-only consumer fixture.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Consequences</h2>
-        <ul>
-          <li>macro-free builder code remains canonical and any application can mix ordinary <code>App</code> calls before or after <code>routes!</code>.</li>
-          <li>route order exactly follows entry order because expansion is a consuming builder chain; the macro has no static registry or startup work.</li>
-          <li>unsupported method and empty entry list receive stable compile-fail fixtures. valid standard verbs, dynamic path dispatch and renamed facade use have runtime/consumer fixtures.</li>
-          <li>macro syntax and diagnostics are public developer-experience compatibility surface, but it does not make dynamic route configuration compile-time validated.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>attribute macro가 function을 global route registry에 자동 등록</td><td>route order, mount/state/layer ownership과 test isolation을 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>handler signature에서 extractor/OpenAPI/auth metadata 추론</td><td>type만으로 application error/authorization/schema 의미를 완전하게 알 수 없으므로 채택하지 않습니다.</td></tr>
-            <tr><td>string literal만 받아 route pattern을 macro가 재구현해 검증</td><td>router grammar duplication과 dynamic configuration 배제를 만들므로 existing App validation을 유지합니다.</td></tr>
-            <tr><td>custom HTTP method도 ad hoc token syntax로 허용</td><td>method expression ownership을 흐리므로 explicit <code>App::route</code>로 남깁니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
         <p>
-          attribute route macro, compile-time route grammar, mounted route composition, OpenAPI/schema derive 또는 handler inference를 검토할 때에는
-          macro-free parity, error/authorization ownership, dynamic configuration, route order, diagnostics와 migration plan을 포함한 새 ADR이 필요합니다.
+          Provide optional <code>routes!</code> syntax that generates normal
+          <code>App</code> route-builder calls and validates supported forms at compile time.
         </p>
       </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../macros.html">매크로 경계</a>, <a href="../testing.html">테스트 전략</a>, and <a href="./0001-framework-foundation.html">ADR 0001</a>.</p>
-      </footer>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Macro-free routing remains first-class. The macro does not infer state, policies, schemas,
+          error handling, or security requirements.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

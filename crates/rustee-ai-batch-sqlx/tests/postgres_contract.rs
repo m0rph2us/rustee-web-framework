@@ -2,9 +2,10 @@
 
 use rustee_ai_batch::{
     AiBatchArtifactKind, AiBatchArtifactLedger, AiBatchArtifactReference,
-    AiBatchArtifactReservation, AiBatchReference,
+    AiBatchArtifactReservation, AiBatchReference, MAX_BATCH_IDENTIFIER_BYTES,
 };
 use rustee_ai_batch_sqlx::{
+    AI_BATCH_ARTIFACT_LEDGER_IDENTIFIER_BOUND_MIGRATION_SQL,
     AI_BATCH_ARTIFACT_LEDGER_MIGRATION_SQL, PendingAiBatchArtifactLimit,
     PostgresAiBatchArtifactLedger, PostgresAiBatchArtifactLedgerError,
 };
@@ -25,6 +26,10 @@ async fn pool() -> PgPool {
 
 async fn reset_schema(pool: &PgPool) {
     sqlx::raw_sql(AI_BATCH_ARTIFACT_LEDGER_MIGRATION_SQL)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(AI_BATCH_ARTIFACT_LEDGER_IDENTIFIER_BOUND_MIGRATION_SQL)
         .execute(pool)
         .await
         .unwrap();
@@ -114,4 +119,26 @@ async fn artifact_ledger_preserves_pending_state_and_reuses_only_exact_reconcili
     .await
     .unwrap();
     assert_eq!(status, "reconciled");
+}
+
+#[tokio::test]
+#[ignore = "requires a PostgreSQL server; CI provisions one"]
+async fn identifier_schema_rejects_oversized_artifact_metadata() {
+    let pool = pool().await;
+    reset_schema(&pool).await;
+    let ledger = PostgresAiBatchArtifactLedger::new(pool.clone());
+    let reference = reference("file-bounded-7", "reconcile-bounded-7");
+    ledger.reserve(reference.clone()).await.unwrap();
+
+    let error = sqlx::query(
+        "UPDATE rustee_ai_batch_artifact_ledger SET provider_file_id = $1 \\
+         WHERE scope = $2 AND reconciliation_key = $3",
+    )
+    .bind("x".repeat(MAX_BATCH_IDENTIFIER_BYTES + 1))
+    .bind(reference.batch().scope())
+    .bind(reference.reconciliation_key())
+    .execute(&pool)
+    .await
+    .unwrap_err();
+    assert!(error.as_database_error().is_some());
 }

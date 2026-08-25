@@ -1,82 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0032 Job Delivery Prometheus Exporter Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0032: Job Delivery Prometheus Exporter</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../queues.html">Queue</a>
-          <a href="../operations.html">운영</a>
-          <a href="../testing.html">Test</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0032</div>
-        <h1>Job delivery Prometheus exporter 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0032: Job Delivery Prometheus Exporter Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          NATS, Redis Streams, RabbitMQ와 SQS worker는 동일한 <code>JobDeliveryObserver</code> lifecycle과
-          <code>JobMetrics</code> collector를 사용하지만, application마다 ad-hoc exporter를 만들면 outcome, histogram,
-          label escaping과 cache policy가 달라질 수 있습니다. worker delivery의 payload, queue route, receipt handle과 raw error는
-          metric에 포함되어서는 안 됩니다.
+          Workers need metrics, but job identifiers and payload-related data create unbounded or
+          sensitive metric cardinality.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-jobs-observability-prometheus</code>를 <code>JobMetrics</code>의 optional text 0.0.4 adapter로 둡니다.
-            <code>encode</code>/<code>encode_snapshot</code>과 explicit <code>metrics_response</code>만 제공하며, response는
-            <code>Cache-Control: no-store</code>를 갖습니다.
-          </p>
-        </div>
         <p>
-          exporter는 started/in-flight/completed, collector가 이미 열여섯 값으로 제한한 provider와 fixed outcome,
-          global delivery duration histogram만 내보냅니다. provider label은 Prometheus text escaping을 적용합니다. registry,
-          listener, automatic route, authentication, alert threshold, broker health check나 DLQ replay는 만들지 않습니다.
+          Collect only bounded provider, settlement outcome, and global duration. Supply an optional
+          explicit Prometheus text response helper without a global registry, listener, or automatic
+          route.
         </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>NATS, Redis Streams, RabbitMQ와 SQS worker가 하나의 exporter contract를 공유하되 broker-specific backlog/visibility/consumer signal은 각 adapter 운영 문서에 남습니다.</li>
-          <li>job ID, job type/version, delivery attempt, idempotency key, queue/stream URL/name, payload, receipt handle, trace carrier, tenant와 raw handler/broker error는 label 또는 metric value로 내보내지 않습니다.</li>
-          <li>application은 protected 또는 network-isolated scrape route를 명시적으로 mount하고, alert owner/threshold와 retention을 deployment evidence로 관리합니다.</li>
-        </ul>
+        <p>
+          Job ID/type, payload, queue, receipt, idempotency key, trace carrier, and raw error remain
+          outside metrics. Applications own export, alerts, and correlation policy.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>각 broker adapter가 독자 Prometheus registry를 제공</td><td>중복 lifecycle과 inconsistent label/retention policy를 만들므로 채택하지 않습니다.</td></tr>
-            <tr><td>job type, route 또는 message ID를 label로 export</td><td>unbounded cardinality와 payload/business topology 노출을 만들므로 채택하지 않습니다.</td></tr>
-            <tr><td>exporter가 broker probe, alert와 automatic replay를 수행</td><td>credential, topology와 side-effect authority를 framework가 소유하게 되므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Update this ADR with changes to job-delivery metric fields, label bounds, text encoding, or alert authority.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

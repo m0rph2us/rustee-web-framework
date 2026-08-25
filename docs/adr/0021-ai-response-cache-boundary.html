@@ -1,96 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0021: AI Response Cache Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0021</div>
-        <h1>AI response-cache isolation boundary</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0021: AI Response Cache Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          response 또는 semantic cache는 provider 비용을 줄일 수 있지만 stale answer, cross-tenant disclosure, prompt/completion retention,
-          cache outage 때의 hidden provider retry를 만들 수 있다. provider-neutral <code>AiPipeline</code>이 request content를 자동으로
-          fingerprint하면 canonicalization, secret salt, authorization scope, template/policy/data revision의 ownership이 framework에 섞인다.
+          AI response caching can reduce cost but can cross tenant, retention, tool, and
+          stale-answer boundaries.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision"><p>cache는 explicit, exact-key, non-streaming response adapter로 제공한다. framework는 raw prompt를 fingerprint하거나 cache를 <code>AiPipeline</code>에 자동 장착하지 않는다.</p></div>
-        <ul>
-          <li><code>AiCacheKey</code>은 application-generated opaque tenant scope와 fixed lower-case SHA-256 fingerprint만 받는다. scope에는 tenant, model alias, template/policy/data revision 등 재사용 의미를 바꾸는 identity를 포함해야 한다. raw prompt, user identifier, unsalted sensitive-content hash를 넣지 않는다.</li>
-          <li><code>AiCachedCompletion</code>은 application-governed executor를 한 번 호출한다. declared tool, prior tool result, model tool-call response와 stream은 cache 대상이 아니다. tool loop, approval, budget/usage ledger, advisor와 tenant authorization은 executor의 기존 경계에 남는다.</li>
-          <li>cache read failure는 explicit fail-closed 또는 bypass policy를 선택한다. bypass는 visible status를 남기고 한 번의 provider call만 수행한다. successful completion 뒤 write failure는 status로 보고할 뿐 response를 error/retry로 바꾸지 않는다.</li>
-          <li>invalidation은 exact key만 제공한다. tenant-wide wildcard delete/scan은 제공하지 않으며 application이 exact erase를 보관하거나 versioned scope를 전진시키고 TTL을 기다린다. default TTL은 5분이며 core policy는 최대 24시간이다.</li>
-          <li>cache hit은 explicit status로 application usage/observability policy가 account한다. cache adapter는 hit을 provider usage 또는 budget settlement로 위장하지 않는다.</li>
-        </ul>
+        <p>
+          Use an application-generated tenant-scoped opaque SHA-256 exact key, explicit TTL of at
+          most 24 hours, exact invalidation, bounded serialization, and tool-interaction exclusion.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>application은 key derivation, secret salt/key rotation, tenant erase, encryption/TLS, retention, stale-answer user experience와 cache outage policy를 문서화한다.</li>
-          <li>first cache is an in-memory deterministic adapter. Redis or another durable store requires its own namespace/serialization/size/outage contract and production encryption/deployment evidence.</li>
-          <li>semantic similarity search, cross-session chat memory, distributed stampede coordination, refresh-ahead, global cache clearing과 provider async batch는 이 adapter의 범위가 아니다.</li>
-        </ul>
+        <p>
+          Fingerprint/salt/version strategy, retention, tenant erase, outage behavior, stale UX,
+          encryption, and stampede control remain application and deployment policy.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>모든 <code>AiPipeline</code> completion을 prompt hash로 자동 캐시</td><td>tenant, authorization, model/policy revision과 tool state를 framework가 오판할 수 있어 채택하지 않는다.</td></tr>
-            <tr><td>cache write failure를 provider error로 반환</td><td>caller retry가 second provider charge를 만들 수 있으므로 채택하지 않는다.</td></tr>
-            <tr><td>tenant namespace 전체를 scan/delete 하는 framework API</td><td>backend 비용과 erase authorization이 숨겨지므로 exact key 또는 scope versioning만 제공한다.</td></tr>
-            <tr><td>tool-call response와 tool-result continuation 캐시</td><td>interaction/action state가 stale 또는 cross-request로 재사용될 수 있어 채택하지 않는다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li><code>rustee-ai-cache</code>은 key/config/eligibility, executor adapter, hit/write-failure status, exact invalidation과 bounded in-memory contract를 구현한다.</li>
-          <li>Redis adapter는 versioned namespace, serialized entry size bound, TTL conversion, exact delete와 Redis outage contract를 별도 crate로 구현한다.</li>
-          <li>provider batch adapter는 cache와 별도로 catalog reference, idempotency, partial completion, cancellation, billing/reconciliation contract를 다룬다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Update this ADR whenever cache key derivation, tenant isolation, eligibility, retention, invalidation, failure policy, or hit accounting changes.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

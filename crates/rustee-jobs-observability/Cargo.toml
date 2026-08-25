@@ -9,6 +9,7 @@ description = "Exporter-neutral durable job worker metrics for Rustee"
 
 [dependencies]
 rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [lints]
 workspace = true

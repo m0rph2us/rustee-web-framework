@@ -11,6 +11,7 @@ description = "Prometheus text exposition for Rustee event-stream delivery metri
 http.workspace = true
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
 rustee-events-observability = { path = "../rustee-events-observability", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [dev-dependencies]
 http-body-util.workspace = true

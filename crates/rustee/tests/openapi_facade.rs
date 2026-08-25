@@ -1,10 +1,42 @@
 use rustee::{
     StatusCode,
     openapi::{
-        OpenApiApiKeyLocation, OpenApiDocument, OpenApiMethod, OpenApiOAuthFlow, OpenApiOperation,
-        OpenApiRoute, OpenApiSecurityRequirement, OpenApiSecurityScheme,
+        OpenApiApiKeyLocation, OpenApiDocument, OpenApiError, OpenApiMethod, OpenApiOAuthFlow,
+        OpenApiOperation, OpenApiOperationBuilder, OpenApiParameterLocation, OpenApiRoute,
+        OpenApiSchema, OpenApiSecurityRequirement, OpenApiSecurityScheme,
     },
 };
+
+#[test]
+fn facade_exposes_the_deliberate_openapi_surface() {
+    let _: Option<OpenApiError> = None;
+    let _: OpenApiOperationBuilder = OpenApiOperation::builder("facade_surface");
+    let _: OpenApiParameterLocation = OpenApiParameterLocation::Query;
+}
+
+#[test]
+fn documented_minimal_openapi_path_builds_through_the_facade() {
+    let document = OpenApiDocument::new("Rustee API", "1.0.0")
+        .unwrap()
+        .security_scheme("bearerAuth", OpenApiSecurityScheme::http_bearer())
+        .unwrap()
+        .operation(
+            OpenApiRoute::from_rustee("/users/:id").unwrap(),
+            OpenApiMethod::Get,
+            OpenApiOperation::builder("get_user")
+                .path_parameter("id", OpenApiSchema::string())
+                .security_requirement(OpenApiSecurityRequirement::scheme("bearerAuth").unwrap())
+                .empty_response(StatusCode::OK, "User")
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        document.to_value()["paths"]["/users/{id}"]["get"]["operationId"],
+        "get_user"
+    );
+}
 
 #[test]
 fn facade_reexports_explicit_openapi_security_metadata() {

@@ -4,22 +4,17 @@
 //! OpenTelemetry context. On consumption, [`TraceContextHandler`] makes a valid envelope context
 //! the parent of one bounded event-handling span. Invalid or absent carriers start a new root span.
 
+use std::fmt;
+
 use futures_util::future::BoxFuture;
-use opentelemetry::{
-    Context,
-    propagation::{Extractor, Injector, TextMapPropagator},
-    trace::TraceContextExt,
-};
-use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry::Context;
 use rustee_events::{Event, EventContext, EventEnvelope, EventHandler, EventTraceContext};
+use rustee_observability_opentelemetry::{capture_w3c_context, extract_w3c_context};
 use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub use opentelemetry;
 pub use tracing_opentelemetry;
-
-const TRACEPARENT: &str = "traceparent";
-const TRACESTATE: &str = "tracestate";
 
 /// Captures a valid current OpenTelemetry span as a bounded event trace carrier.
 #[must_use]
@@ -30,11 +25,12 @@ pub fn capture_current_trace_context() -> Option<EventTraceContext> {
 /// Captures a valid OpenTelemetry context as a bounded event trace carrier.
 #[must_use]
 pub fn capture_trace_context(context: &Context) -> Option<EventTraceContext> {
-    context.span().span_context().is_valid().then(|| {
-        let mut carrier = TraceCarrier::default();
-        TraceContextPropagator::new().inject_context(context, &mut carrier);
-        EventTraceContext::new(carrier.traceparent?, carrier.tracestate).ok()
-    })?
+    let carrier = capture_w3c_context(context)?;
+    EventTraceContext::new(
+        carrier.traceparent().to_owned(),
+        carrier.tracestate().map(ToOwned::to_owned),
+    )
+    .ok()
 }
 
 /// Adds the current valid OpenTelemetry context to an event envelope when one is active.
@@ -50,9 +46,18 @@ where
 }
 
 /// Wraps a typed handler so an event's valid W3C carrier becomes its event span parent.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TraceContextHandler<H> {
     inner: H,
+}
+
+impl<H> fmt::Debug for TraceContextHandler<H> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TraceContextHandler")
+            .field("handler_type", &std::any::type_name::<H>())
+            .finish_non_exhaustive()
+    }
 }
 
 impl<H> TraceContextHandler<H> {
@@ -97,51 +102,7 @@ where
 }
 
 fn extract_parent(trace_context: &EventTraceContext) -> Option<Context> {
-    let carrier = TraceCarrier {
-        traceparent: Some(trace_context.traceparent().to_owned()),
-        tracestate: trace_context.tracestate().map(ToOwned::to_owned),
-    };
-    let context = TraceContextPropagator::new().extract(&carrier);
-    context.span().span_context().is_valid().then_some(context)
-}
-
-#[derive(Default)]
-struct TraceCarrier {
-    traceparent: Option<String>,
-    tracestate: Option<String>,
-}
-
-impl Injector for TraceCarrier {
-    fn set(&mut self, key: &str, value: String) {
-        if key.eq_ignore_ascii_case(TRACEPARENT) {
-            self.traceparent = Some(value);
-        } else if key.eq_ignore_ascii_case(TRACESTATE) {
-            self.tracestate = (!value.is_empty()).then_some(value);
-        }
-    }
-}
-
-impl Extractor for TraceCarrier {
-    fn get(&self, key: &str) -> Option<&str> {
-        if key.eq_ignore_ascii_case(TRACEPARENT) {
-            self.traceparent.as_deref()
-        } else if key.eq_ignore_ascii_case(TRACESTATE) {
-            self.tracestate.as_deref()
-        } else {
-            None
-        }
-    }
-
-    fn keys(&self) -> Vec<&str> {
-        let mut keys = Vec::with_capacity(2);
-        if self.traceparent.is_some() {
-            keys.push(TRACEPARENT);
-        }
-        if self.tracestate.is_some() {
-            keys.push(TRACESTATE);
-        }
-        keys
-    }
+    extract_w3c_context(trace_context.traceparent(), trace_context.tracestate())
 }
 
 #[cfg(test)]
@@ -155,6 +116,24 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::{TraceContextHandler, capture_current_trace_context};
+
+    struct LeakyHandler;
+
+    impl std::fmt::Debug for LeakyHandler {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("LeakyHandler(private-event-handler-configuration)")
+        }
+    }
+
+    #[test]
+    fn handler_debug_does_not_delegate_to_the_inner_handler() {
+        let handler = TraceContextHandler::new(LeakyHandler);
+
+        let debug = format!("{handler:?}");
+
+        assert!(debug.contains("handler_type"));
+        assert!(!debug.contains("private-event-handler-configuration"));
+    }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     struct ContractEvent;

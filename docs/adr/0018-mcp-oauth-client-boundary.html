@@ -1,106 +1,43 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0018: MCP OAuth Client Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0018</div>
-        <h1>MCP OAuth client boundary</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0018: MCP OAuth Client Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          MCP 2025-11-25 HTTP authorization은 protected MCP server에 대한 OAuth 2.1 client flow다. 기존
-          <code>rustee-auth-oidc</code> browser login은 Rustee application 사용자를 principal/session으로 만드는
-          흐름이므로, MCP server용 access/refresh token을 application session이나 generic bearer verifier에 섞으면
-          audience, consent, rotation 및 tenant ownership이 불명확해진다. stdio credential은 deployment environment가
-          소유하며 이 OAuth flow 대상이 아니다.
+          MCP client authorization needs discovery, PKCE, one-time state, token protection, and a
+          strict no-replay relationship with tool calls.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            HTTP MCP authorization은 <code>rustee-ai-mcp-oauth</code> optional adapter로 분리한다. 이 adapter는
-            explicit application configuration과 user-facing callback integration을 요구하며, <code>rustee-ai-mcp</code>
-            core의 tool approval, no-replay transport, context adoption boundary를 바꾸지 않는다.
-          </p>
-        </div>
-        <ul>
-          <li>adapter는 401 <code>WWW-Authenticate: Bearer</code> challenge의 quoted <code>resource_metadata</code>와 scope를 bounded하게 parse하고, 없으면 endpoint path-specific, root protected-resource metadata URI 순서로 discovery한다. discovered URL과 response는 HTTPS/trust/size policy를 통과해야 한다.</li>
-          <li>selected authorization server에서 OAuth authorization-server metadata와 OIDC discovery fallback을 정해진 순서로 조회한다. issuer, authorization endpoint, token endpoint, PKCE S256 declaration과 registration capability를 typed, redacted model로 검증한다.</li>
-          <li>application은 pre-registered client ID, exact redirect URI와 scope selection을 명시한다. opaque automatic dynamic registration/client metadata document publishing은 first release에 넣지 않는다.</li>
-          <li>authorization-code flow는 URL-safe high-entropy state와 PKCE verifier를 application-owned atomic transaction store에 짧은 TTL로 저장한다. callback은 state를 exchange 전에 consume하고 authorization/token request 모두 canonical MCP URI를 <code>resource</code> parameter로 보낸다.</li>
-          <li>access token, refresh token과 authorization code는 Debug, error, audit attribute, URL 및 ordinary Rustee session cookie에 절대 넣지 않는다. token store encryption, tenant/user binding, retention, revocation, key rotation과 concurrent refresh single-flight는 application-owned <code>McpOAuthTokenStore</code> contract로 둔다.</li>
-          <li>authorized MCP HTTP client는 selected resource용 token만 Bearer header로 보낸다. 401/403 insufficient-scope는 sanitized authorization result와 explicit step-up input으로 끝나며 failed tool/discovery/read/prompt request를 자동 replay하지 않는다.</li>
-          <li><code>rustee-mcp</code> server-side protected-resource metadata, challenge emission, access-token audience validation은 별도 resource-server release gate다.</li>
-        </ul>
+        <p>
+          Provide a separate OAuth client with protected-resource/authorization-server discovery,
+          PKCE S256, atomic state/verifier consumption, canonical resource binding, redacted token
+          handling, and optional encrypted Redis persistence. Redis record identity is versioned
+          and length-delimited across the configured namespace and opaque transaction state or token
+          slot, while the complete record key remains authenticated-encryption data.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>application이 consent UI, callback route, token persistence와 operator revoke procedure를 명시해야 하므로 credential source와 data exit가 숨겨지지 않는다.</li>
-          <li>OAuth token은 remote tool approval이나 tenant/data authorization을 대체하지 않는다. token을 얻어도 discovered tool, resource, prompt 또는 SSE notification이 자동 채택되지 않는다.</li>
-          <li>401 discovery, metadata validation, state/PKCE, exchange, refresh, scope step-up, expiry/revocation, redaction과 no-replay contract는 local fixture와 representative provider matrix로 검증해야 한다.</li>
-        </ul>
+        <p>
+          Client registration, consent, KMS, revocation, refresh coordination, provider trust, and
+          live qualification remain application or deployment responsibilities.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>generic application OIDC browser-login session을 MCP bearer token으로 재사용</td><td>token audience와 resource binding을 잃고 MCP token을 ordinary browser session에 노출할 수 있어 채택하지 않는다.</td></tr>
-            <tr><td>endpoint URL에서 authorization server를 추측하거나 임의 issuer를 허용</td><td>confused deputy와 token exfiltration 위험이 있으므로 protected-resource metadata discovery를 강제한다.</td></tr>
-            <tr><td>401/403 뒤 original MCP request를 자동 재전송</td><td>tool call의 side effect를 판단할 수 없으므로 authorization 준비만 반환하고 application이 explicit next action을 결정한다.</td></tr>
-            <tr><td>첫 release에 dynamic client registration을 자동 사용</td><td>client identity publishing/trust/rollback policy가 필요하므로 pre-registration과 분리한다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li><code>rustee-ai-mcp-oauth</code>는 bounded client discovery, PKCE transaction, authorization-code/explicit refresh exchange, redacted token-store traits와 no-replay handoff를 구현했다. package/loopback contract는 resource binding, callback state consume, provider rejection의 no-exchange와 implicit refresh 금지를 고정한다.</li>
-          <li><code>rustee-ai-mcp-oauth-redis</code>는 AES-256-GCM envelope, purpose/full-key authenticated binding, active/retired decryption-key rotation, transaction TTL/GETDEL과 token retention을 구현했다. user consent/callback example, tenant/user key/KMS procedure, supported authorization-server matrix, live opt-in contract, cross-instance refresh와 revocation/rotation runbook은 release gate로 추가한다.</li>
-          <li><code>rustee-mcp</code> resource-server metadata/challenge/audience validation은 application authentication middleware와 deployment auth policy를 포함하는 별도 ADR에서 다룬다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes MCP OAuth discovery, token ownership, callback policy, or replay behavior.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-25.</p></footer>
     </main>
   </body>
 </html>

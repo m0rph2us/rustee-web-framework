@@ -1,30 +1,30 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee Framework Documentation</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./design-philosophy.html">Philosophy</a>
+          <a href="./architecture.html">Architecture</a>
+          <a href="./database.html">Database</a>
           <a href="./redis.html">Redis</a>
           <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
+          <a href="./authentication.html">Auth</a>
           <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
+          <a href="./events.html">Events</a>
           <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./supply-chain.html">공급망</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./testing.html">Testing</a>
+          <a href="./operations.html">Operations</a>
+          <a href="./supply-chain.html">Supply chain</a>
+          <a href="./roadmap.html">Roadmap</a>
+          <a href="./ai-context.html">AI maintenance</a>
           <a href="./adr/index.html">ADR</a>
         </nav>
       </div>
@@ -33,192 +33,332 @@
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Project Charter</div>
-        <h1>Rustee 웹 프레임워크 설계 문서</h1>
+        <h1>Rustee Web Framework Design Documents</h1>
         <p class="lead">
-          Rustee는 Rust로 웹 서비스를 만들 때 작은 API에서 시작해 운영, 확장, 엔터프라이즈 요구사항까지
-          자연스럽게 이어지도록 설계하는 웹 프레임워크입니다. 이 문서 세트는 구현보다 먼저 합의해야 할
-          철학, 구조, 로드맵, AI 협업 규칙을 정의합니다.
+          Rustee is a Rust web framework designed to take a service from a small API to operational,
+          scalable, and enterprise requirements without abandoning its core principles. This
+          document set establishes the philosophy, architecture, roadmap, and AI collaboration rules
+          that must be agreed before implementation grows.
         </p>
       </section>
 
       <section>
-        <h2>문서 맵</h2>
+        <h2>Documentation Map</h2>
         <div class="grid">
           <article class="card">
-            <h3><a href="./design-philosophy.html">디자인 철학</a></h3>
-            <p>Rustee가 어떤 문제를 풀고, 어떤 문제는 일부러 풀지 않는지 정의합니다.</p>
+            <h3><a href="./design-philosophy.html">Design Philosophy</a></h3>
+            <p>
+              Defines the problems Rustee should solve and the problems it deliberately leaves to
+              applications.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./architecture.html">프레임워크 구조</a></h3>
-            <p>workspace, crate 경계, 핵심 추상화, 확장 포인트를 설명합니다.</p>
+            <h3><a href="./architecture.html">Framework Architecture</a></h3>
+            <p>
+              Describes workspace layout, crate boundaries, core abstractions, and extension points.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./examples.html">공식 예제</a></h3>
-            <p>quickstart, API, middleware, security, job, AI 예제의 실행 조건과 검증 범위를 확인합니다.</p>
+            <h3><a href="./examples.html">Official Examples</a></h3>
+            <p>
+              Lists execution prerequisites and verification scope for quickstart, API, middleware,
+              security, job, and AI examples.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./database.html">데이터베이스 지원</a></h3>
-            <p>SQLx 중심의 공식 통합 경로, ORM 공존 방식, migration과 transaction 운영 원칙을 정리합니다.</p>
+            <h3><a href="./database.html">Database Support</a></h3>
+            <p>
+              Explains the SQLx-first supported path, ORM coexistence, and migration and transaction
+              rules.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./redis.html">Redis와 상태 저장소</a></h3>
-            <p>캐시, 세션, rate limit, Pub/Sub을 위한 client 선택, 장애 정책, 확장 경계를 정의합니다.</p>
+            <h3><a href="./redis.html">Redis and State Stores</a></h3>
+            <p>
+              Defines client selection, failure policy, and extension boundaries for caching,
+              sessions, rate limiting, and Pub/Sub.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./mongodb.html">MongoDB 문서 저장소</a></h3>
-            <p>공식 Rust driver, BSON tenant 경계, schema evolution, transaction, change stream과 durable checkpoint 운영 원칙을 정리합니다.</p>
+            <h3><a href="./mongodb.html">MongoDB Document Store</a></h3>
+            <p>
+              Defines the official Rust driver path, BSON tenant boundaries, schema evolution,
+              transactions, change streams, and durable checkpoints.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./authentication.html">인증과 권한</a></h3>
-            <p>OIDC, bearer token, session, RBAC, tenant context와 보안 기본값을 정의합니다.</p>
+            <h3><a href="./authentication.html">Authentication and Authorization</a></h3>
+            <p>Defines OIDC, bearer tokens, sessions, RBAC, tenant context, and secure defaults.</p>
           </article>
           <article class="card">
-            <h3><a href="./queues.html">Queue와 background job</a></h3>
-            <p>at-least-once job, worker, retry, DLQ, outbox, one-time delay와 IANA time-zone recurring scheduler, PostgreSQL fixed-window governor 및 bounded scheduler pass observability 경계를 정의합니다.</p>
+            <h3><a href="./queues.html">Queues and Background Jobs</a></h3>
+            <p>
+              Defines at-least-once jobs, workers, retries, DLQs, outbox delivery, one-time delays,
+              time-zone schedulers, and rate governors.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./events.html">Kafka event stream</a></h3>
-            <p>topic, partition key, consumer group, offset, immediate/DLQ와 PostgreSQL durable delayed retry, replay, schema와 outbox 경계를 정의합니다.</p>
+            <h3><a href="./events.html">Kafka Event Streams</a></h3>
+            <p>
+              Defines topics, partition keys, consumer groups, offsets, immediate retry, DLQs,
+              PostgreSQL delayed retry, replay, schemas, and outbox boundaries.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./ai.html">AI application integration</a></h3>
-            <p>chat, streaming, tool, RAG, structured output, AI 보안과 운영 경계를 정의합니다.</p>
+            <h3><a href="./ai.html">AI Application Integration</a></h3>
+            <p>
+              Defines boundaries for chat, streaming, tools, RAG, structured output, AI security,
+              and operations.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./ai-batch-operations.html">AI Batch 운영 runbook</a></h3>
-            <p>Batch artifact reconciliation, pending 재처리, row idempotency, retention/delete의 운영 책임을 정리합니다.</p>
+            <h3><a href="./ai-batch-operations.html">AI Batch Operations Runbook</a></h3>
+            <p>
+              Describes operational ownership for batch artifact reconciliation, pending retries,
+              row idempotency, retention, and deletion.
+            </p>
           </article>
           <article class="card">
             <h3><a href="./mcp-oauth.html">MCP OAuth</a></h3>
-            <p>MCP protected resource discovery, PKCE callback, metadata, bearer authorization과 no-replay 경계를 정의합니다.</p>
+            <p>
+              Defines protected-resource discovery, PKCE callbacks, metadata, bearer authorization,
+              and no-replay boundaries for MCP.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./testing.html">테스트와 검증 전략</a></h3>
-            <p>test layer, feature matrix, 실제 backend contract, CI와 release gate를 정의합니다.</p>
+            <h3><a href="./testing.html">Testing and Verification</a></h3>
+            <p>
+              Defines test layers, feature matrices, real-backend contracts, CI, and release gates.
+            </p>
+          </article>
+          <article class="card">
+            <h3><a href="./benchmarks.html">Benchmarking</a></h3>
+            <p>
+              Defines the repeatable route-dispatch baseline, recording rules, and limits of
+              performance claims.
+            </p>
           </article>
           <article class="card">
             <h3><a href="./openapi.html">OpenAPI</a></h3>
-            <p>명시적 route, operation, JSON Schema 문서와 application-owned API 의미의 경계를 정의합니다.</p>
+            <p>
+              Defines explicit route, operation, and JSON Schema documentation and the boundary of
+              application-owned API meaning.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./macros.html">매크로 경계</a></h3>
-            <p>선택적 <code>routes!</code> builder와 <code>FromHeader</code> derive의 입력 형태, 실패 진단과 non-macro API 우선 원칙을 정의합니다.</p>
+            <h3><a href="./macros.html">Macro Boundaries</a></h3>
+            <p>
+              Defines the optional <code>routes!</code> builder and <code>FromHeader</code> derive
+              input forms, diagnostics, and non-macro-first policy.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./operations.html">운영과 배포</a></h3>
-            <p>configuration, lifecycle, health, observability, TLS와 reverse proxy trust 경계를 정의합니다.</p>
+            <h3><a href="./operations.html">Operations and Deployment</a></h3>
+            <p>
+              Defines configuration, lifecycle, health, observability, TLS, and reverse-proxy trust
+              boundaries.
+            </p>
           </article>
           <article class="card">
             <h3><a href="./kafka-delayed-retry-operations.html">Kafka Delayed Retry Runbook</a></h3>
-            <p>Kafka와 PostgreSQL delayed retry의 migration, readiness, 장애, restore와 승인 replay 절차를 정리합니다.</p>
+            <p>
+              Describes migration, readiness, failure, restore, and approved replay procedures for
+              Kafka and PostgreSQL delayed retry.
+            </p>
           </article>
           <article class="card">
             <h3><a href="./event-schema-operations.html">Event Schema Runbook</a></h3>
-            <p>JSON Schema artifact, registry verification, consumer-first rollout, rollback과 replay 검토 절차를 정리합니다.</p>
+            <p>
+              Describes JSON Schema artifacts, registry verification, consumer-first rollouts,
+              rollback, and replay review procedures.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./static-files.html">정적 파일</a></h3>
-            <p>prefix-bound static delivery, cache policy, MIME, filesystem security 경계를 정의합니다.</p>
+            <h3><a href="./static-files.html">Static Files</a></h3>
+            <p>
+              Defines prefix-bound static delivery, cache policy, MIME handling, and filesystem
+              security boundaries.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./compression.html">응답 압축</a></h3>
-            <p>gzip/Brotli negotiation, streaming body, cache variation과 proxy/CDN ownership 경계를 정의합니다.</p>
+            <h3><a href="./compression.html">Response Compression</a></h3>
+            <p>
+              Defines gzip and Brotli negotiation, streaming bodies, cache variation, and proxy/CDN
+              ownership boundaries.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./roadmap.html">로드맵</a></h3>
-            <p>MVP부터 엔터프라이즈 기능까지의 단계별 목표와 완료 기준을 정리합니다.</p>
+            <h3><a href="./roadmap.html">Roadmap</a></h3>
+            <p>
+              Sets staged objectives and exit criteria from the MVP through enterprise capabilities.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./release-plan.html">출하 계획과 지원 정책</a></h3>
-            <p>v1 경계, 선택적 adapter의 지원 단계, enterprise qualification과 release gate를 정리합니다.</p>
+            <h3><a href="./release-plan.html">Release Plan and Support Policy</a></h3>
+            <p>
+              Defines v1 boundaries, optional adapter support stages, enterprise qualification, and
+              release gates.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./supply-chain.html">공급망과 릴리스 증거</a></h3>
-            <p>dependency policy, source package checksum, CycloneDX SBOM과 provenance attestation의 범위를 확인합니다.</p>
+            <h3><a href="./supply-chain.html">Supply Chain and Release Evidence</a></h3>
+            <p>
+              Defines dependency policy, source-package checksums, CycloneDX SBOM scope, and
+              provenance attestations.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./release-inventory.html">Release inventory</a></h3>
-            <p>공개 후보와 workspace-only package의 의도, package metadata 검증 기준을 확인합니다.</p>
+            <h3><a href="./release-inventory.html">Release Inventory</a></h3>
+            <p>
+              Records release candidates, workspace-only packages, and package-metadata verification
+              rules.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./release-checklist.html">Release checklist</a></h3>
-            <p>clean source preflight, tag evidence, publish approval과 사후 확인의 운영 순서를 정리합니다.</p>
+            <h3><a href="./release-checklist.html">Release Checklist</a></h3>
+            <p>
+              Describes the operational order for clean-source preflight, tag evidence, publish
+              approval, and post-release confirmation.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./release-notes.html">Release notes</a></h3>
-            <p>공개 release의 변경, 지원 약속, provenance와 known limitation을 기록합니다.</p>
+            <h3><a href="./release-notes.html">Release Notes</a></h3>
+            <p>
+              Records public-release changes, support commitments, provenance, and known
+              limitations.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./migration-guide.html">Migration guide</a></h3>
-            <p>API, configuration, schema, provider와 deployment 변경의 전환·rollback 절차를 기록합니다.</p>
+            <h3><a href="./migration-guide.html">Migration Guide</a></h3>
+            <p>
+              Records API, configuration, schema, provider, and deployment change procedures,
+              including rollback.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./qualification-register.html">Qualification register</a></h3>
-            <p>release, edge, provider, AI의 외부 evidence와 owner gate를 한 곳에서 추적합니다.</p>
+            <h3><a href="./qualification-register.html">Qualification Register</a></h3>
+            <p>
+              Tracks external evidence and owner gates for releases, edge delivery, providers, and
+              AI integration.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./edge-delivery.html">Edge delivery policy</a></h3>
-            <p>TLS, proxy trust, CDN cache, compression, purge와 origin drain의 배포 책임을 정리합니다.</p>
+            <h3><a href="./deployment-readiness.html">Enterprise Deployment Readiness</a></h3>
+            <p>
+              Separates the completed reusable framework baseline from the provider and topology
+              qualification owned by each adopter.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./support-matrix.html">지원 현황 매트릭스</a></h3>
-            <p>각 crate와 provider의 검증 증거, 현재 상태, 승격 전 공백을 확인합니다.</p>
+            <h3><a href="./edge-delivery.html">Edge Delivery Policy</a></h3>
+            <p>
+              Defines delivery responsibility for TLS, trusted proxies, CDN caching, compression,
+              purge, and origin draining.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./implementation-review.html">구현 계획 재검토</a></h3>
-            <p>현재 구현 범위, release blocker, 다음 milestone의 우선순위를 정리합니다.</p>
+            <h3><a href="./support-matrix.html">Support Matrix</a></h3>
+            <p>
+              Shows verification evidence, current status, and promotion gaps for each crate and
+              provider.
+            </p>
           </article>
           <article class="card">
-            <h3><a href="./ai-context.html">AI 유지관리 규칙</a></h3>
-            <p>AI 에이전트가 작업 전에 읽고, 작업 후 갱신해야 하는 문서 규칙입니다.</p>
+            <h3><a href="./implementation-review.html">Implementation Plan Review</a></h3>
+            <p>
+              Summarizes current implementation scope, release blockers, and priorities for the next
+              milestone.
+            </p>
+          </article>
+          <article class="card">
+            <h3><a href="./ai-context.html">AI Maintenance Rules</a></h3>
+            <p>Defines the documents AI agents must read before work and update after work.</p>
           </article>
         </div>
       </section>
 
       <section>
-        <h2>현재 합의</h2>
+        <h2>Current Agreement</h2>
         <div class="decision">
           <p>
-            Rustee의 1차 방향은 <strong>작고 안정적인 core</strong>, <strong>Tower 호환 미들웨어 모델</strong>,
-            <strong>Tokio/Hyper 기반 서버 어댑터</strong>, <strong>기능별 crate 분리</strong>,
-            <strong>SQLx 중심의 선택적 관계형 데이터베이스 통합</strong>, <strong>Redis 기반의 선택적 상태 저장소 통합</strong>,
-            <strong>MongoDB 기반의 선택적 문서 데이터베이스 통합</strong>, <strong>표준 기반의 선택적 인증과 권한 통합</strong>,
-            <strong>durable queue와 background job 통합</strong>, <strong>Kafka event stream 통합</strong>,
-            <strong>선택적 AI application 통합</strong>, <strong>계층형 테스트와 검증 전략</strong>,
-            <strong>운영과 배포 trust boundary</strong>입니다.
+            Rustee is built around a <strong>small and stable core</strong>, a
+            <strong>Tower-compatible middleware model</strong>, a
+            <strong>Tokio/Hyper server adapter</strong>, <strong>feature-specific crates</strong>,
+            optional <strong>SQLx relational database</strong>, <strong>Redis state-store</strong>,
+            <strong>MongoDB document-database</strong>, and
+            <strong>standards-based identity and access integrations</strong>. Durable queues and
+            jobs, Kafka event streams, optional AI application integration, layered verification,
+            and operational and deployment trust boundaries complete the platform direction.
           </p>
         </div>
         <p>
-          자세한 근거는 <a href="./adr/0001-framework-foundation.html">ADR 0001: 프레임워크 기반 선택</a>과
-          <a href="./adr/0002-database-integration-boundary.html">ADR 0002: 데이터베이스 통합 경계</a>,
-          <a href="./adr/0003-redis-integration-boundary.html">ADR 0003: Redis 통합 경계</a>,
-          <a href="./adr/0004-mongodb-integration-boundary.html">ADR 0004: MongoDB 통합 경계</a>,
-          <a href="./adr/0005-authentication-and-authorization.html">ADR 0005: 인증과 권한 경계</a>,
-          <a href="./adr/0006-background-jobs-and-queues.html">ADR 0006: background job과 queue 경계</a>,
-          <a href="./adr/0007-event-stream-integration-boundary.html">ADR 0007: Kafka event stream 통합 경계</a>,
-          <a href="./adr/0034-kafka-postgres-delayed-retry.html">ADR 0034: Kafka PostgreSQL delayed retry</a>,
-          <a href="./adr/0008-ai-application-integration-boundary.html">ADR 0008: AI application 통합 경계</a>,
-          <a href="./adr/0009-testing-and-verification-strategy.html">ADR 0009: 테스트와 검증 전략</a>,
-          <a href="./adr/0010-platform-foundation-and-deployment-trust.html">ADR 0010: platform foundation과 배포 trust boundary</a>,
-          <a href="./adr/0011-msrv-and-integration-support-line.html">ADR 0011: MSRV와 통합 지원선</a>,
-          <a href="./adr/0012-tenant-persistence-isolation.html">ADR 0012: tenant persistence isolation</a>,
-          <a href="./adr/0013-release-tracks-and-support-policy.html">ADR 0013: 출하 트랙과 지원 정책</a>,
-          <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018: MCP OAuth client boundary</a>와 <a href="./adr/0019-mcp-oauth-resource-server-boundary.html">ADR 0019: MCP OAuth resource-server boundary</a>에 기록합니다.
+          The rationale is recorded in
+          <a href="./adr/0001-framework-foundation.html">ADR 0001: Framework Foundation</a>,
+          <a href="./adr/0002-database-integration-boundary.html"
+            >ADR 0002: Database Integration Boundary</a
+          >,
+          <a href="./adr/0003-redis-integration-boundary.html"
+            >ADR 0003: Redis Integration Boundary</a
+          >,
+          <a href="./adr/0004-mongodb-integration-boundary.html"
+            >ADR 0004: MongoDB Integration Boundary</a
+          >,
+          <a href="./adr/0005-authentication-and-authorization.html"
+            >ADR 0005: Authentication and Authorization Boundary</a
+          >,
+          <a href="./adr/0006-background-jobs-and-queues.html"
+            >ADR 0006: Background Jobs and Queue Boundary</a
+          >,
+          <a href="./adr/0007-event-stream-integration-boundary.html"
+            >ADR 0007: Kafka Event Stream Boundary</a
+          >,
+          <a href="./adr/0034-kafka-postgres-delayed-retry.html"
+            >ADR 0034: Kafka PostgreSQL Delayed Retry</a
+          >,
+          <a href="./adr/0008-ai-application-integration-boundary.html"
+            >ADR 0008: AI Application Integration Boundary</a
+          >,
+          <a href="./adr/0009-testing-and-verification-strategy.html"
+            >ADR 0009: Testing and Verification Strategy</a
+          >,
+          <a href="./adr/0010-platform-foundation-and-deployment-trust.html"
+            >ADR 0010: Platform Foundation and Deployment Trust</a
+          >,
+          <a href="./adr/0011-msrv-and-integration-support-line.html"
+            >ADR 0011: MSRV and Integration Support Line</a
+          >,
+          <a href="./adr/0012-tenant-persistence-isolation.html"
+            >ADR 0012: Tenant Persistence Isolation</a
+          >,
+          <a href="./adr/0013-release-tracks-and-support-policy.html"
+            >ADR 0013: Release Tracks and Support Policy</a
+          >,
+          <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018: MCP OAuth Client Boundary</a
+          >, and
+          <a href="./adr/0019-mcp-oauth-resource-server-boundary.html"
+            >ADR 0019: MCP OAuth Resource-Server Boundary</a
+          >.
         </p>
       </section>
 
       <section>
-        <h2>문서 원칙</h2>
+        <h2>Documentation Rules</h2>
         <ul>
-          <li>정식 프로젝트 문서는 Markdown이 아니라 HTML로 작성합니다.</li>
-          <li>구조, 공개 API, 로드맵, 철학이 바뀌면 관련 HTML 문서도 같은 변경 단위에서 갱신합니다.</li>
-          <li>중요한 설계 결정은 ADR HTML 문서로 남깁니다.</li>
-          <li>AI 에이전트는 작업 시작 전 <a href="./ai-context.html">AI 유지관리 규칙</a>을 먼저 확인합니다.</li>
+          <li>Official project documentation is written in HTML, not Markdown.</li>
+          <li>
+            Changes to architecture, public APIs, the roadmap, or the design philosophy update the
+            relevant HTML documents in the same change.
+          </li>
+          <li>Important design decisions are recorded as HTML ADRs.</li>
+          <li>
+            AI agents read the <a href="./ai-context.html">AI Maintenance Rules</a> before starting
+            work.
+          </li>
         </ul>
       </section>
 
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Owner: Rustee project maintainers and assisting AI agents.</p>
+        <p>Last updated: 2026-08-08. Owner: Rustee project maintainers and assisting AI agents.</p>
       </footer>
     </main>
   </body>

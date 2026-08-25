@@ -1,98 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0035: Kafka Delayed Retry Observability</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0035</div>
-        <h1>Kafka Delayed-Retry Observability</h1>
-        <p class="lead">relay pass와 backlog를 구분해 aggregate-only로 관찰하되, query cadence와 운영 판단은 application이 소유합니다.</p>
-        <p class="meta">Status: Accepted | Date: 2026-08-04</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0035: Kafka Delayed-Retry Observability</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          Kafka delayed-retry relay는 PostgreSQL lease, Kafka acknowledgement, PostgreSQL confirmation을 한 pass에서 수행합니다.
-          pass failure 또는 cancellation의 원인에는 endpoint, topic, row ID, payload, key와 raw backend error가 섞일 수 있어 이 값을 label이나 generic metric event에 넣을 수 없습니다.
-          반면 unpublished/due/leased row와 oldest due age는 database query가 필요한 current-state 값입니다. relay hot path가 이를 매 pass 자동 query하거나
-          framework가 listener와 alert를 만들면 delivery latency, connection ownership, scrape security와 deployment policy를 한 adapter가 임의로 결정하게 됩니다.
+          The delayed-retry relay needs visibility without turning topics, offsets, payloads,
+          endpoints, or storage errors into sensitive high-cardinality metrics.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-events-kafka-sqlx</code>에 panic-isolated, cancellation-safe <code>KafkaDelayedRetryRelayObserver</code>와
-            <code>KafkaDelayedRetryBacklog</code> query를 둡니다. observer는 only started/in-flight lifecycle, fixed terminal outcome,
-            fully successful pass의 confirmed publish count와 global duration을 전달합니다. <code>backlog()</code>는 PostgreSQL database clock으로
-            unpublished/due/leased/oldest-due aggregate만 읽으며 row detail을 반환하지 않습니다.
-          </p>
-        </div>
         <p>
-          <code>rustee-events-kafka-sqlx-observability</code>는 exporter-neutral collector이고,
-          <code>rustee-events-kafka-sqlx-observability-prometheus</code>는 explicit Prometheus text 0.0.4
-          <code>Cache-Control: no-store</code> response helper입니다. application이 collector를 relay에 연결하고 자기 timeout/cadence로
-          <code>backlog()</code>를 호출해 latest snapshot을 record하며, route, registry, listener, database query loop, health inclusion,
-          scrape authentication/network isolation, alert/backoff, retention과 incident owner를 결정합니다.
+          Emit cancellation-safe pass outcomes, confirmed successful-pass count, and global
+          duration. Applications may explicitly record the relay's aggregate
+          unpublished/due/leased/oldest-due backlog.
         </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>metric label은 fixed <code>succeeded</code>/<code>failed</code>/<code>abandoned</code> outcome과 fixed backlog state뿐입니다. topic, row ID, event key, payload, endpoint, credential, tenant와 raw error는 collector와 Prometheus text에 넣지 않습니다.</li>
-          <li>failed 또는 abandoned pass는 partial Kafka acknowledgement 뒤 confirmation failure를 포함할 수 있으므로 publish count를 제공하지 않습니다. missing count를 no-publish evidence로 해석하지 않습니다.</li>
-          <li>backlog snapshot은 last-recorded gauge입니다. application은 query timeout/failure/staleness와 SLO를 자기 health/alert policy에 포함하고 stale snapshot을 healthy queue로 해석하지 않습니다.</li>
-          <li>observer panic은 delivery를 바꾸지 않고 억제됩니다. observer implementation은 synchronous non-blocking aggregate 또는 bounded handoff만 수행해야 합니다.</li>
-          <li>collector와 exporter는 optional <code>rdkafka</code> feature이며 Kafka adapter를 core framework dependency로 만들지 않습니다.</li>
-        </ul>
+        <p>
+          Collector and Prometheus helper remain exporter-neutral and route-free. Supervision,
+          alerting, backlog interpretation, and incident response remain application-owned.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>relay가 모든 pass에서 backlog를 자동 query</td><td>hot path에 불필요한 database work를 추가하고 cadence/timeout을 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>topic, exception, row ID를 Prometheus label로 사용</td><td>cardinality와 secret/payload 유출 위험을 만들므로 채택하지 않습니다.</td></tr>
-            <tr><td>framework가 global registry와 <code>/metrics</code> route를 제공</td><td>scrape 접근 제어와 deployment topology를 일반 API가 결정하게 되므로 채택하지 않습니다.</td></tr>
-            <tr><td>relay failure에서 confirmed publish count를 0으로 기록</td><td>acknowledgement와 confirmation 사이 duplicate 가능성을 잘못 숨기므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="./0034-kafka-postgres-delayed-retry.html">ADR 0034</a> for the delayed-delivery boundary.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

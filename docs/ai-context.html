@@ -1,298 +1,2295 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee AI 유지관리 규칙</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee AI Maintenance Rules</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./roadmap.html">Roadmap</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">AI Operating Context</div>
-        <h1>AI가 계속 참고하고 갱신해야 할 규칙</h1>
+        <div class="eyebrow">AI Maintenance Rules</div>
+        <h1>Rules AI Agents Must Read and Maintain</h1>
         <p class="lead">
-          이 문서는 Rustee에서 AI 에이전트가 작업할 때 따라야 하는 운영 규칙입니다. 목표는 매 세션의 판단이
-          이전 설계와 이어지고, 중요한 변경이 코드에만 남지 않게 하는 것입니다.
+          This is the durable working context for AI-assisted changes. It defines the documents to
+          inspect, the boundaries that must remain explicit, and the records that must change with
+          implementation.
         </p>
       </section>
-
       <section>
-        <h2>작업 시작 체크리스트</h2>
+        <h2>Before Starting Work</h2>
         <ol>
-          <li>먼저 이 문서를 읽습니다.</li>
-          <li><a href="./index.html">문서 인덱스</a>, <a href="./release-plan.html">출하 계획과 지원 정책</a>, <a href="./supply-chain.html">공급망과 릴리스 증거</a>, <a href="./release-inventory.html">release inventory</a>, <a href="./support-matrix.html">지원 현황 매트릭스</a>, <a href="./implementation-review.html">구현 계획 재검토</a>에서 현재 문서 맵, 지원 단계와 release blocker를 확인합니다.</li>
-          <li>새 facade나 provider를 제안하기 전, <a href="./implementation-review.html">계획 재검토</a>의 P0→P4 순서를 확인합니다. P0/F1 뒤에는 owner가 고른 하나의 reference deployment의 qualification을 우선하며, Contract-verified code가 live-provider 또는 Supported 증거를 대신한다고 판단하지 않습니다.</li>
-          <li>작업 영역에 따라 <a href="./design-philosophy.html">디자인 철학</a>, <a href="./architecture.html">구조</a>, <a href="./operations.html">운영과 배포</a>, <a href="./static-files.html">정적 파일</a>, <a href="./compression.html">응답 압축</a>, <a href="./openapi.html">OpenAPI</a>, <a href="./macros.html">매크로 경계</a>, <a href="./database.html">데이터베이스</a>, <a href="./redis.html">Redis</a>, <a href="./mongodb.html">MongoDB</a>, <a href="./authentication.html">인증과 권한</a>, <a href="./queues.html">Queue와 background job</a>, <a href="./events.html">Kafka event stream</a>, <a href="./event-schema-operations.html">event schema runbook</a>, <a href="./kafka-delayed-retry-operations.html">Kafka delayed retry runbook</a>, <a href="./ai.html">AI application integration</a>, <a href="./testing.html">테스트와 검증 전략</a>, <a href="./roadmap.html">기능 로드맵</a>, 관련 ADR을 읽습니다.</li>
-          <li>기존 파일과 git 상태를 확인하고, 사용자가 만든 변경을 되돌리지 않습니다.</li>
-          <li>코드를 바꾸기 전에 어떤 문서가 함께 갱신되어야 하는지 판단합니다.</li>
+          <li>
+            Read this page, the relevant focused document, the architecture, the testing strategy,
+            the support matrix,
+            <a href="./deployment-readiness.html">enterprise deployment readiness</a>, and related
+            ADRs.
+          </li>
+          <li>
+            Inspect the current workspace implementation and tests before proposing a new
+            abstraction or changing a contract.
+          </li>
+          <li>
+            Identify the owner boundary: core, optional adapter, application, deployment, provider,
+            or operator.
+          </li>
+          <li>
+            Check whether the request affects public APIs, configuration, feature flags, release
+            evidence, security, privacy, or operational runbooks.
+          </li>
+          <li>
+            Prefer the existing crate and test patterns. Do not widen scope through unrelated
+            refactoring.
+          </li>
         </ol>
       </section>
-
       <section>
-        <h2>문서 갱신 규칙</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>상황</th>
-              <th>필수 행동</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>public API 방향 변경</td>
-              <td><code>docs/architecture.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>철학이나 비목표 변경</td>
-              <td><code>docs/design-philosophy.html</code> 갱신, ADR 추가</td>
-            </tr>
-            <tr>
-              <td>단계, 우선순위, 완료 기준 변경</td>
-              <td><code>docs/roadmap.html</code>와 <code>docs/release-plan.html</code> 갱신</td>
-            </tr>
-            <tr>
-              <td>v1 범위, public API 안정성, adapter 지원 단계, release gate 또는 platform 지원선 변경</td>
-              <td><code>docs/release-plan.html</code>, <code>docs/support-matrix.html</code>, <code>docs/implementation-review.html</code>, <code>docs/testing.html</code> 갱신 및 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>workspace crate, publication intent, package metadata 또는 release artifact 정책 변경</td>
-              <td><code>docs/release-inventory.html</code>, <code>docs/release-plan.html</code>, <code>docs/supply-chain.html</code>, <code>docs/testing.html</code>, inventory verifier, candidate archive assembler, post-publish consumer verifier와 SBOM collector를 같은 변경에서 갱신</td>
-            </tr>
-            <tr>
-              <td>public example, its runtime environment, representative flow 또는 example package 변경</td>
-              <td><code>docs/examples.html</code>, 관련 기능 문서, <code>docs/architecture.html</code>, <code>docs/testing.html</code>, <code>docs/roadmap.html</code>, <code>docs/release-inventory.html</code>와 example test를 같은 변경에서 갱신</td>
-            </tr>
-            <tr>
-              <td>DB toolkit, migration, transaction, pool, PostgreSQL outbox/inbox lease와 receipt 정책 변경</td>
-              <td><code>docs/database.html</code>, <code>docs/queues.html</code>, <code>docs/events.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>Redis client, cache, session, rate limit, 장애 정책 변경</td>
-              <td><code>docs/redis.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>MongoDB client, document model, schema evolution, transaction, change stream, BSON tenant scope 정책 변경</td>
-              <td><code>docs/mongodb.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>인증 방식, token 검증, session, permission, tenant 권한 정책 변경</td>
-              <td><code>docs/authentication.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>job envelope, worker, retry, DLQ, outbox, broker provider 정책 변경</td>
-              <td><code>docs/queues.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>event envelope, topic/key, partition, offset, consumer group, delayed retry, schema, replay 정책 변경</td>
-              <td><code>docs/events.html</code>, <code>docs/database.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code>, <code>docs/testing.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>AI provider, model alias, prompt/pipeline, tool/approval, RAG/memory, usage/budget, observability, MCP 정책 변경</td>
-              <td><code>docs/ai.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>test helper, test layer, deterministic time, feature matrix, CI/release gate, backend contract 정책 변경</td>
-              <td><code>docs/testing.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>정적 파일 mount, cache validator, MIME, filesystem trust, HTTP range normalization/precompressed/streaming 정책 변경</td>
-              <td><code>docs/static-files.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>response content coding, cache variation, compression stream, proxy/CDN ownership 정책 변경</td>
-              <td><code>docs/compression.html</code>, <code>docs/operations.html</code>, <code>docs/testing.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>configuration, secret, proxy/TLS trust, transport, health, lifecycle, observability 정책 변경</td>
-              <td><code>docs/operations.html</code>, <code>docs/architecture.html</code>, <code>docs/roadmap.html</code> 갱신, 필요하면 ADR 추가</td>
-            </tr>
-            <tr>
-              <td>장기적으로 되돌리기 어려운 기술 선택</td>
-              <td><code>docs/adr/NNNN-short-title.html</code> 추가</td>
-            </tr>
-            <tr>
-              <td>AI 작업 절차 변경</td>
-              <td><code>docs/ai-context.html</code>와 root bootstrap 갱신</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>문서 형식 규칙</h2>
+        <h2>Documentation Update Rules</h2>
         <ul>
-          <li>정식 문서는 HTML로 작성합니다.</li>
-          <li>문서 파일은 <code>docs/**/*.html</code> 아래에 둡니다.</li>
-          <li>문서 간 링크는 상대 경로를 사용합니다.</li>
-          <li>각 문서 하단에 <code>Last updated</code>와 갱신 조건을 적습니다.</li>
-          <li>새로운 문서가 생기면 <code>docs/index.html</code>에 링크를 추가합니다.</li>
-        </ul>
-        <div class="warning">
-          <p>
-            루트의 <code>AGENTS.md</code>는 일반 문서가 아니라 AI 에이전트가 HTML 문서를 찾기 위한 부트스트랩 파일입니다.
-            정식 설계 내용은 이 HTML 문서 세트를 기준으로 합니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>MCP 구현 기준</h2>
-        <p>
-          <code>rustee-ai-mcp</code>은 MCP 2025-11-25 Streamable HTTP의 JSON/SSE POST-response와 local stdio client path를, <code>rustee-mcp</code>은 nested JSON server path를 제공합니다. AI는 endpoint trust, HTTPS/non-loopback rule, request/body/page/tool/context limit, local program/argument/inherited-environment trust, tool별 risk와 Rustee approval/audit 연결을 <a href="./ai.html">AI 문서</a>, <a href="./adr/0015-mcp-remote-tool-boundary.html">ADR 0015</a>, <a href="./adr/0016-mcp-tool-server-boundary.html">ADR 0016</a>, <a href="./adr/0017-mcp-context-boundary.html">ADR 0017</a>에 함께 기록해야 합니다. remote schema, description, annotation, argument와 result는 authorization이 아니며, remote call은 <code>McpRemoteTool</code> 또는 <code>McpStdioRemoteTool</code>이 <code>ToolRegistry</code> 승인 뒤에만 보냅니다. client SSE parser는 matching result 전 notification만 소모하며 unexpected request를 실행하지 않습니다. session-bearing request의 404는 stored session만 비우고 <code>SessionExpired</code>를 반환하며 tool을 자동 재실행하지 않습니다. opt-in HTTP session recovery는 bounded backoff로 replacement initialize/notification만 준비해 next explicit request에 쓰며 expired request를 replay하지 않습니다. valid event ID 뒤 opt-in SSE resumption은 bounded <code>Last-Event-ID</code> GET만 보내고 origin POST, tool call 또는 context request를 replay하지 않습니다. <code>open_server_event_stream()</code>은 initialized session에서 standalone GET notification을 명시적으로 읽고, server request/response를 거부하며 notification을 tool, context 또는 provider에 자동 전달하지 않습니다. <code>close_session()</code>은 session-bearing DELETE를 보내고 stateless 405도 local cleanup으로 처리합니다. stdio는 bounded newline JSON-RPC와 request/shutdown deadline을 적용하고 timeout, pipe failure, protocol/output violation 뒤 connection을 폐기합니다. 기본은 caller의 explicit <code>restart()</code>이고, opt-in automatic restart는 bounded backoff로 replacement handshake만 준비하며 prior tool call이나 context request를 replay하지 않습니다. macOS/Windows every-PR Rust 1.94.1 CI는 workspace all-target compile과 Rust fixture의 initialize/discovery/approved execution/close 공통 경로를 확인합니다. server는 Origin header가 있으면 explicit canonical allowlist가 없을 때 403으로 거부하고, access policy가 visible tool과 application-owned execution/idempotency context를 만들며 mandatory terminal audit을 거치게 합니다. optional <code>McpContextProvider</code>는 같은 authenticated request로 tenant/user/data authorization을 수행한 뒤 명시적 read-only resource/template/prompt 결과만 제공하며 model context로 자동 채택하지 않습니다. Origin allowlist는 DNS rebinding 방어이지 authentication/CORS가 아닙니다. client/server full session lifecycle, server-initiated request/sampling/elicitation, Windows advanced subprocess lifecycle와 context subscription/completion은 구현되지 않은 범위로 유지하고 완료된 것처럼 문서화하지 않습니다. optional <code>rustee-mcp-oauth</code>는 separate protected-resource metadata와 Bearer/scope layer를 제공하며 existing MCP tool/context policy에 verified principal만 전달합니다.
-        </p>
-        <p>
-          client HTTP MCP authorization은 optional <code>rustee-ai-mcp-oauth</code>만 담당합니다. application은 protected-resource discovery 뒤 authorization server와 scope를 선택하고, state/PKCE callback을 atomic short-TTL store에 보관한 다음 token set을 encrypted tenant/user store에 넣어야 합니다. <code>rustee-ai-mcp-oauth-redis</code>는 AES-256-GCM envelope, active/retired decrypt key rotation, TTL/GETDEL state consume와 token persistence를 제공하지만 tenant/user key/KMS/retention policy는 application이 소유합니다. authorization-code와 explicit refresh request는 canonical <code>resource</code>를 보내며 revoke는 locally resource-bound token을 선택합니다. expired tool/read/prompt request는 replay하지 않습니다. opposite-direction <code>rustee-mcp-oauth</code>는 canonical resource/metadata/issuer allowlist/scope configuration, public metadata GET과 Bearer challenge만 제공하고 token을 저장하지 않습니다. application verifier는 exact resource audience와 issuer/key source를 검증해 <code>Principal</code>만 layer에 전달해야 하며 existing MCP tool/context/tenant/approval policy가 최종 권한을 계속 소유합니다. 이 lifecycle은 <a href="./mcp-oauth.html">MCP OAuth</a>, <a href="./adr/0018-mcp-oauth-client-boundary.html">ADR 0018</a>, <a href="./adr/0019-mcp-oauth-resource-server-boundary.html">ADR 0019</a>을 함께 갱신합니다.
-        </p>
-        <p>
-          AI evaluation/cache/batch 변경은 <code>rustee-ai-eval</code>, <code>rustee-ai-cache</code>, <code>rustee-ai-cache-redis</code>, <code>rustee-ai-batch</code>, <code>rustee-ai-batch-jobs</code>, <code>rustee-ai-batch-sqlx</code>, <code>rustee-ai-openai</code>과 <a href="./adr/0020-ai-evaluation-cache-batch-boundary.html">ADR 0020</a>, <a href="./adr/0021-ai-response-cache-boundary.html">ADR 0021</a>, <a href="./adr/0022-ai-provider-batch-submission-boundary.html">ADR 0022</a>, <a href="./adr/0023-openai-batch-lifecycle-adapter.html">ADR 0023</a>, <a href="./adr/0024-ai-batch-artifact-reconciliation-boundary.html">ADR 0024</a>, <a href="./adr/0025-ai-batch-postgres-artifact-ledger.html">ADR 0025</a>를 기준으로 합니다. evaluation suite 식별자와 report는 safe metadata만 담고 prompt, expected target, completion은 application-owned 실행·grader 경계를 벗어나지 않습니다. cache key는 application-generated tenant-scoped opaque fingerprint여야 하며 raw prompt를 framework가 hash하거나 pipeline에 automatic cache를 넣으면 안 됩니다. submission batch job은 tenant/policy scope, catalog ID, run key만 보관하고 ledger가 existing receipt/pending ambiguity를 보존하므로 provider submit을 automatic retry하면 안 됩니다. artifact job은 output/error role, opaque provider file ID, reconciliation key만 보관하고 loader/processor failure 뒤 <code>Pending</code>을 release하지 않습니다. <code>rustee-ai-batch-sqlx</code>은 scope/reconciliation-key reference를 restart-safe로 보존하고 same key의 다른 identity를 거부하지만, artifact authorization이나 row output을 보관하지 않습니다. application은 provider <code>custom_id</code>와 domain key로 row-level side effect를 멱등 처리한 뒤 검토할 수 있으며, 재처리가 안전할 때에만 새 reconciliation key를 가진 새 job을 명시적으로 schedule합니다. OpenAI adapter의 upload/download/delete는 caller가 명시적으로 고른 bounded, non-serializable input 또는 file ID에서만 수행합니다. output JSONL iterator는 safe ID/status/request ID/error code만 구조적으로 파싱하고 model body는 explicit consume 뒤에만 보입니다. built-in <code>into_chat_response()</code>/<code>into_embeddings(expected_count)</code> conversion 외의 raw JSONL/prompt와 output/error content를 automatic cache/evaluation에 주입하면 안 됩니다. tool interaction/stream은 cache 대상이 아니고, read bypass/fail-closed, write failure status, exact invalidation, key salt/version, tenant erase, encryption/TLS, retention과 stale-answer UX를 명시합니다. catalog authorization, external human 또는 LLM grader의 authorization·cost·redaction, semantic cache와 provider domain response semantics/partial result/billing reconciliation도 숨겨서 구현하면 안 됩니다. 이 범위는 <a href="./ai.html">AI 문서</a>, <a href="./testing.html">테스트</a>, <a href="./roadmap.html">로드맵</a>, <a href="./release-plan.html">출하 계획</a>을 같은 변경에서 갱신합니다.
-        </p>
-        <p>
-          durable evaluation run은 <code>rustee-ai-eval-jobs</code>, <code>rustee-ai-eval-sqlx</code>와 <a href="./adr/0038-ai-evaluation-durable-run-boundary.html">ADR 0038</a>을 추가로 따릅니다. <code>AiEvaluationReference</code>에는 validated scope, catalog ID, run key만 들어가고 raw suite, report, prompt, target, completion은 저장하거나 serialize하지 않습니다. worker는 authorized catalog loader 뒤에만 runner를 호출하며 ledger의 exact scope/run-key reservation이 completed result를 재사용하거나 failure를 <code>Pending</code>으로 남깁니다. catalog/report storage authorization, provider 또는 grader 비용, human/LLM grader governance, explicit fresh-run 승인과 reconciliation은 application이 소유합니다.
-        </p>
-        <p>
-          <code>OpenAiBatchOutputExpiration</code>은 caller가 선택한 output/error file의 provider-side whole-second expiration(1시간~30일)만 batch creation에 전달합니다. input file, artifact ledger, domain copy, billing, <code>Pending</code> 또는 live qualification approval을 자동 변경하지 않습니다. 실제 spend 호출은 protected <code>openai-batch-qualification</code> Environment의 manual workflow로만 수행하고, completed/failed/cancelled/expired artifact의 domain reconciliation은 계속 application evidence가 필요합니다.
-        </p>
-        <p>
-          client는 negotiated <code>resources</code>/<code>prompts</code> capability에서만 HTTP와 stdio에 동일한 bounded
-          <code>resources/list</code>, <code>resources/templates/list</code>, <code>resources/read</code>, <code>prompts/list</code>,
-          <code>prompts/get</code> API를 제공합니다. typed resource/prompt metadata, text/blob, image/audio, embedded resource와 resource link는
-          모두 untrusted data이며 <code>ChatRequest</code>, advisor, provider 또는 tool registry에 자동 전달하지 않습니다. application은 explicit
-          URI/prompt selection, tenant authorization, user consent, classification, secret/PII redaction, modality compatibility와 tighter
-          context/token budget을 거친 뒤에만 자체 renderer/advisor input으로 채택합니다. resource link도 자동 fetch하지 않습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>현재 설계 기준 요약</h2>
-        <ul>
-          <li>Core는 작고 안정적으로 유지합니다.</li>
-          <li>Tokio, Hyper, Tower와의 호환성을 기본 축으로 삼습니다.</li>
-          <li>미들웨어는 Tower-compatible 구조를 우선합니다.</li>
-          <li><code>App::nest</code>는 static non-root prefix에 Tower service를 mount하고 child URI에서 prefix를 제거합니다. child Rustee app의 <code>RouteTemplate</code>은 외부 full path로 유지하며 child fallback/405가 prefix 아래를 소유합니다. direct parent route가 우선하고, 여러 nest는 longest prefix가 우선합니다. parent/child <code>StateStore</code>는 자동 병합하지 않습니다.</li>
-          <li>정적 파일은 선택적 <code>rustee-static</code> layer에서 explicit root와 URI prefix, weak <code>ETag</code>/<code>Last-Modified</code> conditional cache, normalized single/multipart byte-range response, opt-in precompressed Brotli/gzip variant와 bounded large-file streaming을 제공합니다. variant는 non-Range request에서만 quality negotiation으로 선택하고 Range는 identity representation으로 고정합니다. multipart input은 overlap/adjacent merge와 64 input/16 part limit를 적용합니다. streaming threshold는 maximum file admission limit를 대체하지 않으며 selected full/range representation에 적용합니다. cache policy, CDN/object storage 채택과 deployment exposure는 application 책임이며, raw filesystem path나 directory listing을 노출하지 않습니다.</li>
-          <li>response compression은 선택적 <code>CompressionLayer</code>에서 streaming gzip/Brotli negotiation으로 제공합니다. <code>Vary: Accept-Encoding</code>과 existing coding/no-transform/Range/HEAD bypass를 지키며, proxy/CDN가 compression을 소유하면 origin layer를 같이 켜지 않습니다.</li>
-          <li><code>rustee-test::TestApp</code>은 opt-in <code>with_cookie_jar()</code>에서만 session-style valid cookie name/value를 보존합니다. <code>Max-Age=0</code> deletion, fixed 64-entry/8 KiB bound, successful buffered response 뒤 atomic update와 explicit request <code>Cookie</code> override를 지키되, browser origin/path/secure/same-site/expiry/redirect 정책은 구현하지 않습니다. 이 경계를 넓힐 때에는 <a href="./adr/0042-test-cookie-jar-boundary.html">ADR 0042</a>와 wire/browser evidence를 함께 갱신합니다.</li>
-          <li><code>rustee-openapi</code>의 security component/requirement은 application-declared static metadata입니다. HTTP Basic/Bearer, API key, safe OpenID Connect discovery, Authorization Code/Client Credentials OAuth2 flow와 declared OAuth scope, static <code>mutualTLS</code>, document-wide default, anonymous alternative, explicit operation clear override를 render합니다. scheme은 requirement 전에 등록하고 header API-key name은 HTTP field-name grammar를 따라야 합니다. OAuth URL은 HTTPS 또는 loopback HTTP with no credential/query/fragment여야 하며 <code>mutualTLS</code> requirement는 scope를 받지 않습니다. route authentication, bearer/API-key parsing, OAuth token exchange/refresh/revocation, OIDC/session lifecycle, TLS termination, certificate validation/rotation/principal mapping 또는 tenant/scope authorization을 추론·생성하지 않습니다. runtime API-key authentication은 <code>rustee-auth::ApiKeyLayer</code>가 explicit header only boundary로 별도 제공하며, production store에는 HMAC-SHA-256 keyed fingerprint만 전달하고 provider persistence/rotation/audit policy를 추론하지 않습니다. legacy OAuth flow, runtime drift와 provider interoperability를 늘릴 때에는 <a href="./adr/0039-openapi-explicit-description-boundary.html">ADR 0039</a>, <a href="./adr/0043-openapi-security-metadata-boundary.html">ADR 0043</a>, <a href="./adr/0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>, <a href="./adr/0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>, <a href="./adr/0047-openapi-api-key-header-grammar.html">ADR 0047</a>, <a href="./adr/0048-api-key-header-authentication-boundary.html">ADR 0048</a>, <a href="./adr/0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>을 함께 갱신합니다.</li>
-          <li><code>rustee-auth</code>의 <code>ApiKeyPepperRing</code>/<code>RotatingKeyedApiKeyAuthenticator</code>는 active 뒤 최대 두 retained pepper를 rejection 때만 조회하고 provider outage에는 즉시 fail-closed 합니다. <code>rustee-auth-sqlx</code>는 keyed API-key fingerprint의 optional PostgreSQL record, bounded readiness, active/revoked/expiry lookup, raw-key-free database-clock active/unexpired-source metadata clone, no-overlap rotation와 successful-auth audit adapter를 제공합니다. stopped database CI는 500ms endpoint-free readiness failure와 restart requalification을 확인합니다. raw key/pepper를 저장하지 않고 KMS delivery, replacement fingerprint derivation/backfill, retirement, retention, RLS와 database restore policy를 자동화하지 않습니다. 이 경계를 바꿀 때에는 <a href="./adr/0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>, <a href="./adr/0050-postgres-api-key-store.html">ADR 0050</a>과 PostgreSQL container contract를 함께 갱신합니다.</li>
-          <li>매크로는 선택 기능이며, non-macro API가 먼저 존재해야 합니다. 현재 <code>rustee::routes!</code>는 existing <code>App</code> method chain만 만들고, <code>rustee-macros::FromHeader</code>는 explicit header name의 one-field tuple newtype <code>FromStr</code> parsing만 생성합니다. handler/schema/authorization은 생성하지 않습니다. 확장 전에는 <a href="./adr/0040-from-header-derive-boundary.html">ADR 0040</a>, <a href="./adr/0041-routes-builder-macro-boundary.html">ADR 0041</a>과 compile-fail contract를 갱신합니다.</li>
-          <li>엔터프라이즈 기능은 core에 밀어 넣기보다 별도 crate와 feature flag로 확장합니다.</li>
-          <li>데이터베이스는 core 추상화가 아니며, SQLx는 첫 선택적 공식 통합입니다. 풀은 <code>State&lt;AppState&gt;</code>로 전달합니다. <code>rustee-outbox-sqlx</code>는 PostgreSQL에서 event/job envelope을 같은 transaction에 stage하고 destination별 <code>SKIP LOCKED</code> lease relay로 전달하며, <code>PostgresInbox</code>는 database side effect와 receipt를 같은 transaction에 commit합니다. cross-store exactly-once, external side-effect idempotency, tenant authorization은 추상화하지 않습니다.</li>
-          <li>Redis는 선택적 상태 저장소 통합이며, redis-rs <code>ConnectionManager</code>를 기본 client 경로로 삼습니다. <code>rustee-rate-limit</code>은 trusted application key resolver, fixed-window 429 response와 explicit failure policy를 제공하고 <code>rustee-rate-limit-redis</code>은 Lua atomic store를 제공합니다. 역할별 장애 정책은 명시합니다.</li>
-          <li><code>RedisConfig</code>는 기본 5초의 bounded initial connect와 sanitized <code>RedisConnectError::Connection</code>만 제공합니다. URL과 credential은 Debug와 startup error에 노출하지 않으며, 이후 reconnect는 redis-rs <code>ConnectionManager</code>가 담당합니다. failover topology와 application-level retry supervisor는 deployment가 명시합니다.</li>
-          <li>MongoDB는 선택적 문서 database 통합이며, 공식 driver <code>Client</code>의 내장 pool을 사용합니다. BSON, schema evolution, change stream은 별도 운영 경계로 다룹니다. <code>ChangeStreamCheckpointStore</code>는 opaque resume token의 storage contract이고 <code>rustee-mongodb-checkpoint-sqlx</code>는 PostgreSQL <code>BYTEA</code> adapter, timeout-bound readiness와 opt-in database-clock writer lease를 제공합니다. durable handler success 뒤 <code>save_while_leased</code>로 저장하고 storage failure나 <code>LeaseLost</code>이면 worker를 종료합니다. owner identity, renewal scheduler, invalidation, restart/backoff와 outage policy는 자동화하지 않습니다. <code>MongoTenantScope</code>는 verified <code>TenantContext</code>를 outer-AND <code>tenant_id</code> filter, insert/replacement document, classic update validation과 target collection first-match aggregation pipeline에 연결합니다. 이는 MongoDB RLS가 아니므로 raw driver, aggregation의 <code>$lookup</code>/<code>$unionWith</code>, change-stream pipeline은 application의 explicit tenant condition과 access review가 필요합니다.</li>
-          <li>인증과 권한은 선택적 security integration입니다. static JWT와 HTTPS JWKS bearer token은 verified scope/role/permission을 포함한 <code>Principal</code>로 정규화하며, JWKS는 strict algorithm/key-use filtering, bounded cache refresh, provider-unavailable 503을 유지합니다. OIDC browser login은 discovery, Code+PKCE, one-time state, nonce-bound ID token, session bridge와 Redis TTL/GETDEL transaction store까지 구현됐습니다. opaque access token은 HTTPS introspection의 active/issuer/audience/time 검증과 exp-bound SHA-256 fingerprint cache로 처리합니다. JWKS/opaque adapter의 real loopback transport outage는 credential/provider detail 없는 503으로 고정했습니다. <code>rustee-tenant</code>는 trusted tenant context를 security/storage에 공유하고 PostgreSQL은 transaction-local RLS read/write isolation을 확인합니다. direct permission, server-configured role-to-permission policy, tenant-match guard와 configured-host <code>TenantResolutionLayer</code>, MongoDB BSON read/update/delete tenant boundary는 구현됐고 external IdP revocation, MongoDB raw-query review와 outage/recovery contract는 별도 release gate로 검증합니다.</li>
-          <li>Queue와 background job은 선택적 worker integration입니다. at-least-once 전달, idempotent handler, retry/DLQ와 PostgreSQL outbox/inbox를 명시적으로 설계합니다. <code>JobEnvelope::decode</code>와 <code>JobRegistry::register</code>는 strict current version이 기본이고, older job payload가 필요한 handler만 <code>JobUpcaster</code> 또는 <code>register_with_upcaster</code>를 명시합니다. newer version은 거부합니다. <code>JobTraceContext</code>는 bounded W3C carrier만 저장하고, <code>rustee-jobs-opentelemetry</code>는 current span capture와 valid carrier의 handler-parent 연결을 담당합니다. <code>JobRegistry</code>는 startup에 stable typed handler를 등록하고 duplicate/invalid name을 거부합니다. <code>NatsConfig</code>와 <code>RabbitMqConnectionConfig</code>는 bounded one-shot connect와 sanitized failure만 제공하며 reconnect/backoff supervisor는 application-owned입니다. <code>JetStreamWorker::run_registry_until</code>은 provider attempt를 typed context에 주입하며 unknown/malformed envelope은 retry 없이 acknowledged DLQ publish, handler failure만 retry policy로 처리합니다. <code>rustee-jobs-redis</code>는 deployment-provisioned Redis Streams source/group/DLQ를 확인하고 ownership-checked ack, Redis-clock durable delayed retry와 <code>XAUTOCLAIM</code>/<code>XPENDING</code> cumulative-attempt reclaim을 제공합니다. retry private storage와 source retention은 같은 deployment policy로 관리하고, heartbeat가 없으므로 <code>reclaim_idle</code>은 longest handler보다 길어야 합니다. <code>rustee-jobs-rabbitmq</code>는 RabbitMQ 4.3 quorum queue에서 publisher confirm, manual ack/reject, <code>x-acquired-count</code> attempt와 native <code>delayed-retry-type=failed</code> policy를 사용합니다. plugin/TTL-DLX retry는 금지하며, native linear backoff가 core policy와 정확히 일치하는 bounded range만 <code>RabbitMqNativeRetryConfig</code>으로 허용합니다. queue type/policy/delivery limit/broker-native DLX는 deployment-owned이고 passive readiness는 존재/ACL만 확인합니다. <code>rustee-jobs-sqs</code>는 MSRV-compatible AWS SDK 1.105.0 client injection, source/DLQ Standard/FIFO route, long polling, receive-time visibility lease와 heartbeat extension, success delete, whole-second retry visibility, direct DLQ를 제공합니다. <code>ApproximateReceiveCount</code>는 provider attempt지만 Standard delivery는 at-least-once이며, malformed/unknown/exhausted delivery는 DLQ send 성공 뒤 source delete하므로 delete failure가 DLQ duplicate를 만들 수 있습니다. source redrive DLQ ARN/max receive count와 queue mode는 deployment-owned이고 readiness가 읽기 전용으로 확인합니다. handler timeout은 first receive 뒤 SQS 12-hour visibility ceiling 안에 있어야 하며 heartbeat failure 때 delete하지 않습니다. <code>JobSchedule::after</code>와 <code>PostgresOutbox::stage_job_after</code>는 one-time job을 PostgreSQL clock 기준 durable <code>available_at</code>에 같은 business transaction으로 stage하고 existing <code>JobOutboxRelay</code> loop가 due row만 publish하게 합니다. <code>OutboxPriority</code>는 same kind/destination에서 only local claim order를 0-255로 정하며 broker priority, fairness 또는 global rate limit이 아닙니다. 0 delay와 cron/recurring/rate-limited schedule은 이 API 범위 밖입니다. broker acknowledgement 뒤 outbox confirmation이 실패하면 duplicate publish가 가능하며, <code>PostgresInbox</code>는 DB-bound side effect에만 receipt를 제공하므로 email/HTTP에는 provider idempotency key가 필수입니다. Queue priority 변경은 <a href="./adr/0028-durable-outbox-priority-boundary.html">ADR 0028</a>도 같은 change에서 갱신합니다.</li>
-          <li><code>rustee-jobs-cron-sqlx</code>는 위 one-time API와 분리된 PostgreSQL durable IANA-time-zone recurring scheduler입니다. <code>RecurringJob&lt;J&gt;</code>는 typed payload와 application-owned key로 registration하며 <code>RecurringJob::new</code>의 default는 <code>UTC</code>이고 <code>with_time_zone(RecurringJobTimeZone)</code>으로 validated IANA zone을 명시합니다. <code>PostgresRecurringJobs::fire_due</code>는 PostgreSQL clock, due-row <code>SKIP LOCKED</code>, fresh job ID/UTC occurrence idempotency key, outbox stage와 next occurrence update를 one transaction에서 처리합니다. forward DST gap은 skip하고 backward overlap은 earlier UTC occurrence만 materialize합니다. identical registration만 idempotent하고 time-zone change를 포함한 definition drift는 conflict입니다. <code>RecurringJobRateLimit</code>을 <code>with_rate_limit</code>으로 붙이면 shared key의 PostgreSQL-clock fixed-window capacity를 같은 transaction에서 consume합니다. capacity가 full이면 outbox를 만들지 않고 next window boundary로 defer하며, same rate key의 capacity/window drift는 <code>RateLimitPolicyConflict</code>로 registration에서 거부합니다. <code>pause</code>는 future schedule selection만 막고 <code>resume</code>는 paused tick을 replay하지 않은 채 current clock 다음 local occurrence로 다시 시작합니다. late schedule도 하나만 fire하고 current clock 다음 occurrence로 advance합니다. application은 base/governor migration 뒤 <code>RECURRING_JOB_TIME_ZONE_MIGRATION_SQL</code>을 forward-only로 적용하며 existing row는 UTC입니다. bundled tzdb dependency update는 affected schedule inventory, DST boundary test와 rollout/rollback review가 필요한 qualification gate입니다. framework-owned polling loop, holiday/business calendar, all-missed catch-up, tenant fairness, daily quota와 broker-level priority는 제공하지 않습니다. 이 policy는 <a href="./adr/0029-postgres-recurring-job-scheduler.html">ADR 0029</a>, <a href="./adr/0030-postgres-scheduler-rate-governor.html">ADR 0030</a>, <a href="./adr/0033-recurring-job-time-zone-calendar.html">ADR 0033</a> 및 <a href="./queues.html">Queue 문서</a>를 같은 change에서 갱신합니다.</li>
-          <li>scheduler governor는 HTTP/Redis <code>RateLimitStore</code>와 별도 product boundary입니다. application은 base <code>RECURRING_JOB_MIGRATION_SQL</code> 뒤 <code>RECURRING_JOB_TIME_ZONE_MIGRATION_SQL</code>을 적용하고 governor를 쓰면 <code>RECURRING_JOB_RATE_GOVERNOR_MIGRATION_SQL</code>을 그 사이에 둡니다. rate-state consume, outbox stage와 next-run update 또는 defer는 PostgreSQL 한 transaction이지만 broker publish, worker execution, tenant fairness와 external-provider quota는 그 atomicity 밖입니다.</li>
-          <li><code>PostgresRecurringJobs::with_fire_observer</code>는 opt-in <code>RecurringJobFireObserver</code>를 연결합니다. observer는 panic-isolated이며 pass drop/cancellation을 <code>abandoned</code>로 끝냅니다. <code>rustee-jobs-cron-observability</code>는 started/in-flight/completed, fixed succeeded/failed/abandoned outcome, claimed/staged/rate-limited aggregate와 global duration만 집계하고, separate Prometheus helper는 explicit text 0.0.4 <code>no-store</code> response만 만듭니다. schedule key, expression, destination, job/payload, tenant, rate key, endpoint/credential와 raw error는 수집하거나 label로 내보내지 않습니다. route, scrape isolation, alert threshold/owner, polling supervisor와 automatic pause/retry는 application/deployment가 소유합니다. 이 policy는 <a href="./adr/0031-postgres-scheduler-observability.html">ADR 0031</a>과 <a href="./operations.html">운영 문서</a>를 같은 change에서 갱신합니다.</li>
-          <li><code>rustee-jobs-observability-prometheus</code>는 <code>JobMetrics</code>의 optional exporter입니다. collector가 제한한 provider와 fixed delivery outcome, in-flight/global duration만 escaped Prometheus text 0.0.4로 바꾸고 explicit <code>no-store</code> response를 돌려줍니다. job ID/type/version/attempt, payload, queue route, receipt handle, idempotency key, trace carrier, tenant와 raw broker/handler error는 내보내지 않습니다. global registry, listener, automatic scrape route, broker probe, alert threshold나 DLQ replay authority는 application/deployment가 소유합니다. 이 policy는 <a href="./adr/0032-job-delivery-prometheus-exporter.html">ADR 0032</a>와 <a href="./queues.html">Queue 문서</a>를 같은 change에서 갱신합니다.</li>
-          <li>PostgreSQL outbox relay는 background task를 자동 생성하지 않습니다. application은 one-pass <code>relay_once</code> 또는 explicit <code>run_until(RelayLoopConfig, shutdown)</code> future를 자기 supervisor에서 await합니다. <code>run_until</code>은 empty pass만 bounded idle delay로 wait하고 shutdown 신호 뒤에는 새 lease를 잡지 않지만, 이미 lease한 bounded pass는 완료합니다. every pass는 panic-isolated, cancellation-safe <code>OutboxRelayObserver</code> lifecycle을 emit하고 optional <code>rustee-outbox-observability::OutboxRelayMetrics</code>가 fixed event/job kind, succeeded/failed/abandoned outcome, claimed/published/retry_scheduled/lease_lost, in-flight/global duration을 live 집계합니다. final <code>RelayLoopReport</code>는 drain result를 확인하는 별도 aggregate입니다. destination, job/event ID, payload, broker endpoint, error text를 label로 넣지 않습니다. forced task abort, broker acknowledgement 뒤 confirmation failure, lease loss는 at-least-once duplicate publish를 만들 수 있으므로 consumer idempotency와 graceful shutdown은 application release gate입니다.</li>
-          <li>Job observability는 <code>rustee-jobs</code>의 <code>JobDeliveryObserver</code> contract와 <code>rustee-jobs-observability::JobMetrics</code>로 관리합니다. NATS/Redis Streams/RabbitMQ/SQS worker는 start/finish를 동일한 observer에 전달하며 durable settlement 뒤 acknowledged/retried/dead-lettered를, broker settlement failure 또는 cancellation은 unsettled를 기록합니다. collector label은 bounded provider/outcome과 global duration뿐이며 job ID/type, payload, queue route, receipt handle, idempotency key, trace carrier, raw error는 제외합니다. job ID/type/version/attempt correlation은 <code>rustee-jobs-opentelemetry</code> handler span에만 기록합니다.</li>
-          <li>RabbitMQ 4.3 CI fixture는 durable quorum source queue에 <code>delayed-retry-type=failed</code>, min/max, delivery limit과 broker-native DLX exchange/routing key를 explicit arguments로 provision합니다. contract는 success/retry-DLQ/unknown-registry DLQ뿐 아니라 isolated first worker connection을 abort한 뒤 replacement worker가 same unacknowledged job을 attempt 2로 받는지 확인합니다. AMQP passive readiness는 존재와 ACL만 확인합니다. optional <code>rustee-jobs-rabbitmq-management</code>의 separate monitor-only Management HTTP client는 encoded vhost/queue snapshot을 read-only로 fetch하고 quorum/durable/effective retry+delivery-limit+DLX route를 audit하며 URL/credential을 Debug에 노출하지 않습니다. production HTTPS/TLS/ACL qualification은 deployment release gate입니다.</li>
-          <li>Kafka는 선택적 event-stream integration입니다. topic/key, partition, consumer group, post-success offset commit, rebalance, retry/DLQ, replay, schema compatibility를 job queue와 별도로 설계합니다. <code>rustee-events</code>는 bounded W3C carrier, strict current-version decode와 explicit older-payload <code>EventUpcaster</code>를 제공하며 newer version은 거부합니다. <code>rustee-events-schema</code>는 typed JSON Schema artifact, format-plus-exact-source fingerprint와 stable subject/version catalog를 만들고 application-owned registry adapter acknowledgement가 local artifact와 정확히 같은지만 확인합니다. remote compatibility semantics, credential, schema-ID wire header, topic mapping, registry publication timing과 consumer-first rollout은 application deployment가 결정합니다. <code>rustee-events-opentelemetry</code>는 current span capture와 valid carrier의 handler-parent 연결을 제공합니다. <code>rustee-outbox-sqlx</code> event relay는 DB mutation과 Kafka publish 사이의 dual-write gap을 줄이고 <code>PostgresInbox</code>는 transactional projection deduplication을 제공하지만, external consumer idempotency를 대신하지 않습니다. <code>KafkaRetryConfig</code>, <code>KafkaFailurePublisher</code>, <code>KafkaEventConsumer::run_with_failure_routing</code>은 decode/handler failure를 immediate retry 또는 bounded terminal DLQ로 route하고, failure publish broker acknowledgement 뒤에만 source offset을 commit합니다. optional <code>rustee-events-kafka-sqlx</code>는 retry 가능한 failure를 source offset commit 전에 PostgreSQL database clock의 durable row로 stage하고 due <code>SKIP LOCKED</code> lease relay가 stored retry destination/header를 Kafka acknowledgement 뒤 confirm합니다. <code>KafkaDelayedRetryReadinessConfig</code>과 relay <code>readiness</code>는 retry table select와 retry/DLQ topic metadata를 bounded하게 확인하고, <code>KafkaDelayedRetryRelayLoopConfig</code>과 <code>run_until</code>은 batch/empty-pass delay와 shutdown을 explicit application supervisor에 남깁니다. <code>KafkaDelayedRetryRelayObserver</code>는 panic-isolated, cancellation-safe pass lifecycle을 emit하며 optional collector/Prometheus adapter는 fixed outcome, confirmed successful-pass count, global duration와 explicit application-recorded unpublished/due/leased/oldest-due aggregate만 export합니다. application이 backlog query cadence/timeout, scrape route/isolation, alert/backoff와 owner를 결정하며 topic, row ID, key, payload, endpoint와 raw error는 label이 아닙니다. acknowledgement 뒤 PostgreSQL confirmation failure에는 duplicate publish가 가능하며 migration, delay/lease와 consumer idempotency는 application deployment 책임입니다. framework는 source group offset을 자동으로 옮기거나 DLQ를 자동 재발행하지 않습니다. documented operator procedure는 explicit replay group, admin-tool dry-run, idempotency, lag/rate monitoring과 reconciliation을 요구합니다. <code>KafkaEventConsumer</code>는 bounded group-member/partition-lag diagnostic snapshot을 제공하고, CI Kafka+PostgreSQL contract는 successful handler commit 뒤 no-replay, failed handler record redelivery, staged delayed retry의 due-before-relay/confirmation, relay readiness/backlog, active handler drain/commit, quiescent member handoff, in-flight handler rebalance 뒤 commit failure/duplicate redelivery, committed lag-zero와 three-delivery terminal DLQ arrival을 확인합니다. 상세 경계는 ADR 0034, ADR 0035와 ADR 0036입니다.</li>
-          <li><code>rustee-events-schema-confluent</code>는 optional Confluent Schema Registry deployment adapter입니다. non-loopback endpoint는 HTTPS여야 하며 Basic, bearer 또는 injected mTLS client authentication을 redacted configuration으로 보유합니다. catalog verification은 effective policy가 declared <code>BACKWARD</code>/<code>FORWARD</code>/<code>FULL</code>/<code>NONE</code>과 정확히 같은지 read-only 확인하고 exact JSON artifact를 lookup한 뒤 absent일 때만 register, 다시 lookup해 subject/version/source identity를 확인합니다. adapter는 registry policy를 바꾸지 않고 Kafka header/serializer/topic/offset을 만지지 않으며 request retry, credential rotation, registry provider/version/ACL/outage evidence와 consumer-first rollout은 application deployment가 소유합니다.</li>
-          <li><code>rustee-events-schema-confluent</code>의 ignored live qualification은 <code>RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE=1</code>, HTTPS registry URL과 Basic key/secret 또는 bearer token을 모두 명시해야만 실행됩니다. unique retained subject를 만들고 effective <code>BACKWARD</code> policy를 요구하므로, approved non-production account에서만 run하며 provider/version, ACL scope, retained-subject cleanup/retention owner와 result를 release evidence로 남깁니다. credential, URL, raw schema source를 log나 metric label에 넣지 않습니다.</li>
-          <li><code>KafkaConfig</code>는 <code>message.timeout.ms</code>를 기본 5초로 강제해 broker delivery 전체를 bounded하게 만들고 0 또는 librdkafka millisecond range 밖 값을 거부합니다. stopped broker publish는 sanitized <code>KafkaError::Delivery</code>로 끝나며 CI는 restart 뒤 full Kafka contract recovery를 확인합니다. transaction-enabled producer는 broker의 transaction deadline이 이 delivery deadline을 조정할 수 있으므로 application이 별도 capability review를 수행합니다.</li>
-          <li>AI는 선택적 application integration입니다. <code>rustee-ai</code>는 chat/stream, typed output, final-request policy, request/response/stream <code>AiAdvisor</code>, tool, RAG를 제공합니다. <code>AiExecutionContext</code>는 application이 verified principal/server-resolved tenant에서 만들며, <code>BudgetAdvisor</code>가 provider 호출 전 content-free admission을 받고 manual tool approval에도 공유됩니다. durable provider attempt는 application-defined stable key의 <code>AiUsageReservation</code>과 <code>AiUsageLedger</code>로 reserve한 뒤에만 시작합니다. response 또는 stream <code>Completed(Usage)</code>만 terminal usage를 settle하고 same key의 pending/settled retry는 provider 전에 차단합니다. <code>complete_with_advisor_and_usage_ledger</code>/<code>stream_with_advisor_and_usage_ledger</code>는 advisor final request를 reserve하며 stream raw usage를 advisor event hook 전에 settle합니다. transport error, incomplete stream, HTTP body drop에는 refund나 usage를 추측하지 않아 pending reconciliation으로 남습니다. <code>ToolExecutionContext</code>는 application-defined idempotency key를 typed handler와 audit event에 공유합니다. <code>ToolApprovalAuditSink</code>는 approved handler보다 먼저 성공해야 하며 실패 시 side effect를 시작하지 않습니다. <code>ToolExecutionAuditSink</code>는 handler 뒤 terminal <code>Succeeded</code>/<code>Failed</code> outcome을 기록하고, 그 기록이 실패하면 rollback을 약속하지 않은 redacted reconciliation event를 반환합니다. <code>rustee-ai-audit-sqlx</code>는 PostgreSQL migration과 tenant + idempotency key의 replay-safe tool approval/outcome 및 provider usage ledger, bounded pending reconciliation query를 제공하고 changed identity/terminal value는 거부합니다. quota admission pricing, retention/retry worker, provider lookup/refund은 application이 운영합니다. <code>AiPipeline</code>/<code>ToolRegistry</code>는 aggregate request/usage, fixed outcome, tool risk, latency만 가진 tracing span을 만들고 prompt/completion, model alias, identity, provider/call ID, idempotency key, tool name/argument/result는 제외합니다. 기존 OpenTelemetry subscriber layer가 이를 export하되 sampling/exporter/retention, provider trace propagation은 application이 명시합니다. <code>rustee-ai-rag</code>의 <code>DocumentReference</code>/<code>RagIngestionRequest</code>는 tenant/document/revision/checksum/model만 durable payload에 넣고, worker가 source URI/citation/text를 읽어 chunk/embedding/vector upsert validation을 수행합니다. <code>rustee-ai-rag-jobs</code>는 이를 typed job으로 전달하고 <code>rustee-ai-openai</code>의 <code>OpenAiEmbeddingsProvider</code>는 provider <code>index</code>를 검증해 batch input 순서를 보존합니다. <code>rustee-ai-rag-advisor</code>는 application query builder와 context renderer를 명시적으로 받아 ACL-revalidated context만 request에 추가하며 prompt role/delimiter를 자동 결정하지 않습니다. MCP resources/prompts도 model context로 자동 주입하지 않으며 application/user selection, resource-specific authorization, content inspection/redaction과 tighter context budget이 계약으로 증명된 뒤에만 advisor input이 될 수 있습니다. model output은 신뢰하지 않고 tenant 권한과 provider usage를 application policy로 명시합니다. advisor order는 application-owned composite에 명시하며 framework가 자동 조합하지 않습니다.</li>
-          <li>테스트는 unit, in-process, real TCP, container contract, compile/docs, property/fuzz로 나눕니다. mock만으로 실제 transport/backend 검증을 대체하지 않고, time/resource를 결정론적으로 제어합니다. <code>rustee-router</code> parser/parameter/static-precedence와 <code>rustee-openapi</code> Rustee-to-OpenAPI route conversion <code>proptest</code>는 PR workspace test에 포함되고, isolated <code>route_pattern</code>/<code>openapi_route</code>/<code>openapi_security_scheme</code> libFuzzer corpus는 pinned nightly Linux에서 weekly/manual bounded sanitizer run을 수행합니다. target은 route/nest construction, OpenAPI conversion과 API-key header-name metadata parser만 다루며 query/cookie runtime, body/range/state machine과 external I/O는 자동 포함하지 않습니다. 현재 CI는 Redis 7의 cache/rate-limit/session/OIDC consume과 Streams job success ack/retry-DLQ/reclaim/unknown-registry DLQ, RabbitMQ 4.3 quorum queue의 publisher confirm/manual ack/native delayed retry-DLQ/unknown-registry DLQ, LocalStack SQS의 Standard delete/retry-direct-DLQ/unknown-registry-DLQ와 FIFO route, PostgreSQL 16의 SQLx connect/readiness/query와 outbox transaction visibility/deduplication/delayed-job due release/release-redelivery 및 MongoDB checkpoint, MongoDB 8의 connect/ping/isolated collection I/O와 trusted tenant BSON scope, NATS JetStream worker contract와 Apache Kafka의 success-commit/no-replay, failure-redelivery, active-handler drain, quiescent handoff, in-flight rebalance, committed lag-zero, terminal DLQ arrival consumer contract를 opt-in backend suite로 실행합니다. 실행 경계와 corpus/artifact policy는 <a href="./adr/0044-router-property-fuzz-boundary.html">ADR 0044</a>에 기록합니다.</li>
-          <li>Redis 7 CI는 server 중지 뒤 <code>RedisConfig</code>의 500ms initial connection deadline이 endpoint 없는 failure로 끝나는지 확인하고, 재시작 뒤 cache/rate-limit/session/OIDC/Streams contracts를 다시 실행합니다. Cluster/Sentinel failover와 existing in-flight command recovery는 별도 release gate입니다.</li>
-          <li>MongoDB 8 CI는 replica set에서 isolated collection I/O뿐 아니라 explicit transaction commit/abort, change-stream event/resume-token checkpoint, already-ready shutdown priority, trusted tenant A/B의 cross-tenant read/update/delete exclusion, first-match aggregation exclusion과 tenant-field mutation rejection을 확인합니다. PostgreSQL checkpoint CI는 opaque resume token의 first load, consumer-scoped upsert/replace와 corrupt bytes rejection, database-clock lease의 contention/renewal/expiry/stale-writer rejection, stopped store의 timeout-bound sanitized readiness failure와 restart recovery를 확인하고 combined MongoDB/PostgreSQL CI는 checkpoint를 읽은 new client/stream이 next event에서 재개하는지 확인합니다. CI는 replica set을 중지했을 때 configured deadline 안에 readiness가 실패하고 restart 뒤 full contract가 회복되는지도 확인합니다. <code>begin_transaction</code>은 session만 시작하고 complete transaction callback 재시도, external side effect, lease owner identity/renewal scheduler, durable token invalidation과 restart/backoff는 application이 책임집니다. raw driver, aggregation의 <code>$lookup</code>/<code>$unionWith</code>와 change-stream pipeline의 tenant policy는 자동 적용하지 않습니다.</li>
-          <li>운영 기반은 Stage 3에서 먼저 구현합니다. configuration/secret, health/lifecycle, observability, TLS 종료와 proxy trust를 storage/auth/broker보다 앞서 명시합니다. 현재 observability는 tracing bootstrap과 generated request ID/response correlation/completion trace, configured route template 또는 reserved router outcome을 쓰는 exporter-neutral bounded request metrics, global latency histogram과 explicit Prometheus text response helper를 제공하고 server는 actual peer <code>ConnectionInfo</code>를 주입합니다. <code>rustee-observability-opentelemetry</code>는 server span을 tracing subscriber layer로 export하며 <code>TraceContextLayer</code>로 bounded W3C inbound parent와 explicit outbound child injection을 제공합니다. pinned OTLP/HTTP Collector contract는 batch flush와 Collector receipt를 CI에서 확인합니다. provider/exporter, resource, sampling, shutdown, production endpoint/TLS/auth metadata는 application 책임이고 response header에는 propagation data를 쓰지 않습니다. trusted proxy는 CIDR allowlist와 single-hop default/opt-in bounded chain을 사용하며 RFC 7239 <code>Forwarded</code>가 기본 family, legacy <code>X-Forwarded-*</code>는 explicit mode입니다. 두 family는 혼합 복원하지 않습니다. proxy/CDN deployment integration은 별도 release gate입니다.</li>
+          <li>
+            Official documentation is HTML, not Markdown. Keep it in English and update it in the
+            same change as the relevant implementation. Internal module-boundary entries must
+            resolve to declared Rust modules; CI verifies this.
+          </li>
+          <li>
+            Update architecture for crate or layer boundaries; update focused integration documents
+            for contract and ownership changes; update the roadmap and release plan for scope or
+            support changes.
+          </li>
+          <li>
+            Add or amend an HTML ADR for a durable decision, rejected alternative, or newly explicit
+            trust boundary.
+          </li>
+          <li>
+            Update examples when a public API changes and add targeted verification for every
+            changed observable behavior. Avoid fixed counts for CI checks or test suites unless a
+            generated verifier owns the count; describe the enforced policy instead.
+          </li>
+          <li>
+            Do not claim a named deployment's production support, external provider qualification,
+            or exactly-once behavior without recorded evidence in that deployment's qualification
+            register. A generic framework is deployment-ready when it supplies the documented
+            contracts, workflows, and runbooks without assuming an adopter's account or topology.
+            Run the verifier after changing its HTML ledger.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Kafka event delivery observability</h2>
+        <h2>Current Design Baseline</h2>
         <ul>
-          <li><code>rustee-events</code>의 <code>EventDeliveryObserver</code>는 provider-neutral, synchronous non-blocking, panic-isolated lifecycle contract입니다. <code>EventDeliveryObservation</code>은 received source delivery 뒤 start하고 provider source settlement가 성공한 뒤에만 finish합니다. drop/cancellation, decode/handler/route/commit failure는 <code>unsettled</code>이며 Kafka adapter의 fixed provider는 <code>apache_kafka</code>입니다.</li>
-          <li><code>KafkaEventConsumer::with_delivery_observer</code>는 normal consumer success에서 source synchronous commit 뒤 <code>acknowledged</code>, failure-routing consumer에서 retry/DLQ durable route와 source commit 뒤 <code>retried</code>/<code>dead_lettered</code>를 기록합니다. observer는 offset commit, failure route, shutdown, rebalance, retry policy, source group offset과 replay를 바꾸지 않습니다. observer outcome은 external side effect exactly-once, consumer lag-zero 또는 replay safety 증명이 아닙니다.</li>
-          <li><code>rustee-events-observability::EventMetrics</code>와 <code>rustee-events-observability-prometheus</code>는 optional exporter-neutral collector/text helper입니다. bounded provider/outcome, in-flight/global duration과 explicit <code>no-store</code> response만 제공하며 event ID/type/version, topic, partition, group, offset, key, payload, trace carrier, tenant, endpoint, credential와 raw error를 label/response에 넣지 않습니다. global registry/listener/automatic route, broker or lag probe, scrape authentication/isolation, alert/retention/incident owner, retry/backoff와 DLQ replay authority는 application/deployment가 소유합니다. Kafka lifecycle/metrics 변경은 <a href="./events.html">Event 문서</a>, <a href="./operations.html">운영 문서</a>, <a href="./testing.html">테스트 문서</a>, <a href="./adr/0037-kafka-event-delivery-observability.html">ADR 0037</a>을 같은 change에서 갱신합니다.</li>
-          <li><code>KafkaEventConsumer::readiness(timeout)</code>는 subscribed source/retry topic이 broker metadata에 있고 error가 없는지 확인하는 bounded read-only operation입니다. <code>connect</code>를 blocking broker startup으로 바꾸지 않고 topic creation, partition mutation, group assignment/member count, lag-zero, handler/downstream readiness, offset movement나 poll loop를 수행하지 않습니다. application startup/readiness policy가 timeout, topic provisioning/ACL, health aggregation, alert/backoff와 recovery supervisor를 소유합니다. stopped-broker native contract는 timeout 안의 sanitized <code>KafkaError::Readiness</code>와 endpoint redaction을 확인합니다.</li>
+          <li>
+            The core is small, typed, Tower-compatible, and based on Tokio/Hyper. Optional
+            integrations live in focused crates.
+          </li>
+          <li>
+            Storage clients and pools are application state. SQLx, Redis, MongoDB, ORMs, migration
+            tools, and database topology are not core contracts.
+          </li>
+          <li>
+            Direct outbound HTTP adapters disable automatic redirects so a trusted configured
+            endpoint cannot silently move to a different transport target. Applications that inject
+            an HTTP client own its redirect policy.
+          </li>
+          <li>
+            Authentication normalizes a verified <code>Principal</code>; authorization, tenant
+            isolation, resource ownership, and deployment identity policy stay distinct. Principal
+            identity fields and authorization sets have fixed bounds, and serde restoration
+            revalidates them before persistence or request use. Principal and authorization-policy
+            <code>Debug</code> output is limited to safe aggregate counts.
+          </li>
+          <li>
+            Jobs, outbox relays, Kafka events, MongoDB change streams, and AI provider actions are
+            at least once where a crash boundary permits duplicates. Handlers need explicit
+            idempotency.
+          </li>
+          <li>
+            Metrics use bounded labels and do not expose secrets, payloads, IDs, endpoints, or raw
+            errors. Exporters, scrape routes, alerts, sampling, and retention are application or
+            deployment-owned.
+          </li>
+          <li>
+            Framework tracing uses content-free error diagnostics. Do not format raw
+            <code>error</code>, <code>err</code>, <code>cause</code>, <code>source</code>, or
+            <code>failure</code> values into tracing fields; preserve only a fixed outcome, and add
+            separately reviewed safe metadata when it is operationally necessary.
+          </li>
+          <li>
+            Public generic types implement <code>Debug</code> explicitly instead of deriving it.
+            Their diagnostics expose only reviewed safe metadata and must not delegate unknown
+            generic fields.
+          </li>
+          <li>
+            AI features enforce final-request policy, verified context, approval, audit, redaction,
+            and no-replay boundaries. Models, prompts, vector stores, live credentials, and domain
+            side effects are not framework defaults.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Queue 요청 경계</h2>
-        <p>
-          <code>rustee-jobs-sqs</code>의 <code>SqsPublisher</code>와 <code>SqsWorkerConfig</code>는 기본 25초의 설정 가능한 요청 deadline을 사용합니다. worker deadline은 SQS long poll보다 반드시 길어야 하며, receive, readiness, visibility heartbeat, retry visibility, direct DLQ, delete 모두 이 deadline 안에서 endpoint/credential을 포함하지 않는 <code>SqsError</code>로 끝납니다. AWS SDK retry policy와 IAM/KMS/real AWS qualification은 application/deployment의 별도 release gate입니다. CI는 stopped LocalStack의 500ms failure와 restart 뒤 full recovery를 실행합니다.
-        </p>
-        <p>
-          <code>rustee-jobs-redis</code>의 publisher와 worker도 기본 5초의 command deadline을 사용하며, worker deadline은 Redis blocking read보다 길어야 합니다. readiness, publish, receive, reclaim, retry promotion, ack/retry/DLQ settlement가 모두 같은 sanitized <code>RedisStreamsError</code>로 종료됩니다. Redis 7 CI는 intentional <code>CLIENT PAUSE</code>로 500ms deadline과 endpoint redaction을 확인합니다. connection manager reconnect, retention/replay, Cluster/Sentinel failover는 application/deployment release gate입니다.
-        </p>
+        <h2>Internal Module Boundaries</h2>
+        <ul>
+          <li>
+            <code>rustee</code> owns the compact application-facing facade for core routing,
+            transport, byte and streaming-response construction, plus opt-in macro and OpenAPI
+            re-exports. Optional integration crates remain explicit dependencies rather than hidden
+            facade features.
+          </li>
+          <li>
+            <code>rustee-core::response::body</code> owns owned streaming body types, body
+            construction, bodyless-status admission, and transport-neutral response assembly.
+            <code>rustee-core::response::json</code> owns HTTP response JSON encoding and maps
+            bounded materialization failures from <code>rustee-json</code> to its public response
+            contract. <code>rustee-core::response</code> owns sanitized errors and handler response
+            conversion, including removal of payload bytes and conflicting length metadata when a
+            status disallows a body; the crate root re-exports the stable public API, while its
+            sibling test module owns core extractor and response regression coverage.
+            <code>rustee-core::header</code> owns generic bounded HTTP Bearer field-value admission
+            without imposing provider credential semantics. <code>rustee-core::oauth</code> owns
+            shared OAuth state, nonce, PKCE verifier, authorization-code, provider-error, and
+            non-empty RFC 6749 scope-token sequence admission while callers retain their own byte
+            limits and protocol policy.
+          </li>
+          <li>
+            <code>rustee-config</code> owns deterministic source precedence, bounded non-empty
+            environment-prefix admission, ASCII normalized nested-path validation, schema-safe
+            parsing, and value-free configuration diagnostics.
+          </li>
+          <li>
+            <code>rustee-observability-opentelemetry</code> owns bounded W3C propagation admission,
+            explicit outbound injection, presence-only carrier and remote-context diagnostics, and
+            non-delegating inner-service diagnostics; tracer provider, exporter, sampling, and
+            shutdown stay application-owned.
+          </li>
+          <li>
+            <code>rustee-observability::metrics::metric_names</code> owns stable request metric
+            names. <code>rustee-observability::metrics</code> owns histogram configuration,
+            exporter-neutral snapshots, saturating aggregate counters, and poisoned-state recovery.
+            <code>rustee-observability::metrics::layer</code> owns clone-local Tower request
+            lifecycle timing and collector invocation; the crate root owns tracing initialization
+            and request correlation.
+          </li>
+          <li>
+            <code>rustee-core::routing</code> owns adapter-derived connection metadata,
+            router-configured route templates and classifications, plus matched route parameters
+            with redacted debug output.
+          </li>
+          <li>
+            <code>rustee-core::service</code> owns clone-local readiness admission for Rustee HTTP
+            <code>BoxCloneService</code> dispatch; every framework layer that clones an inner
+            service must consume that clone through this boundary.
+          </li>
+          <li>
+            <code>rustee-core::extract::state</code> owns copy-on-write type-indexed application
+            state, the typed state extractor, and type-only state-handle diagnostics.
+            <code>rustee-core::extract::json</code> owns JSON Content-Type admission, bounded body
+            decoding, fixed public decode diagnostics, and redacted JSON wrapper diagnostics.
+            <code>rustee-core::extract::parameters</code> owns query extraction plus strict UTF-8
+            percent-decoded path parameter extraction that retains literal plus characters.
+            <code>rustee-core::extract::header</code> owns duplicate-rejecting single-value typed
+            header extraction and redacted header wrapper diagnostics.
+            <code>rustee-core::extract</code> owns the shared request-extractor contract, request
+            metadata extractors, and bounded body collection.
+            <code>rustee-core::tests::response</code> owns response construction, bounded JSON,
+            and bodyless-status regression coverage. <code>rustee-core::tests::state</code> owns
+            type-indexed state and redacted request-metadata regression coverage.
+            <code>rustee-core::tests::extract</code> owns typed query, JSON, and path extractor
+            regression coverage. The <code>rustee-core::tests</code> facade only assembles those
+            independent test concerns.
+            <code>rustee-core::media_type</code> owns standard <code>application/json</code> and
+            <code>application/*+json</code> field-value syntax for exact-one header consumers.
+          </li>
+          <li>
+            <code>rustee-test::cookie</code> owns bounded non-browser cookie parsing, atomic jar
+            updates, exact emitted Cookie-header admission and synthesis, and redacted inspection;
+            the crate root owns in-process request construction, content-free request and response
+            diagnostics, and response assertions.
+          </li>
+          <li>
+            <code>rustee-router::handler</code> owns typed extractor invocation and its private
+            endpoint adapter; <code>rustee-router::pattern</code> owns route and nested-prefix
+            grammar, repeated-separator rejection, equivalent-pattern identity, and allocation-free
+            segment matching; <code>rustee-router::nesting</code> owns mounted Tower-service prefix
+            admission, request path and query preservation, externally visible nested route
+            templates, specificity selection, clone-local readiness, and fail-closed nested-service
+            mutex handling; <code>rustee-router::dispatch</code> owns direct-route (including 405)
+            priority, nested-route selection, response classification, and request dispatch;
+            <code>rustee-router::app</code> owns the cloneable application builder, direct/nested
+            registration, shared state, fallback registration, and redacted convenience-builder
+            diagnostics; the crate root remains the stable public facade, while its sibling test
+            module owns shared request construction.
+            <code>rustee-router::tests::routing</code>, <code>rustee-router::tests::nesting</code>,
+            and <code>rustee-router::tests::extractors</code> own their matching regression
+            coverage.
+          </li>
+          <li>
+            <code>rustee-server::runtime</code> owns HTTP/1 connection lifecycle, bounded request
+            bodies, clone-local Tower readiness, timeout and concurrency admission, adapter-derived
+            peer metadata, content-free connection diagnostics, and graceful draining; the crate
+            root re-exports the stable server facade.
+            <code>rustee-server::runtime::tests</code> owns shared TCP request support.
+            <code>rustee-server::runtime::tests::configuration</code> owns option-validation
+            coverage. <code>rustee-server::runtime::tests::limits</code> owns HTTP/1 buffer,
+            connection, declared and streamed body, concurrency, and timeout-admission coverage.
+            <code>rustee-server::runtime::tests::service</code> owns Tower readiness and layered
+            transport integration coverage.
+            <code>rustee-server::runtime::tests::lifecycle</code> owns shutdown signaling and
+            active-request draining coverage.
+            <code>rustee-server::runtime::tests::transport</code> owns basic listener and HTTP/1
+            coverage. <code>rustee-server::options</code> owns explicit transport limits, defaults,
+            runtime-safe concurrency upper bounds, and validation.
+          </li>
+          <li>
+            <code>rustee-ai::context</code> owns bounded trusted AI and tool-execution identity,
+            idempotency metadata validation, and redacted debug output.
+          </li>
+          <li>
+            <code>rustee-ai::usage</code> owns durable content-free usage reservations, settlements,
+            revalidated bounded idempotency and model-alias metadata, and ledger contracts.
+            <code>rustee-ai::usage::budget</code> owns pre-provider budget metadata, policy
+            admission, and the non-delegating policy-advisor diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai::protocol</code> is the stable provider-neutral protocol facade and
+            re-exports chat, request, response, error, usage, and tool contracts.
+            <code>rustee-ai::protocol::error</code> owns request, response, and redacted
+            structured-output parsing errors. <code>rustee-ai::protocol::message</code> owns chat
+            roles, message validation, serde restoration, and content-free diagnostics.
+            <code>rustee-ai::protocol::request</code> owns durable-bounded model-alias validation,
+            provider-bound chat requests, tool declarations, approved tool results, allocation-free
+            compact-JSON input measurement, and content-free request diagnostics.
+            <code>rustee-ai::protocol::response</code> owns provider response metadata, shared
+            bounded model-alias admission, usage, structured-output parsing, and content-free
+            diagnostics. <code>rustee-ai::protocol::tool</code> owns provider-visible tool
+            declarations, requested calls, shared durable-bounded tool and call identifiers, tool
+            risk classification, and JSON metadata diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai::provider</code> owns provider-normalized stream events plus provider
+            and advisor contracts, including the terminal <code>Completed</code> event contract; it
+            has no execution-policy or durable-ledger dependency.
+          </li>
+          <li>
+            <code>rustee-ai::pipeline::stream</code> owns terminal-stream normalization and stops
+            upstream polling after any pipeline stream error or <code>Completed</code> event.
+            <code>rustee-ai::pipeline::telemetry</code> owns content-free request-span metadata,
+            operation outcomes, usage fields, terminal stream observation, and
+            provider/advisor/ledger failure classification.
+            <code>rustee-ai::pipeline::usage</code> owns durable reservation matching, ledger
+            admission, completion and stream settlement, and ledger/advisor stream composition.
+            <code>rustee-ai::pipeline</code> owns request policy, provider/advisor execution, and
+            stream orchestration. <code>rustee-ai::pipeline::error</code> owns sanitized policy,
+            provider, advisor, and usage-lifecycle diagnostics; the crate root remains the stable
+            public facade.
+          </li>
+          <li>
+            <code>rustee-ai::tools::audit</code> owns content-free approved and terminal audit
+            events, durable audit sinks, audit failure diagnostics, and reconciliation metadata
+            after an externally visible handler outcome.
+          </li>
+          <li>
+            <code>rustee-ai::tools::registry::telemetry</code> owns content-free tool execution
+            spans, risk labels, terminal outcomes, and observability failure classification.
+            <code>rustee-ai::tools::registry</code> owns deterministic registration, approval
+            ordering, handler dispatch, audit sequencing, and content-free registry failures.
+            <code>rustee-ai::tools</code> owns typed JSON decoding and serialization adapters,
+            approval-policy contracts, redacted tool-result modeling, and the stable public facade.
+          </li>
+          <li>
+            <code>rustee-ai-rag::retrieval::model::scope</code> owns ACL-scoped tenant and allowlist
+            admission. <code>rustee-ai-rag::retrieval::model::query</code> owns bounded
+            provider-bound query and prompt-context limits.
+            <code>rustee-ai-rag::retrieval::model::content</code> owns per-field identifier,
+            citation, and retrieved-content admission with redacted diagnostics.
+            <code>rustee-ai-rag::retrieval::model::contracts</code> owns the injected vector-store
+            contract. <code>rustee-ai-rag::retrieval::model</code> re-exports the stable
+            retrieval-model facade. <code>rustee-ai-rag::retrieval::service</code> owns ACL
+            revalidation, bounded prompt-context construction, direct content-redacted context
+            diagnostics, and fail-closed retrieval diagnostics.
+            <code>rustee-ai-rag::retrieval</code> re-exports the stable retrieval API.
+            <code>rustee-ai-rag::ingestion::model::reference</code> owns bounded durable
+            document-reference and embedding-model admission plus invariant-revalidating request
+            restoration. <code>rustee-ai-rag::ingestion::model::content</code> owns content-bearing
+            loaded documents, bounded provider-bound chunks, and redacted diagnostics.
+            <code>rustee-ai-rag::ingestion::model::embedding</code> owns provider embedding input,
+            positive provider batch limits, validated vectors, index records, and redacted
+            diagnostics. <code>rustee-ai-rag::ingestion::model::contracts</code> owns injected
+            loader source-read-limit responsibility, chunker, embedding-provider batch limits, and
+            vector-index contracts with explicit capability declaration.
+            <code>rustee-ai-rag::ingestion::model</code> re-exports the stable model facade.
+            <code>rustee-ai-rag::ingestion</code> owns atomic load/chunk/embed/upsert orchestration,
+            ordered provider-batch splitting, count and vector-dimension consistency checks, and
+            content-free ingestion results and failures. Its vector-index contract requires one
+            storage-level atomic complete-batch replacement rather than a partial successful write.
+            The crate root re-exports the stable public
+            API. <code>rustee-ai-rag::tests::ingestion::support</code> owns shared ingestion
+            fixtures and test doubles. <code>rustee-ai-rag::tests::ingestion::values</code> owns
+            durable-value and serialization regression coverage.
+            <code>rustee-ai-rag::tests::ingestion::service</code> owns ingest orchestration
+            regression coverage. <code>rustee-ai-rag::tests::ingestion</code> groups those ingestion
+            tests; <code>rustee-ai-rag::tests::retrieval</code> and
+            <code>rustee-ai-rag::tests::diagnostics</code> own their matching regression coverage.
+          </li>
+          <li>
+            <code>rustee-ai-rag-jobs</code> owns reference-only durable ingestion payloads and
+            category-only runner diagnostics; trusted runner sources remain available to application
+            retry and DLQ handling.
+          </li>
+          <li>
+            <code>rustee-ai-rag-advisor</code> owns ACL-revalidated RAG advisor integration,
+            application query and rendering boundaries, and content-free advisor diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-cache::contracts</code> owns opaque cache-key validation and redacted
+            debug output, retention policy, cache eligibility, and provider-neutral storage and
+            executor contracts.
+          </li>
+          <li>
+            <code>rustee-ai-cache::completion</code> owns cache-aware completion orchestration,
+            explicit hit/miss/bypass status, sanitized source-error diagnostics, fail-closed read
+            handling, and no-retry write outcomes.
+          </li>
+          <li>
+            <code>rustee-ai-cache::in_memory</code> owns bounded local cache storage, checked expiry
+            admission, expiry cleanup, no-eviction capacity behavior, fail-closed poisoned-lock
+            handling, and truthful unavailable-state diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-cache-redis</code> owns counted, bounded exact-key Redis response-cache
+            reads and persistence and content-free cache diagnostics; trusted Redis and
+            serialization sources remain available to application handling.
+          </li>
+          <li>
+            <code>rustee-ai-batch::in_memory</code> owns bounded local submission and artifact
+            ledgers, exact reservation state, no-eviction capacity behavior, and truthful
+            unavailable-state diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-batch::submission::contracts</code> owns content-free batch references,
+            receipts, canonical bounded identifier admission, and catalog, ledger, and provider
+            contracts. <code>rustee-ai-batch::submission</code> owns reservation, catalog-load,
+            provider-submit, and receipt-recording orchestration plus no-replay diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-batch::artifact::reference</code> owns redacted provider-artifact
+            references, reservation state, and the durable ledger contract.
+            <code>rustee-ai-batch::artifact::reconciler</code> owns ephemeral loader and processor
+            contracts, fail-closed reconciliation orchestration, and content-free reconciliation
+            diagnostics. <code>rustee-ai-batch::artifact</code> remains their stable public facade.
+            The crate root re-exports the stable public API.
+            <code>rustee-ai-batch::tests::support</code> owns shared content-free
+            catalog, provider, loader, and processor fixtures.
+            <code>rustee-ai-batch::tests::values</code>,
+            <code>rustee-ai-batch::tests::diagnostics</code>,
+            <code>rustee-ai-batch::tests::submission</code>, and
+            <code>rustee-ai-batch::tests::artifact</code> own their matching regression coverage.
+          </li>
+          <li>
+            <code>rustee-ai-batch-jobs</code> owns reference-only durable batch submission and
+            reconciliation payloads, key binding, and category-only runner diagnostics; trusted
+            runner sources remain available to application retry and DLQ handling.
+          </li>
+          <li>
+            <code>rustee-ai-batch-sqlx</code> owns the stable public facade for durable AI batch
+            artifact reconciliation. <code>rustee-ai-batch-sqlx::model</code> owns bounded
+            pending-artifact query and redacted result models without PostgreSQL row or
+            storage-error dependencies. <code>rustee-ai-batch-sqlx::store</code> owns PostgreSQL
+            reservation, exact conflict classification, reconciliation settlement, bounded durable
+            identifier migration access, and content-free ledger diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-eval::model::definition</code> owns redacted durable evaluation
+            references, case request/target diagnostics, canonical bounded identifier admission,
+            and incremental bounded suite/case admission.
+            <code>rustee-ai-eval::model::grading</code> owns content-free grade configuration and
+            application grader contracts. <code>rustee-ai-eval::model</code> remains the stable
+            evaluation model facade.
+          </li>
+          <li>
+            <code>rustee-ai-eval::submission</code> owns authorized catalog loading, durable run
+            reservation, reference-backed completion coordination, and content-free submission
+            diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-eval::in_memory</code> owns the bounded local evaluation-run ledger,
+            scoped reservation state, fail-closed poisoned-lock handling, and explicit no-eviction
+            capacity behavior.
+          </li>
+          <li>
+            <code>rustee-ai-eval::runner</code> owns application-governed completion execution,
+            fail-fast suite traversal, content-free case reports, overflow-safe aggregate usage
+            summaries, and runner diagnostics, plus executor or grader failure routing; the crate
+            root re-exports the stable public API. <code>rustee-ai-eval::tests</code> is the test
+            facade. <code>rustee-ai-eval::tests::support</code> owns shared deterministic catalog,
+            grader, provider-response, and deliberately leaky diagnostic fixtures.
+            <code>rustee-ai-eval::tests::model</code> owns model validation and redaction coverage.
+            <code>rustee-ai-eval::tests::runner</code> owns execution, aggregation, and diagnostic
+            coverage. <code>rustee-ai-eval::tests::submission</code> owns durable reservation and
+            completion coordination coverage.
+          </li>
+          <li>
+            <code>rustee-ai-eval-jobs</code> owns content-free durable evaluation payloads, run-key
+            binding, and category-only job diagnostics; the application owns job retry and DLQ
+            policy.
+          </li>
+          <li>
+            <code>rustee-ai-audit-sqlx::audit::record</code> owns bounded pending-audit query
+            limits, validated reconciliation metadata, and redacted diagnostics.
+            <code>rustee-ai-audit-sqlx::audit::store</code> owns PostgreSQL tool-approval and
+            terminal-outcome persistence, replay-safe identity checks, row decoding, and sanitized
+            storage failures. <code>rustee-ai-audit-sqlx::audit</code> re-exports the stable audit
+            API and deployment migration.
+          </li>
+          <li>
+            <code>rustee-ai-audit-sqlx::usage::record</code> owns bounded pending-attempt query
+            limits, content-free pending-attempt reconstruction, and durable metadata revalidation.
+            <code>rustee-ai-audit-sqlx::usage::store</code> owns PostgreSQL reservation, exact usage
+            settlement with first-settlement timestamp preservation, replay-safe conflicts, and
+            content-free storage diagnostics. <code>rustee-ai-audit-sqlx::usage</code> re-exports
+            the stable ledger API and deployment migration.
+          </li>
+          <li>
+            <code>rustee-ai-openai::config</code> owns content-free API configuration, bounded
+            HTTP-header-admissible API-key admission, credential-free absolute base-URL validation,
+            outbound JSON request, non-streaming response, SSE, Embeddings batch, and Batch file
+            limits; provider roots and the Batch adapter own request dispatch.
+          </li>
+          <li>
+            <code>rustee-ai-openai::response</code> owns bounded outbound JSON request encoding,
+            bounded non-streaming response collection, and safe completed Responses API payload
+            decoding. <code>rustee-ai-openai::response::sse</code> owns incremental SSE framing,
+            stream-event decoding, and bounded buffer reclamation; it accepts CR, LF, and CRLF
+            field-line endings, including valid mixed boundaries.
+          </li>
+          <li>
+            <code>rustee-ai-openai::batch::lifecycle</code> owns bounded Batch lifecycle snapshot
+            decoding, request-count validation, and redacted provider-identifier diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-openai::batch::output::content</code> owns explicit downloaded
+            output-file bytes and content-free diagnostics.
+            <code>rustee-ai-openai::batch::output::rows</code> owns bounded fail-closed JSONL
+            iteration and structural parse failures.
+            <code>rustee-ai-openai::batch::output::row</code> owns validated provider row, outcome,
+            response, and explicit typed response-body conversion models.
+            <code>rustee-ai-openai::batch::output</code> owns the public output facade.
+            <code>rustee-ai-openai::batch::input::row</code> owns validated, content- and
+            identifier-redacted Batch rows plus typed Responses and Embeddings mapping with
+            category-only diagnostics.
+            <code>rustee-ai-openai::batch::input::builder</code> owns endpoint-homogeneous
+            correlation admission and atomic bounded JSONL serialization.
+            <code>rustee-ai-openai::batch::input::content</code> owns short-lived, bounded,
+            content-redacted upload bytes. <code>rustee-ai-openai::batch::input</code> owns the
+            public input facade and generic local input-error contract.
+            <code>rustee-ai-openai::batch::files</code> owns explicit provider-file upload, bounded
+            download, exact deletion acknowledgement, URL path-segment admission, output-expiration
+            policy, and redacted file identifiers. <code>rustee-ai-openai::batch::request</code>
+            owns submission-file, endpoint, and output-retention request admission.
+            <code>rustee-ai-openai::batch::provider</code> owns configured client construction plus
+            Batch submission, retrieval, cancellation, and bounded lifecycle-response handling.
+            <code>rustee-ai-openai::batch</code> owns URL path-segment admission and re-exports the
+            stable Batch facade.
+            <code>rustee-ai-openai::provider::responses</code> owns Responses client execution,
+            request assembly, and terminal-completion stream lifecycle.
+            <code>rustee-ai-openai::provider::embeddings</code> owns Embeddings client execution,
+            direct-call batch preflight, input-order reconstruction, and response validation.
+            <code>rustee-ai-openai::provider</code> re-exports the stable provider facade and
+            internal request-mapping helpers; the crate root keeps the stable public facade and
+            provider-neutral error type. <code>rustee-ai-openai::tests</code> is the test facade.
+            <code>rustee-ai-openai::tests::support</code> owns shared local HTTP fixtures and
+            request construction. <code>rustee-ai-openai::tests::configuration</code> owns
+            configuration and injected-client timeout coverage.
+            <code>rustee-ai-openai::tests::responses</code> owns Responses request and
+            non-streaming response coverage. <code>rustee-ai-openai::tests::embeddings</code>
+            owns Embeddings request, response, and batch-bound coverage.
+            <code>rustee-ai-openai::tests::sse</code> owns SSE framing and stream-lifecycle
+            coverage. <code>rustee-ai-openai::tests::batch</code> owns the Batch
+            test-module index. <code>rustee-ai-openai::tests::batch::config</code> owns Batch
+            configuration, identifier, and diagnostic coverage.
+            <code>rustee-ai-openai::tests::batch::input</code>,
+            <code>rustee-ai-openai::tests::batch::files</code>,
+            <code>rustee-ai-openai::tests::batch::output</code>, and
+            <code>rustee-ai-openai::tests::batch::lifecycle</code> own their matching Batch
+            regression coverage, including opt-in live qualification.
+          </li>
+          <li>
+            <code>rustee-ai-web::frame</code> owns bounded SSE and NDJSON frame encoding and
+            redacted terminal error events. The crate root owns HTTP response construction,
+            terminal-completion and failure cancellation, and validated client-facing frame limits.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::context::resource</code> owns capability-gated untrusted resource,
+            resource-template, and embedded resource-link models, bounded resource-content decoding,
+            and content-free resource diagnostics. <code>rustee-ai-mcp::context::prompt</code> owns
+            untrusted prompt models, bounded multimodal prompt decoding, and content-free prompt
+            diagnostics. <code>rustee-ai-mcp::context</code> owns server-capability decoding and
+            shared context metadata, URI, MIME, and base64 validation; HTTP and stdio context
+            boundaries decide when application code explicitly reads remote context.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::recovery</code> owns one shared bounded automatic-recovery policy,
+            including attempt and delay admission plus capped exponential backoff.
+            <code>rustee-ai-mcp::http_config</code> owns trusted endpoint validation, endpoint- and
+            secret-redacting configuration, bounded HTTP-header-admissible bearer-value admission,
+            request and response limits, and HTTP-specific recovery error mapping.
+            <code>rustee-ai-mcp::client</code> owns the public HTTP client facade, initialization,
+            tool discovery and calls, and session lifecycle.
+            <code>rustee-ai-mcp::http_context</code> owns capability-gated, explicit bounded
+            resource/template/prompt discovery and selected resource/prompt reads over an
+            initialized HTTP session. <code>rustee-ai-mcp::http_transport</code> owns byte-admitted
+            HTTP JSON-RPC dispatch, transport failures, and session-expiry recovery.
+            <code>rustee-ai-mcp::http_response</code> owns session-ID admission, bounded JSON
+            responses, Streamable HTTP SSE response consumption, and GET-only resumption. The
+            <code>rustee-ai-mcp::tests</code> facade assembles regression modules.
+            <code>rustee-ai-mcp::tests::support</code> owns shared bounded loopback fixtures and
+            approval helpers. <code>rustee-ai-mcp::tests::configuration</code> owns trusted HTTP
+            configuration and recovery-policy validation. <code>rustee-ai-mcp::tests::transport</code>
+            owns HTTP request-admission and injected-client timeout coverage.
+            <code>rustee-ai-mcp::tests::tools</code> owns remote-tool
+            discovery, approval, execution, pagination, and response-bound coverage.
+            <code>rustee-ai-mcp::tests::context</code> owns capability-gated resource, template, and
+            prompt coverage. <code>rustee-ai-mcp::tests::session</code> owns initialization
+            capability, expiry, recovery, replay prevention, close, and sanitized protocol-error
+            coverage. <code>rustee-ai-mcp::tests::sse</code> owns Streamable HTTP result,
+            resumption, standalone server-event stream, bounds, and sanitized server-request
+            regression coverage.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::sse</code> owns Streamable HTTP frame parsing, cumulatively bounded
+            standalone notification streams, event IDs, retry hints, and GET-only resumption state;
+            HTTP transport owns request dispatch while <code>rustee-ai-mcp::client</code> owns
+            session lifecycle.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::remote_tool</code> owns remote-tool discovery validation and the
+            approval-gated <code>ToolExecutor</code> adapter; HTTP transport owns remote request
+            dispatch.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::stdio::config</code> owns trusted local subprocess settings,
+            bounded command-argument admission, message and context bounds, timeout validation, and
+            bounded no-replay restart policy. <code>rustee-ai-mcp::stdio::connection</code> owns
+            subprocess spawning and bounded shutdown, initialize-response validation, bounded
+            stdin/stdout JSON-RPC line framing, request deadlines, and content-free transport
+            failures. <code>rustee-ai-mcp::stdio::context::resource</code> owns capability-gated,
+            explicit bounded resource and resource-template discovery plus selected resource reads.
+            <code>rustee-ai-mcp::stdio::context::prompt</code> owns capability-gated, explicit
+            bounded prompt discovery and selected prompt reads.
+            <code>rustee-ai-mcp::stdio::context</code> remains the internal context capability
+            namespace. <code>rustee-ai-mcp::stdio::tool</code> owns selected discovered-tool
+            adaptation, caller-assigned risk, optional Rustee idempotency metadata, and
+            approval-gated <code>ToolExecutor</code> execution.
+            <code>rustee-ai-mcp::stdio</code> owns redacted subprocess configuration, initialization
+            sequencing, tool discovery and calls, connection discard policy, and no-replay recovery
+            coordination, while its sibling test module owns subprocess lifecycle and recovery
+            regression coverage.
+          </li>
+          <li>
+            <code>rustee-ai-mcp::protocol</code> owns shared bounded JSON-RPC response validation,
+            sanitized protocol failures, remote cursor validation, typed bounded printable
+            HTTP-header values retained for MCP session and SSE event IDs, tool-result decoding, and
+            pagination primitives; the HTTP client owns Streamable HTTP request dispatch.
+          </li>
+          <li>
+            <code>rustee-openapi::security</code> owns API-key, OAuth2, mutual-TLS, and HTTP
+            security metadata, trusted public security-URL validation, OAuth scope admission,
+            security requirements, and deterministic OpenAPI rendering; the operation module
+            attaches validated metadata to routes.
+          </li>
+          <li>
+            <code>rustee-openapi::operation::model</code> owns explicit operation declarations and
+            deterministic operation rendering. <code>rustee-openapi::operation::builder</code>
+            owns parameter and response validation plus operation-local security metadata.
+            <code>rustee-openapi::operation</code> remains the stable operation facade;
+            <code>rustee-openapi</code> owns routes, document-wide security, and final document
+            assembly. <code>rustee-openapi::schema</code> owns byte-admitted reusable JSON
+            Schema values, component references, object-property validation, and bounded JSON
+            admission.
+          </li>
+          <li>
+            <code>rustee-mcp::server_config</code> owns validated server metadata, request and
+            response bounds, tool-discovery and context-item limits, a bounded canonical
+            browser-origin allowlist, and content-free configuration diagnostics.
+            <code>rustee-mcp::header</code> owns exact-one textual request-control header admission,
+            preserving the distinction between a missing and an invalid header for Origin,
+            Content-Type, and protocol-version checks.
+          </li>
+          <li>
+            <code>rustee-mcp::context::resource</code> owns application-owned resource and
+            resource-template metadata, read contents, MIME validation, response-budgeted base64 wire
+            encoding, and redacted resource diagnostics.
+            <code>rustee-mcp::context::prompt</code> owns application-owned prompt declarations,
+            arguments, messages and content, bounded prompt wire encoding, and content-free prompt
+            diagnostics. <code>rustee-mcp::context::provider</code> owns the read-only provider
+            contract, capability declaration, and fail-closed context access default. The
+            <code>rustee-mcp::context</code> facade owns shared context-name, resource-URI,
+            metadata, and MIME admission. <code>rustee-mcp::context::budget</code> owns bounded
+            response materialization accounting before text or base64 output is allocated.
+          </li>
+          <li>
+            <code>rustee-mcp::access</code> owns tool visibility and trusted execution-context
+            policy contracts plus their fail-closed default.
+          </li>
+          <li>
+            <code>rustee-mcp::rpc::request</code> owns bounded JSON-RPC request parsing and request
+            IDs, payload collection, protocol-header admission, and shared tool/context parameter
+            validation before application policy. <code>rustee-mcp::rpc::response</code> owns
+            limit-aware tool-result text, successful-response assembly, and separately bounded
+            fixed protocol-error encoding. <code>rustee-mcp::rpc</code> remains their private
+            server-facing facade.
+            <code>rustee-mcp::server::context</code> owns MCP initialization negotiation, read-only
+            resource and prompt capability checks, provider-result admission, and wire encoding.
+            <code>rustee-mcp::server</code> owns HTTP/MCP dispatch, bounded access-filtered tool
+            discovery, and approved and audited tool execution; the crate root re-exports the stable
+            public API, while its sibling test module owns configuration regression coverage.
+            <code>rustee-mcp::tests::support</code> owns shared server fixtures.
+            <code>rustee-mcp::tests::protocol</code>, <code>rustee-mcp::tests::context</code>, and
+            <code>rustee-mcp::tests::tools</code> own their matching MCP server regression coverage.
+          </li>
+          <li>
+            <code>rustee-rate-limit::policy</code> owns opaque storage-key validation, positive
+            whole signed-millisecond fixed-window configuration and decisions, key resolution,
+            storage contracts, and explicit outage policy. <code>rustee-rate-limit::middleware</code>
+            owns Tower admission and HTTP response headers, while the crate root re-exports the
+            stable public API. <code>rustee-rate-limit::tests</code> owns bounded-header,
+            storage-outage, and key-redaction regression coverage.
+          </li>
+          <li>
+            <code>rustee-auth-session::model::session</code> owns opaque session identifiers,
+            CSRF-capability revalidation during durable restoration, and redacted session
+            diagnostics. <code>rustee-auth-session::model::manager</code> owns the persistence
+            contract, session lifecycle, and redacted manager diagnostics.
+            <code>rustee-auth-session::model::in_memory</code> owns bounded expiry-pruning
+            fail-closed local storage. <code>rustee-auth-session::model::cookie</code> owns bounded
+            browser-cookie policy admission, safe cookie header rendering, issued-session response
+            attachment, and redacted cookie diagnostics that never render the configured cookie
+            name.
+            <code>rustee-auth-session::model</code> re-exports the stable public model facade.
+          </li>
+          <li>
+            <code>rustee-auth-session::middleware</code> owns cookie restoration,
+            session-record-to-cookie ID binding, session extraction, store-type-only layer
+            diagnostics, and store-failure HTTP mapping. Its <code>csrf</code> submodule owns unsafe
+            method admission, exact-one CSRF-header handling, constant-time comparison, and generic
+            rejection responses; the model owns persistence and issuance.
+            <code>rustee-auth-session::tests</code> owns session-ID binding, cookie-policy, and
+            CSRF-layer regression coverage.
+          </li>
+          <li>
+            <code>rustee-auth-session-redis::config</code> owns versioned namespace admission,
+            opaque store construction, and redacted configuration diagnostics.
+            <code>rustee-auth-session-redis::store</code> owns Redis-representable remaining-TTL,
+            bounded Redis session persistence, CSRF-capability, key-to-record ID, and expiry
+            revalidation, and content-free storage diagnostics; the crate root re-exports the
+            stable adapter API, and the session HTTP boundary remains fail-closed.
+          </li>
+          <li>
+            <code>rustee-auth-jwt</code> owns fixed-key JWT validation and redacted
+            validation-configuration diagnostics. <code>rustee-auth-jwt::claims</code> owns
+            verified-claim decoding, strict RFC 6749 scope-token principal normalization,
+            claim-shape admission, and content-free parsed-claim diagnostics.
+          </li>
+          <li>
+            <code>rustee-auth-oidc::resource_server_config</code> owns trusted JWKS endpoint
+            validation, asymmetric algorithm admission, issuer and audience binding, clock-skew
+            policy, cache and refresh bounds, and content-free configuration diagnostics.
+            <code>rustee-auth-oidc::http</code> owns fixed bounded provider JSON decoding and
+            content-free transport diagnostics; <code>rustee-auth-oidc::claims</code> owns the
+            shared verified-claim-to-principal normalization boundary, strict RFC 6749 scope-token
+            and string-set claim normalization, browser-login audience, nonce, and issuance-time
+            binding checks, and presence-only parsed-claim diagnostics. The crate root re-exports
+            the stable auth adapter API. <code>rustee-auth-oidc::tests::support</code> owns shared
+            resource-server fixtures. <code>rustee-auth-oidc::tests::diagnostics</code> owns
+            redaction regression coverage. <code>rustee-auth-oidc::tests::config</code> owns
+            resource-server configuration regression coverage.
+            <code>rustee-auth-oidc::tests::jwks</code> owns JWKS verification, refresh, and ID-token
+            nonce regression coverage. <code>rustee-auth-oidc::jwks::transport</code> owns
+            revalidated trusted JWKS endpoint admission, bounded no-redirect HTTPS retrieval, and
+            the injectable fetcher contract. <code>rustee-auth-oidc::jwks</code> owns asymmetric key
+            admission, rotation-safe cache scheduling, bearer signature verification, and ID-token
+            nonce validation.
+          </li>
+          <li>
+            <code>rustee-auth-oidc::introspection::config</code> owns trusted opaque-token
+            introspection endpoint, client authentication, clock-skew, cache limits, endpoint
+            validation, and content-free configuration diagnostics.
+            <code>rustee-auth-oidc::introspection::transport</code> owns redacted raw-token request
+            contracts, client-authentication form encoding, and bounded HTTPS introspection
+            transport. <code>rustee-auth-oidc::introspection::model</code> owns provider response
+            decoding, identity and time-bound validation, cache-TTL derivation, and presence-only
+            response diagnostics. <code>rustee-auth-oidc::introspection::cache</code> owns opaque
+            token fingerprinting, bounded cache retention, and fail-closed poisoned-lock handling.
+            <code>rustee-auth-oidc::introspection</code> owns bearer-authentication orchestration
+            and remote identity admission.
+            <code>rustee-auth-oidc::introspection::tests::support</code> owns shared opaque-token
+            fixtures and the fake introspection adapter.
+            <code>rustee-auth-oidc::introspection::tests::auth</code>,
+            <code>rustee-auth-oidc::introspection::tests::config</code>, and
+            <code>rustee-auth-oidc::introspection::tests::diagnostics</code> own their matching
+            security regression coverage.
+          </li>
+          <li>
+            <code>rustee-auth-oidc::client_auth</code> owns bounded redacted confidential-client
+            secret and authentication values, shared HTTP Basic credential admission, and form-safe
+            Basic header encoding. <code>rustee-auth-oidc::trust</code> owns bounded issuer,
+            audience, leeway, and HTTPS endpoint admission; feature configurations map rejected
+            values into public errors.
+          </li>
+          <li>
+            <code>rustee-auth-oidc::browser_login::config</code> owns bounded trusted browser-client
+            settings, client ID, application of shared RFC 6749 scope-token admission, URL
+            validation, one-second-to-one-hour transaction-TTL admission, and content-free
+            configuration diagnostics.
+          </li>
+          <li>
+            <code>rustee-auth-oidc::browser_login::transaction</code> owns one-time authorization
+            state, nonce, and PKCE verifier records, atomic create-only durable store contracts,
+            capability-value revalidation during durable restoration, bounded, expiry-pruning,
+            duplicate-rejecting local transaction persistence, capability-value generation, and
+            content-free transaction diagnostics.
+            <code>rustee-auth-oidc::browser_login::transport::discovery</code> owns trusted bounded
+            discovery metadata and bounded HTTPS discovery.
+            <code>rustee-auth-oidc::browser_login::transport::token</code> owns token-exchange
+            request and response contracts, client-auth form assembly, and bounded HTTPS token
+            exchange. <code>rustee-auth-oidc::browser_login::transport</code> owns bounded
+            authorization redirects and callbacks plus the shared no-redirect HTTP client policy.
+            <code>rustee-auth-oidc::browser_login::flow</code> owns bounded PKCE redirect
+            construction before transaction persistence, callback-state validation before
+            transaction consumption, recovered transaction-state binding before endpoint exchange,
+            bounded code and provider-error validation before token exchange, bounded ID-token
+            admission before verification, and verified ID-token/session orchestration.
+            <code>rustee-auth-oidc::browser_login</code> owns public browser-login types and OIDC
+            error-to-HTTP policy, while its sibling test module owns shared browser-login fixtures.
+            <code>rustee-auth-oidc::browser_login::tests::flow</code> owns PKCE initiation, callback
+            completion, and session coverage.
+            <code>rustee-auth-oidc::browser_login::tests::diagnostics</code> owns configuration and
+            redacted HTTP diagnostic coverage.
+            <code>rustee-auth-oidc::browser_login::tests::transaction</code> owns transaction-store
+            and callback-admission fail-closed coverage.
+          </li>
+          <li>
+            <code>rustee-auth-oidc-redis::config</code> owns bounded safe, versioned namespace
+            admission, opaque store construction, and redacted configuration diagnostics.
+            <code>rustee-auth-oidc-redis::store</code> owns bounded atomic create-only remaining-TTL
+            Redis persistence, distinct live-duplicate-state rejection, and bounded atomic one-time
+            transaction consumption with content-free storage diagnostics; the crate root re-exports
+            the stable adapter API and trusted sources remain available to application handling.
+          </li>
+          <li>
+            <code>rustee-tenant</code> owns bounded, NUL-free trusted tenant context, request
+            extraction, and redacted tenant diagnostics.
+          </li>
+          <li>
+            <code>rustee-auth::api_key</code> is the stable public facade for API-key
+            authentication; the crate root owns shared authentication composition.
+          </li>
+          <li>
+            <code>rustee-auth::api_key::pepper</code> owns secret material zeroization, redacted
+            pepper and fingerprint diagnostics, HMAC-SHA-256 fingerprint derivation, and bounded
+            active-and-retired pepper rotation.
+            <code>rustee-auth::api_key::authenticator</code> owns opaque fingerprint-store lookup,
+            API-key value admission, static test authentication, and fail-closed active/retired
+            fingerprint verification. <code>rustee-auth::api_key::http</code> owns API-key header
+            admission, sanitized challenge responses, principal injection, and Tower service
+            composition.
+          </li>
+          <li>
+            <code>rustee-auth::principal::admission</code> owns bounded identity and authorization
+            value admission plus the public principal error contract.
+            <code>rustee-auth::principal::model</code> owns identity data, verified-claim
+            normalization, and revalidated serde restoration. <code>rustee-auth::principal</code>
+            remains the stable identity facade; the crate root owns stable authentication
+            composition. <code>rustee-auth::bearer</code> is the stable bearer facade.
+          </li>
+          <li>
+            <code>rustee-auth::tenant</code> owns trusted tenant resolution, authority
+            normalization, redacted host-mapping diagnostics, tenant-context injection, and
+            principal-to-tenant matching.
+          </li>
+          <li>
+            <code>rustee-auth-sqlx</code> owns the stable public facade for durable keyed API-key
+            storage. <code>rustee-auth-sqlx::model</code> owns redacted credential registration and
+            opaque record identities without SQL serialization or storage-error dependencies.
+            <code>rustee-auth-sqlx::store</code> owns the stable store facade, readiness,
+            forward-only migration access, and content-free storage diagnostics.
+            <code>rustee-auth-sqlx::store::registration</code> owns bounded serialized-principal
+            admission and credential insertion. <code>rustee-auth-sqlx::store::rotation</code>
+            owns overlap-preserving replacement, no-overlap rotation, and revocation transactions.
+            <code>rustee-auth-sqlx::store::authentication</code> owns fail-closed fingerprint
+            restoration and the transactional successful-authentication audit.
+          </li>
+          <li>
+            <code>rustee-mongodb::client</code> owns redacted client configuration, sanitized
+            client-configuration and readiness failures, connection setup, database handles,
+            explicit transaction starts, and graceful shutdown.
+            <code>rustee-mongodb::change_stream</code> owns bounded checkpoint-consumer identities,
+            opaque resume-token store contracts, and content-free shutdown-aware change-stream
+            outcomes. <code>rustee-mongodb::tenant_scope</code> owns trusted tenant BSON filters,
+            documents, updates, and aggregation stages; the crate root re-exports the stable public
+            API.
+          </li>
+          <li>
+            <code>rustee-mongodb-checkpoint-sqlx</code> owns bounded durable PostgreSQL resume-token
+            persistence, its forward-only database byte-bound migration, and database-clock writer
+            leases with content-free checkpoint diagnostics; trusted storage sources remain
+            available to application handling.
+          </li>
+          <li>
+            <code>rustee-auth::policy::scope</code> owns Principal-compatible bounded scope
+            requirement middleware and stops at the Principal authorization-set limit, so
+            impossible policies fail at configuration time.
+            <code>rustee-auth::policy::permission</code> owns server-side role grants and bounded
+            permission requirement middleware. <code>rustee-auth::policy</code> remains their
+            stable internal facade, while the crate root owns bearer authentication and principal
+            extractors.
+          </li>
+          <li>
+            <code>rustee-events-kafka::config</code> owns the acknowledged producer settings,
+            shared bootstrap-server, topic, consumer-group, and bounded native client-option
+            admission, whole-millisecond broker-delivery bounds, and public configuration errors.
+            <code>rustee-events-kafka::config::consumer</code> owns manual-commit consumer settings,
+            retry-topic subscription admission, and redacted consumer routing diagnostics. The
+            broker-backed root exports require the <code>rdkafka</code> feature; configuration types
+            remain available without it for shared application setup.
+          </li>
+          <li>
+            <code>rustee-events-kafka::publisher</code> owns broker-acknowledged event publication,
+            destination readiness, and redacted destination diagnostics. The root retains the shared
+            producer factory, forced no-auto-topic-creation invariant, and healthy-topic metadata
+            predicate used by failure routing.
+          </li>
+          <li>
+            <code>rustee-events-kafka::consumer::inspection</code> owns framework-client
+            topic-scoped readiness, injected-client conservative metadata readiness, consumer-group
+            membership, default and explicit assignment-limited lag snapshots, and redacted lag
+            diagnostics. <code>rustee-events-kafka::consumer</code> owns manual-commit subscription,
+            framework-client no-auto-topic-creation configuration, serial event dispatch,
+            failure-route topology admission, retry/dead-letter settlement, and redacted
+            deployment-routing diagnostics.
+          </li>
+          <li>
+            <code>rustee-events-kafka::failure::metadata</code> owns bounded, unique retry-header
+            and atomic origin-tuple parsing with preserved source-origin reconstruction.
+            <code>rustee-events-kafka::failure::publisher</code> owns acknowledged retry/dead-letter
+            producer creation, route readiness, header assembly, and broker publication.
+            <code>rustee-events-kafka::failure</code> owns retry/dead-letter policy, redacted
+            failure records and deployment-routing diagnostics; the crate root re-exports the stable
+            public API and provider-neutral error type. <code>rustee-events-kafka::tests</code>
+            owns configuration-admission, retry-policy, and diagnostic-redaction regression coverage.
+          </li>
+          <li>
+            <code>rustee-events-kafka-sqlx::adapter</code> owns the
+            <code>rdkafka</code>-feature-gated PostgreSQL delayed-retry router, public relay facade,
+            bounded readiness and loop settings, aggregate backlog inspection, and redacted adapter
+            diagnostics. <code>rustee-events-kafka-sqlx::adapter::relay::executor</code> owns one
+            bounded PostgreSQL lease, stored routing metadata plus attempt/payload/key revalidation,
+            Kafka publish, confirmation, and failure-release pass plus stored-record reconstruction.
+            <code>rustee-events-kafka-sqlx::adapter::relay::runner</code> owns shutdown-aware
+            repeated pass supervision. Its <code>observation</code> submodule owns aggregate-only
+            pass outcomes, panic isolation, duration capture, and abandoned-pass reporting.
+          </li>
+          <li>
+            <code>rustee-events::envelope::trace</code> owns bounded transport-neutral W3C trace
+            carriers, durable restoration, and redacted trace diagnostics.
+            <code>rustee-events::envelope::codec</code> owns bounded JSON encoding and pre-decode
+            byte admission. <code>rustee-events::envelope</code> owns content-free event models,
+            255-byte NUL-free provider-visible event-type validation, bounded partition-key and
+            metadata validation, strict
+            decoding, and redacted event-ID and envelope diagnostics.
+            <code>rustee-events::envelope::compatibility</code> owns compatible raw-payload decoding
+            and typed upcast contracts. <code>rustee-events::delivery</code> owns provider-neutral
+            delivery outcomes, lifecycle observation, observer panic isolation, elapsed-time
+            measurement, and unsettled-drop reporting; the crate root re-exports the stable event
+            API. <code>rustee-events::tests::support</code> owns shared event fixtures.
+            <code>rustee-events::tests::envelope</code>,
+            <code>rustee-events::tests::delivery</code>, <code>rustee-events::tests::handler</code>,
+            <code>rustee-events::tests::publisher</code>,
+            <code>rustee-events::tests::registry</code>, and
+            <code>rustee-events::tests::diagnostics</code> own their matching event regression
+            coverage.
+          </li>
+          <li>
+            <code>rustee-events::handler</code> owns redacted handler-context materialization, typed
+            handler contracts, and pre-settlement dispatch.
+          </li>
+          <li>
+            <code>rustee-events::publisher</code> owns provider-facing serialized message
+            reconstruction, routing metadata admission, typed publish delegation, and content-free
+            publish diagnostics; the crate root owns event envelopes, compatibility upcasts, and
+            traces.
+          </li>
+          <li>
+            <code>rustee-events-schema</code> owns source-controlled JSON Schema artifacts,
+            URL-path-safe subject admission, fingerprints, type/version admission, and redacted
+            schema diagnostics. <code>rustee-events-schema::catalog</code> owns deterministic
+            catalog consistency, application-owned registry contracts, and exact registration
+            verification.
+          </li>
+          <li>
+            <code>rustee-events-schema-confluent</code> owns Confluent-specific compatibility
+            checks, exact artifact lookup and registration, bounded wire decoding, and content-free
+            adapter failures. <code>rustee-events-schema-confluent::config</code> owns trusted
+            registry endpoint and credential admission, redacted configuration, request and response
+            bounds, and loopback-only HTTP test endpoints.
+          </li>
+          <li>
+            <code>rustee-jobs::handler</code> owns redacted handler-context materialization, typed
+            handler contracts, and pre-settlement dispatch that maps successful work to
+            acknowledgement.
+          </li>
+          <li>
+            <code>rustee-jobs::publisher</code> owns provider-facing serialized message
+            reconstruction, durable message metadata admission, typed enqueue delegation, and
+            content-free publish diagnostics; the crate root re-exports the stable job facade.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq::topology</code> owns validated publisher and worker routes,
+            bounded AMQP identifiers, positive whole-millisecond native delayed-retry compatibility,
+            confirmation-timeout policy, and redacted deployment-routing diagnostics; the crate root
+            owns connection lifecycle, channel execution, topology readiness, and worker
+            supervision.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq::delivery</code> owns redacted delivery diagnostics, delivery
+            metadata validation, acknowledgement, native retry return, and confirm-before-ack
+            dead-letter settlement; the crate root owns connection, topology readiness, and worker
+            execution.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq-management</code> owns URL-path-safe, bounded, read-only
+            Management HTTP topology audits, effective quorum/retry/DLX policy validation, and
+            content-free audit diagnostics; AMQP topology provisioning remains deployment-owned.
+            <code>rustee-jobs-rabbitmq-management::config</code> owns trusted monitor endpoint and
+            credential admission, redacted endpoint, credential, and virtual-host diagnostics,
+            request and response limits, and loopback-only HTTP test endpoints.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::config::target</code> owns validated queue targets and FIFO
+            identifiers. <code>rustee-jobs-sqs::config::worker</code> owns source-DLQ compatibility,
+            redrive policy, and worker lease settings. <code>rustee-jobs-sqs::config</code> owns
+            shared SQS duration bounds and configuration errors; the crate root owns publisher and
+            worker execution, topology readiness, and retry-policy compatibility.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::delivery</code> owns receipt metadata validation,
+            visibility-lease renewal, acknowledgement, retry visibility, and
+            direct-DLQ-before-delete settlement; the crate root owns publishing, readiness,
+            configuration, and worker execution.
+          </li>
+          <li>
+            <code>rustee-jobs-nats::config</code> owns pre-network server-address validation,
+            connection deadlines, concrete publish-subject admission, worker configuration
+            diagnostics, and redacted connection and deployment-routing diagnostics.
+          </li>
+          <li>
+            <code>rustee-jobs-nats::delivery</code> owns redacted delivery diagnostics, JetStream
+            delivery metadata, explicit acknowledgement, delayed negative acknowledgement, and
+            acknowledged dead-letter settlement; the crate root owns connection, publishing,
+            consumer validation, and worker execution.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::config</code> owns validated stream, group, consumer, and DLQ
+            identifiers, deterministic versioned length-delimited retry-key derivation, exact
+            whole-millisecond Redis bounds, and worker batch and reclaim policy. A retry-key format
+            change is a durable-state migration: reconcile legacy schedules before old and new
+            workers can run for the same route.
+            <code>rustee-jobs-redis::worker::receiver</code> owns source reads, PEL reclaim, and
+            cumulative delivery-attempt reconstruction.
+            <code>rustee-jobs-redis::worker::runner</code> owns shutdown-aware task supervision,
+            delivery observation, and draining. The crate root owns Redis connections, public worker
+            construction, and stable API re-exports.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::delivery</code> owns redacted pending-delivery diagnostics,
+            metadata, and typed acknowledgement, retry, and dead-letter dispatch; the worker
+            submodules own Redis PEL ownership checks, Lua settlement, retry promotion, and
+            execution.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::config</code> owns strict bounded resource and redirect URL
+            trust validation, pre-registered public-client settings, at-most-32 scope selection with
+            shared RFC 6749 scope-token admission, one-second-to-one-hour transaction time policy,
+            canonical resource identity, and content-free configuration diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::model</code> owns shared redacted access-token and error
+            models, token validation, and trusted secret conversion.
+            <code>rustee-ai-mcp-oauth::config</code> admits bounded RFC 6749 scope tokens; flow
+            orchestration owns authorization completion and lifecycle coordination.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::discovery::transport</code> owns finite HTTPS metadata
+            retrieval, response-status and content-type admission, bounded response collection, and
+            sanitized transport failures.
+            <code>rustee-ai-mcp-oauth::discovery::challenge</code> owns bounded
+            <code>WWW-Authenticate</code> aggregation, quoted Bearer challenge parsing, and
+            resource-metadata URL admission. <code>rustee-ai-mcp-oauth::discovery::metadata</code>
+            owns protected-resource and authorization-server metadata plus wire validation.
+            <code>rustee-ai-mcp-oauth::discovery::urls</code> owns well-known URL selection under
+            the trusted URL budget. <code>rustee-ai-mcp-oauth::discovery</code> owns bounded HTTP
+            discovery orchestration and redacted endpoint diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::authorization::transaction</code> owns PKCE state and
+            verifier transactions, atomic create-only one-time store contracts, capability-value
+            revalidation during durable restoration, bounded expiry-pruning duplicate-rejecting
+            local persistence, fail-closed local-store errors, and capability-value generation.
+            <code>rustee-ai-mcp-oauth::authorization::protocol</code> owns callback, redirect, and
+            exchange payloads plus PKCE challenge encoding. <code>rustee-ai-mcp-oauth::authorization::flow</code>
+            owns selected resource and token-endpoint binding before exchange and token lifecycle
+            orchestration. <code>rustee-core::oauth</code> owns shared OAuth wire-value and RFC
+            6749 scope-token admission; <code>rustee-ai-mcp-oauth::authorization</code> re-exports
+            the stable authorization facade.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::tokens::http</code> owns bounded HTTP token exchange and
+            revocation, response wire decoding, and response-byte admission.
+            <code>rustee-ai-mcp-oauth::tokens::store</code> owns application-bound token-slot
+            identities, encrypted-store contracts, bounded local persistence, explicit no-eviction
+            capacity, and fail-closed local-store errors.
+            <code>rustee-ai-mcp-oauth::tokens::contracts</code> owns refresh and revocation requests
+            plus trusted token exchanger and revoker contracts.
+            <code>rustee-ai-mcp-oauth::tokens</code> owns OAuth token and revalidating
+            durable-secret models, content-free diagnostics, and stable token API re-exports.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth-redis</code> owns the stable public facade for encrypted MCP
+            OAuth Redis persistence. <code>rustee-ai-mcp-oauth-redis::crypto</code> owns zeroizing
+            AES-256-GCM envelopes, key rotation, bounded serialization, and ciphertext binding to
+            record purpose and key. <code>rustee-ai-mcp-oauth-redis::store</code> remains the
+            stable persistence facade. Its
+            <code>rustee-ai-mcp-oauth-redis::store::common</code> module owns versioned
+            length-delimited key construction, Redis-representable whole-second retention
+            admission, and redacted namespace diagnostics;
+            <code>rustee-ai-mcp-oauth-redis::store::transaction</code> owns bounded create-only
+            transaction persistence and atomic consumption; and
+            <code>rustee-ai-mcp-oauth-redis::store::token</code> owns mutable token-key persistence
+            and token-store diagnostics.
+            <code>rustee-ai-mcp-oauth-redis::tests</code> owns envelope-binding, key-rotation,
+            configuration-admission, and diagnostic-redaction regression coverage.
+          </li>
+          <li>
+            <code>rustee-mcp-oauth</code> owns the stable public facade for MCP protected-resource
+            metadata and Bearer authorization. <code>rustee-mcp-oauth::config</code> owns trusted
+            public resource, incremental issuer and at-most-32 scope collection with shared RFC 6749
+            scope-token and Bearer challenge-header budget admission, plus deterministic
+            configuration. <code>rustee-mcp-oauth::server::metadata</code> owns public
+            protected-resource metadata document rendering within a configuration-derived byte
+            budget and exact endpoint handling.
+            <code>rustee-mcp-oauth::server::resource</code> owns Bearer token parsing, challenge
+            construction, verified-principal admission, and Tower middleware dispatch.
+            <code>rustee-mcp-oauth::server</code> owns the stable public server facade; the crate
+            root re-exports the protected-resource API. Its
+            <code>rustee-mcp-oauth::tests::support</code> module owns shared redacted
+            configuration, request, authenticator, and audit fixtures;
+            <code>rustee-mcp-oauth::tests::metadata</code>,
+            <code>rustee-mcp-oauth::tests::resource</code>,
+            <code>rustee-mcp-oauth::tests::mount</code>, and
+            <code>rustee-mcp-oauth::tests::configuration</code> own metadata, Bearer challenge and
+            principal, mounted-server, and configuration-admission regression coverage respectively.
+          </li>
+          <li>
+            <code>rustee-events-observability</code> re-exports the stable event collector and
+            snapshot API. <code>rustee-events-observability::collector</code> owns event-delivery
+            observation, bounded provider admission, histogram validation, saturated aggregate
+            mutation, and poison-tolerant metrics state.
+            <code>rustee-events-observability::model</code> owns immutable exporter snapshots.
+            <code>rustee-events-observability::metric_names</code> owns stable adapter metric names.
+          </li>
+          <li>
+            <code>rustee-jobs-observability</code> re-exports the stable job collector and snapshot
+            API. <code>rustee-jobs-observability::collector</code> owns job-delivery observation,
+            bounded provider admission, histogram validation, saturated aggregate mutation, and
+            poison-tolerant metrics state. <code>rustee-jobs-observability::model</code> owns
+            immutable exporter snapshots. <code>rustee-jobs-observability::metric_names</code> owns
+            stable adapter metric names.
+          </li>
+          <li>
+            <code>rustee-outbox-sqlx::message::model</code> owns validated durable staging models,
+            shared staged-and-leased storage metadata admission, redacted staging IDs,
+            destinations, and diagnostics. <code>rustee-outbox-sqlx::message::staging</code> owns
+            event/job envelope serialization and trusted-source staging-error preservation.
+            <code>rustee-outbox-sqlx::message</code> re-exports the stable message facade.
+          </li>
+          <li>
+            <code>rustee-outbox-sqlx::inbox</code> owns bounded consumer and source-message receipt
+            identities, transactional duplicate registration with content-free database failures,
+            inbox migration access, and redacted external message identifiers; callers retain their
+            business-data transaction boundary.
+          </li>
+          <li>
+            <code>rustee-outbox-sqlx::relay::observation</code> owns relay-pass kinds and outcomes,
+            aggregate-only lifecycle observation, observer panic isolation, duration capture, and
+            abandoned-pass reporting. <code>rustee-outbox-sqlx::relay::config</code> owns bounded
+            lease, retry, and polling configuration plus aggregate pass reports.
+            <code>rustee-outbox-sqlx::relay::kind</code> owns the private event/job storage and
+            publisher differences. <code>rustee-outbox-sqlx::relay::executor</code> owns bounded
+            relay execution, polling, retry settlement, and observation lifecycle.
+            <code>rustee-outbox-sqlx::relay::service</code> owns the public event/job relay services
+            and content-free storage and publisher diagnostics.
+            <code>rustee-outbox-sqlx::relay</code> re-exports the stable public relay facade.
+          </li>
+          <li>
+            <code>rustee-outbox-sqlx::timing</code> owns bounded millisecond-representable delayed
+            event/job staging, PostgreSQL-clock schedule values, claim-lease configuration and
+            settlement outcomes, and content-free scheduling diagnostics.
+            <code>rustee-outbox-sqlx::stage</code> owns immediate and delayed transactional message
+            insertion plus redacted staging diagnostics. <code>rustee-outbox-sqlx::lease</code> is
+            the stable internal leasing facade. <code>rustee-outbox-sqlx::lease::storage</code> owns
+            PostgreSQL event/job claiming, acknowledgement and retry settlement, and exact
+            zero-or-millisecond retry duration admission.
+            <code>rustee-outbox-sqlx::lease::record</code> owns strict shared-contract stored-record
+            reconstruction and redacted leased-message diagnostics.
+            <code>rustee-outbox-sqlx::lease::error</code> owns sanitized storage failures and their
+            diagnostics. <code>rustee-outbox-sqlx::tests::support</code> owns shared outbox
+            fixtures. <code>rustee-outbox-sqlx::tests::message</code>,
+            <code>rustee-outbox-sqlx::tests::timing</code>,
+            <code>rustee-outbox-sqlx::tests::inbox</code>, and
+            <code>rustee-outbox-sqlx::tests::diagnostics</code> own their matching regression
+            coverage; the crate root re-exports migrations and the stable public facade.
+          </li>
+          <li>
+            <code>rustee-outbox-observability</code> re-exports the stable collector and snapshot
+            API. <code>rustee-outbox-observability::collector</code> owns relay-pass observation,
+            bounded histogram admission, saturated aggregate mutation, and poison-tolerant metrics
+            state. <code>rustee-outbox-observability::model</code> owns immutable exporter snapshots
+            and fixed row-count labels. <code>rustee-outbox-observability::metric_names</code> owns
+            the stable adapter metric names.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-observability</code> re-exports the stable recurring-scheduler
+            collector and snapshot API. <code>rustee-jobs-cron-observability::collector</code> owns
+            scheduler-pass observation, bounded histogram admission, saturated aggregate mutation,
+            and poison-tolerant metrics state.
+            <code>rustee-jobs-cron-observability::model</code> owns immutable exporter snapshots and
+            fixed row-count labels. <code>rustee-jobs-cron-observability::metric_names</code> owns
+            the stable adapter metric names. <code>rustee-jobs-cron-observability::tests</code> owns
+            scheduler-pass regression coverage.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-sqlx::contract</code> owns stable scheduler IDs with redacted
+            diagnostics, bounded pass limits and reports, pause/resume and registration outcomes,
+            and sanitized scheduler errors. <code>rustee-jobs-cron-sqlx::model</code> owns stored recurring-job
+            reconstruction with shared stable-name and bounded JSON-template revalidation,
+            materialized job-envelope validation, and fresh outbox-message construction.
+            <code>rustee-jobs-cron-sqlx::scheduler::registration</code> owns declaration
+            registration, exact duplicate or conflict comparison, registration-time rate-governor
+            policy, and pause/resume state transitions.
+            <code>rustee-jobs-cron-sqlx::scheduler</code> owns database-clock due-time execution,
+            transactional outbox materialization, and scheduler-pass observation; the crate root
+            re-exports the stable public API. <code>rustee-jobs-cron-sqlx::tests</code> owns
+            scheduler policy, durable-ID redaction, time-zone, and rate-governor regression
+            coverage.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-sqlx::schedule</code> owns validated recurring-job keys,
+            redacted application-owned schedule-key diagnostics, cron expressions, time-zone
+            policy, typed schedule declarations, and next-occurrence calculation;
+            <code>scheduler</code> persists and executes those declarations.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-sqlx::fire_observation</code> owns pass outcomes, aggregate-only
+            lifecycle observation, observer panic isolation, elapsed-time measurement, and
+            abandoned-pass reporting; <code>scheduler</code> owns schedule registration,
+            transactionally staged due-job execution, and schedule state transitions.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-sqlx::rate_limit</code> owns whole-millisecond fixed-window
+            governor policy, redacted application-owned key diagnostics, shared-key consistency,
+            capacity consumption, and defer operations; <code>scheduler</code> applies it during
+            registration and due-time execution.
+          </li>
+          <li>
+            <code>rustee-static::config</code> owns safe root and mount configuration, normalized
+            mount-path decoding, and content-free configuration and policy-state diagnostics with
+            trusted sources for application handling. <code>rustee-static::layer</code> owns Tower
+            fallback and readiness around that validated configuration.
+          </li>
+          <li>
+            <code>rustee-static::encoding</code> owns precompressed representation selection,
+            bounded encoding-quality parsing, and variant safety checks.
+            <code>rustee-static::range</code> owns bounded HTTP byte-range and
+            <code>If-Range</code> parsing, normalization, and representation metadata.
+          </li>
+          <li>
+            <code>rustee-static::delivery</code> owns canonical filesystem confinement,
+            representation admission, request-mode selection, full and single-range file I/O, and
+            bounded streaming bodies.
+          </li>
+          <li>
+            <code>rustee-static::response</code> owns conditional-response validation, cache
+            validators, non-multipart range response assembly, representation headers, and
+            content-type selection. Its <code>rustee-static::response::multipart</code> submodule
+            owns multipart byte-range framing, length accounting, and per-range file streaming.
+          </li>
+          <li>
+            The <code>rustee-static</code> crate root remains the stable public facade; its sibling
+            test module owns shared filesystem fixtures and configuration regression coverage.
+            <code>rustee-static::tests::delivery</code>,
+            <code>rustee-static::tests::response</code>, <code>rustee-static::tests::range</code>,
+            and <code>rustee-static::tests::encoding</code> own their matching delivery regression
+            coverage.
+          </li>
+          <li>
+            <code>rustee-jobs::envelope::trace</code> owns bounded transport-neutral W3C trace
+            carriers, durable restoration, and redacted trace diagnostics.
+            <code>rustee-jobs::envelope::codec</code> owns bounded JSON encoding and pre-decode byte
+            admission. <code>rustee-jobs::envelope</code> owns bounded envelope creation, shared
+            stable job-name admission for encoding, provider messages, and registry registration,
+            strict decoding, metadata validation, and redacted job-ID diagnostics.
+            <code>rustee-jobs::envelope::compatibility</code> owns raw compatible payload decoding,
+            explicit older-version upcasting, and sanitized compatibility failures.
+            <code>rustee-jobs::worker_config</code> owns provider-neutral concurrency and
+            shutdown-drain settings. <code>rustee-jobs::delivery::retry</code> owns validated retry
+            policy, fail-closed direct retry selection for invalid public policy values, and
+            provider-neutral settlement actions.
+            <code>rustee-jobs::delivery::observation</code> owns delivery outcomes, lifecycle
+            observation, observer panic isolation, elapsed-time measurement, and unsettled-drop
+            reporting. <code>rustee-jobs::delivery</code> re-exports the stable delivery facade.
+            <code>rustee-jobs::registry</code> owns startup handler registration, typed envelope
+            selection, compatibility upcasting, and sanitized registry dispatch errors; the crate
+            root re-exports the stable facade. <code>rustee-jobs::tests::support</code> owns shared
+            job fixtures. <code>rustee-jobs::tests::envelope</code>,
+            <code>rustee-jobs::tests::publisher</code>, <code>rustee-jobs::tests::handler</code>,
+            <code>rustee-jobs::tests::registry</code>, <code>rustee-jobs::tests::diagnostics</code>,
+            and <code>rustee-jobs::tests::worker_config</code> own their matching job regression
+            coverage.
+          </li>
+          <li>
+            <code>rustee-middleware::trusted_proxy::forwarded</code> owns bounded RFC 7239 and
+            X-Forwarded decoding, trusted-chain client selection, and header-value admission.
+            <code>rustee-middleware::trusted_proxy::policy</code> owns trusted-network admission,
+            bounded chain-topology configuration, and content-free policy diagnostics.
+            <code>rustee-middleware::trusted_proxy::layer</code> owns verified client-context
+            injection, request extraction, and Tower service behavior.
+            <code>rustee-middleware::trusted_proxy</code> remains the stable public facade.
+          </li>
+          <li>
+            <code>rustee-middleware::cors</code> owns exact single-origin CORS admission,
+            matching-preflight short-circuiting, distinct actual and preflight response headers, and
+            <code>Vary: Origin</code> cache separation.
+          </li>
+          <li>
+            <code>rustee-middleware::compression::negotiation</code> owns bounded content-coding
+            selection, compressible-response admission, and <code>Vary</code> policy.
+            <code>rustee-middleware::compression::body</code> owns streaming encoder composition and
+            trailer preservation. <code>rustee-middleware::compression</code> owns the stable Tower
+            layer and service facade. <code>rustee-middleware::panic</code> owns the redacted panic
+            boundary and clone-local Tower readiness; the crate root re-exports the stable public
+            facade.
+          </li>
+          <li>
+            The <code>rustee-middleware</code> crate root remains the stable public facade; its
+            sibling test module owns cross-middleware clone-readiness regression coverage.
+            <code>rustee-middleware::tests::panic</code>,
+            <code>rustee-middleware::tests::cors</code>,
+            <code>rustee-middleware::tests::compression</code>, and
+            <code>rustee-middleware::tests::trusted_proxy</code> own their matching regression
+            coverage.
+          </li>
+          <li>
+            The <code>rustee-ai</code> crate root remains the stable public facade and owns
+            revalidated protocol restoration plus cross-cutting pipeline and usage-ledger
+            orchestration, including one provider-bound input-accounting contract and bounded
+            tool-result admission for policy, budget, and telemetry.
+            <code>rustee-ai::tests::support</code> is the test-only fixture facade.
+            <code>rustee-ai::tests::support::provider</code> owns deterministic provider and
+            diagnostic doubles, <code>rustee-ai::tests::support::advisor</code> owns advisor and
+            budget-policy doubles, <code>rustee-ai::tests::support::usage</code> owns the durable
+            usage-ledger fixture, and <code>rustee-ai::tests::support::tools</code> owns tool,
+            approval, and audit fixtures. <code>rustee-ai::tests::pipeline</code>,
+            <code>rustee-ai::tests::usage</code>, and <code>rustee-ai::tests::tools</code> own the
+            matching internal regression coverage.
+          </li>
+        </ul>
       </section>
-
       <section>
-        <h2>PostgreSQL 연결 경계</h2>
-        <p>
-          <code>rustee-sqlx::connect</code>는 <code>PoolConfig</code>의 기본 5초 initial-pool deadline을 적용합니다. SQLx의
-          low-level error model은 유지하지만, CI는 stopped PostgreSQL에서 500ms 연결 failure가 URL credential과 endpoint를
-          render하지 않는지 확인하고 restart 뒤 SQLx, outbox, AI audit/usage ledger, checkpoint contracts를 재실행합니다. application이
-          HTTP error mapping, migration, transaction retry, external side-effect idempotency와 database recovery supervisor를
-          명시적으로 소유합니다.
-        </p>
+        <h2>RabbitMQ Module Boundaries</h2>
+        <p>This detail supersedes the earlier RabbitMQ root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-jobs-rabbitmq::connection</code> owns redacted AMQP connection settings,
+            bounded connection setup, and shareable broker sessions.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq::publisher</code> owns publisher-confirming channel setup,
+            persistent message properties, acknowledged source publication, and publisher readiness.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq::worker</code> owns topology readiness, bounded manual-ack
+            worker supervision, shutdown, and handler draining.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq::delivery</code> owns delivery metadata validation, explicit
+            acknowledgement, native retry return, and confirm-before-ack dead-letter settlement. The
+            crate root only re-exports the stable public API and sanitized errors.
+          </li>
+        </ul>
       </section>
-
       <section>
-        <h2>최근 운영 경계</h2>
-        <p>
-          <code>rustee-outbox-observability-prometheus</code>는 application-owned <code>OutboxRelayMetrics</code>를 bounded Prometheus text로
-          노출하는 optional adapter입니다. application이 protected scrape route와 alert owner/threshold를 정하며, destination, message ID,
-          payload, endpoint, credential와 raw error는 metric label로 내보내지 않습니다. 상세 운영 규칙은 <a href="./queues.html">Queue 문서</a>와
-          <a href="./testing.html">테스트 전략</a>을 함께 확인합니다.
-        </p>
+        <h2>SQS Module Boundaries</h2>
+        <p>This detail supersedes the earlier SQS root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-jobs-sqs::config::target</code> owns bounded path-only credential-free
+            HTTP(S) queue URL admission, expected Standard/FIFO modes, FIFO identifiers, and
+            redacted deployment-routing diagnostics.
+            <code>rustee-jobs-sqs::config::worker</code> owns paired source/DLQ topology,
+            redrive-count, polling, visibility, heartbeat-plus-request lease windows, and
+            final-renewal-safe handler-timeout policy.
+            <code>rustee-jobs-sqs::config</code> owns shared SQS duration bounds and configuration
+            errors.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::publisher</code> owns bounded source publication, FIFO message
+            group and deduplication metadata, and publisher readiness.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::readiness</code> owns read-only queue attribute collection and
+            Standard/FIFO compatibility checks.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::worker::readiness</code> owns read-only source/DLQ attribute,
+            queue-kind, and redrive-policy verification.
+            <code>rustee-jobs-sqs::worker::runner</code> owns bounded long-poll supervision,
+            retry-policy compatibility, task completion observation, shutdown, and draining.
+            <code>rustee-jobs-sqs::worker</code> remains the stable public worker facade.
+          </li>
+          <li>
+            <code>rustee-jobs-sqs::delivery</code> owns receipt metadata validation,
+            visibility-lease renewal, acknowledgement, retry visibility, and
+            direct-DLQ-before-delete settlement. The crate root only re-exports the stable public
+            API and sanitized errors.
+          </li>
+        </ul>
       </section>
-
       <section>
-        <h2>External qualification</h2>
-        <p>
-          release tag/publish, named edge topology, live AI provider spend/retention, real cloud/provider credential evidence는 code task와 다른 owner action입니다.
-          AI agent는 이를 completed로 추측하지 않고 <a href="./qualification-register.html">qualification register</a>에서 owner와 required evidence를
-          확인합니다. approval 전에는 deterministic/local/container contract만 갱신하고 credential, tenant data, prompt/completion, endpoint와 billing detail을
-          문서나 test output에 기록하지 않습니다.
-        </p>
-        <p>
-          first release의 local path dependency는 publish 전 registry에서 해석할 수 없습니다. 따라서
-          <code>package-release-candidates.mjs</code>가 inventory-approved source archive 집합을 확인하는 것과,
-          publish 뒤 <code>verify-published-release-candidates.mjs</code>가 registry source consumer compile을 확인하는 것은 서로 다른 gate입니다.
-          AI agent는 archive assembly만으로 registry release를 완료로 기록하거나, 아직 publish되지 않은 상태에서 consumer verifier를 실행하지 않습니다.
-        </p>
+        <h2>NATS Module Boundaries</h2>
+        <p>This detail supersedes the earlier NATS root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-jobs-nats::config</code> owns pre-network server-address validation,
+            connection deadlines, concrete publish-subject admission, and worker configuration
+            diagnostics while retaining the connection URL as an internal redacted value.
+          </li>
+          <li>
+            <code>rustee-jobs-nats::publisher</code> owns bounded NATS connection setup, JetStream
+            context configuration, acknowledged source publication, and account readiness.
+          </li>
+          <li>
+            <code>rustee-jobs-nats::worker</code> owns durable pull-consumer admission, runtime
+            consumer-limit compatibility, bounded pull supervision, shutdown, and handler draining.
+          </li>
+          <li>
+            <code>rustee-jobs-nats::delivery</code> owns redacted delivery diagnostics, JetStream
+            metadata validation, explicit acknowledgement, delayed negative acknowledgement, and
+            acknowledged dead-letter settlement. The crate root only re-exports the stable public
+            API and sanitized errors.
+          </li>
+        </ul>
       </section>
-
       <section>
-        <h2>작업 종료 체크리스트</h2>
+        <h2>Redis Streams Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier Redis Streams root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-jobs-redis::config</code> owns validated stream, group, consumer, and DLQ
+            identifiers, deterministic versioned length-delimited retry-key derivation, positive
+            whole-millisecond Redis bounds, worker batch and reclaim policy, and redacted
+            deployment-routing diagnostics. A retry-key format change requires explicit legacy
+            schedule reconciliation before old and new workers run for the same route.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::operation</code> owns the bounded timeout wrapper for
+            individual Redis commands without provider-error disclosure.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::publisher</code> owns source-stream readiness and acknowledged
+            job publication.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::worker::settlement</code> owns ownership-checked Lua
+            acknowledgement, retry scheduling, dead-letter settlement, and server-clock retry
+            promotion. <code>rustee-jobs-redis::worker::receiver</code> owns consumer-group reads,
+            PEL reclaim, and pending-delivery reconstruction.
+            <code>rustee-jobs-redis::worker::runner</code> owns shutdown-aware task supervision,
+            lifecycle observation, and handler draining. <code>rustee-jobs-redis::worker</code> owns
+            public construction and readiness.
+          </li>
+          <li>
+            <code>rustee-jobs-redis::delivery</code> owns redacted pending-delivery diagnostics,
+            metadata validation, and typed acknowledgement, retry, and dead-letter dispatch. The
+            crate root only re-exports the stable public API, shared stream-record fields, and
+            sanitized errors.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>RabbitMQ Management Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier RabbitMQ Management root summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-jobs-rabbitmq-management::config</code> owns trusted monitor endpoint,
+            credential, and URL-path-safe vhost admission, redacted configuration, request and
+            response limits, and loopback-only HTTP test endpoints.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq-management::transport</code> owns URL-path-safe target
+            admission, one encoded read-only queue request, response-status classification, bounded
+            streamed response collection, and content-free transport failures.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq-management::snapshot</code> owns minimal management-response
+            decoding, redacted snapshot diagnostics, and precedence-aware effective policy lookup.
+          </li>
+          <li>
+            <code>rustee-jobs-rabbitmq-management::audit</code> owns the immutable auditor, quorum
+            and delayed-retry/DLX topology matching, and safe audit reports. The crate root only
+            re-exports the stable public API and sanitized errors; it never provisions or mutates
+            broker topology.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Confluent Schema Registry Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier Confluent Schema Registry root summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-events-schema-confluent::config</code> owns trusted registry endpoint and
+            credential admission, redacted configuration, request and response bounds, and
+            loopback-only HTTP test endpoints.
+          </li>
+          <li>
+            <code>rustee-events-schema-confluent::transport</code> owns request authentication,
+            encoded registry paths, per-request timeouts, status classification, and bounded
+            streamed JSON response collection.
+          </li>
+          <li>
+            <code>rustee-events-schema-confluent::wire</code> owns Confluent compatibility,
+            registration, and remote-artifact wire formats plus JSON schema request rendering.
+          </li>
+          <li>
+            <code>rustee-events-schema-confluent::registry</code> owns deployment-time catalog
+            verification, policy comparison, lookup-then-register control flow, and exact re-read
+            verification of the remote artifact. The crate root only re-exports the stable public
+            API and sanitized errors; it never changes Kafka delivery state.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>MongoDB Checkpoint SQLx Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier MongoDB checkpoint SQLx root summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-mongodb-checkpoint-sqlx::model</code> owns bounded lease-owner and
+            whole-millisecond lease-duration admission, redacted lease diagnostics, and lease
+            transition values without SQL dependencies.
+          </li>
+          <li>
+            <code>rustee-mongodb-checkpoint-sqlx::store</code> owns application-pool readiness,
+            bounded opaque BSON checkpoint persistence and restoration, database-clock lease
+            acquisition, renewal, release, ownership-checked settlement, and the checkpoint-store
+            trait implementation.
+          </li>
+          <li>
+            The crate root owns the deployment-owned migration reference, stable public re-exports,
+            and sanitized storage failures. It never applies migrations automatically or claims
+            exactly-once event handling.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Event Schema Module Boundaries</h2>
+        <p>This detail supersedes the earlier event schema root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-events-schema::model</code> owns bounded, URL-path-safe subject and event
+            identity admission, top-level JSON Schema artifact validation, format-prefixed SHA-256
+            fingerprints, exact source definition access, and content-redacted artifact diagnostics.
+          </li>
+          <li>
+            <code>rustee-events-schema::catalog</code> owns deterministic subject/version assembly,
+            event-type and compatibility consistency, application-owned registry contracts, and
+            exact registration acknowledgement verification.
+          </li>
+          <li>
+            The crate root only re-exports the stable provider-neutral schema API. It does not infer
+            schema compatibility, publish records, change Kafka topology, or attach to a delivery
+            path.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>OpenTelemetry Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier OpenTelemetry root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-observability-opentelemetry::subscriber</code> owns composable
+            application-tracer layers and opt-in global subscriber installation. Applications retain
+            exporter construction, sampling policy, provider lifetime, and shutdown.
+          </li>
+          <li>
+            <code>rustee-observability-opentelemetry::propagation</code> is the stable W3C
+            propagation facade.
+            <code>rustee-observability-opentelemetry::propagation::carrier</code> owns bounded
+            inbound HTTP header admission, remote-parent diagnostics, and explicit outbound
+            trace-context replacement without response-header injection.
+            <code>rustee-observability-opentelemetry::propagation::w3c</code> owns bounded
+            transport-neutral envelope capture and extraction plus content-free carrier diagnostics.
+            <code>rustee-observability-opentelemetry::propagation::layer</code> owns request-span
+            parent injection at the Tower boundary.
+            <code>rustee-observability-opentelemetry::propagation::tests::layer</code> and
+            <code>rustee-observability-opentelemetry::propagation::tests::subscriber</code> own
+            their matching propagation and span-export regression coverage.
+          </li>
+          <li>
+            The crate root only re-exports the stable OpenTelemetry bridge API and dependency
+            facades.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>JWT Module Boundaries</h2>
+        <p>This detail supersedes the earlier static JWT root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-auth-jwt::config</code> owns bounded one-algorithm issuer, audience,
+            leeway, and required-claim policy, key-kind compatibility admission, and redacted
+            configuration diagnostics.
+          </li>
+          <li>
+            <code>rustee-auth-jwt::verifier</code> owns bounded static HMAC with an
+            algorithm-matched JWA minimum secret length, RSA, ECDSA, or EdDSA decoding-key
+            construction, signature-verified decoding, and fail-closed Rustee bearer authentication.
+          </li>
+          <li>
+            <code>rustee-auth-jwt::claims</code> owns verified claim-shape decoding, strict RFC 6749
+            scope-token principal normalization, and content-free parsed-claim diagnostics. The
+            crate root only re-exports the stable static-key API; remote OIDC/JWKS discovery and
+            rotation remain the OIDC adapter's responsibility.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Authentication Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier Rustee authentication root summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-auth::bearer::authenticator</code> owns the provider verifier contract and
+            duplicate-rejecting local static verifier. <code>rustee-auth::bearer::token</code> owns
+            bounded Bearer header admission and RFC 6750 credential grammar.
+            <code>rustee-auth::bearer::http</code> owns Tower middleware plus sanitized challenge
+            or availability responses. <code>rustee-auth::bearer::extractor</code> owns principal
+            request extractors. <code>rustee-auth::bearer</code> remains the stable public facade.
+          </li>
+          <li>
+            <code>rustee-auth::principal::admission</code> owns identity and authorization bounds
+            plus error classification. <code>rustee-auth::principal::model</code> owns redacted
+            identity data and normalization from verified claims. <code>rustee-auth::principal</code>
+            remains the stable public identity facade; <code>api_key</code>, <code>policy</code>,
+            and <code>tenant</code> retain API-key authentication, authorization requirements, and
+            trusted tenant resolution. Policy and tenant middleware reuse only the bearer's internal
+            sanitized response mapping.
+          </li>
+          <li>
+            The <code>rustee-auth</code> crate root remains the stable public facade and owns fixed
+            RFC 6750 b64token bearer-credential admission; its sibling test module owns shared
+            Bearer fixtures. <code>rustee-auth::tests::bearer</code>,
+            <code>rustee-auth::tests::api_key</code>, <code>rustee-auth::tests::policy</code>, and
+            <code>rustee-auth::tests::tenant</code> own their matching regression coverage.
+          </li>
+          <li>
+            The crate root only re-exports the stable authentication API. It does not verify a
+            provider token itself, persist credentials, select identity infrastructure, or derive a
+            tenant from an untrusted request field.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Rate Limit Module Boundaries</h2>
+        <p>This detail supersedes the earlier rate-limit root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-rate-limit::policy</code> owns opaque trusted-key validation, positive
+            whole signed-millisecond fixed-window configuration and decisions, key resolution,
+            storage contracts, and explicit store-outage policy.
+          </li>
+          <li>
+            <code>rustee-rate-limit::middleware</code> owns Tower readiness, application admission,
+            sanitized HTTP rejection or availability responses, rounded response headers, and
+            explicit fail-open behavior without headers.
+          </li>
+          <li>
+            The crate root only re-exports the stable rate-limit API. It does not derive a key from
+            untrusted request data, choose storage, retry failures, or impose a
+            distributed-consistency policy.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>SQLx Module Boundaries</h2>
+        <p>This detail supersedes the earlier SQLx root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-sqlx::pool</code> owns finite pool admission, connection and readiness
+            deadlines, PostgreSQL and <code>sqlite</code>-feature-gated SQLite pool setup, and
+            driver-detail-redacted failure diagnostics.
+          </li>
+          <li>
+            <code>rustee-sqlx::tenant</code> owns the trusted PostgreSQL transaction-local tenant
+            setting used by application-owned RLS policies. It never enables or migrates RLS
+            policies.
+          </li>
+          <li>
+            <code>rustee-sqlx::migration</code> owns explicit deployment-job migration execution.
+            The crate root only re-exports the stable SQLx facade and does not run migrations at
+            HTTP startup.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>AI Cache Redis Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier AI cache Redis root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-ai-cache-redis::config</code> owns bounded versioned namespaces,
+            serialized-entry size admission, exact cache-key construction, and redacted adapter
+            configuration.
+          </li>
+          <li>
+            <code>rustee-ai-cache-redis::store</code> owns exact-key Redis reads, bounded writes
+            delegated to <code>rustee-redis::cache</code>, shared 24-hour retention admission and
+            TTL rounding, cache-eligibility admission, and sanitized storage failures.
+          </li>
+          <li>
+            The crate root only re-exports the stable cache adapter API. It never hashes prompts,
+            scans namespaces, retries Redis failures, or chooses retention and tenant-erase policy.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Redis Module Boundaries</h2>
+        <p>This detail supersedes the earlier Redis root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-redis::config</code> owns secret-redacting connection configuration, Redis
+            client construction, bounded initial connection setup, and sanitized configuration
+            failures.
+          </li>
+          <li>
+            <code>rustee-redis::namespace</code> owns bounded, Redis Cluster-safe framework
+            key-namespace admission. It excludes braces and other key syntax outside the stable
+            ASCII prefix grammar.
+          </li>
+          <li>
+            <code>rustee-rate-limit-redis</code> owns bounded application-controlled namespace
+            admission, versioned length-delimited Redis counter keys, atomic fixed-window Lua
+            execution and response validation, and redacted adapter diagnostics. It does not derive
+            trusted rate-limit keys or choose outage policy.
+          </li>
+          <li>
+            <code>rustee-redis::readiness</code> owns explicit bounded <code>PING</code> checks and
+            redacted readiness failures. It does not decide application fallback policy.
+          </li>
+          <li>
+            <code>rustee-redis::cache</code> owns the stable JSON cache facade and content-free
+            failure diagnostics. <code>rustee-redis::cache::read</code> owns direct JSON get,
+            atomic take, and delete without hiding cache misses. <code>rustee-redis::cache::bounded</code>
+            owns atomic Redis-side byte admission for bounded reads and consumption.
+            <code>rustee-redis::cache::write</code> owns explicit TTL admission, bounded JSON
+            serialization, ordinary writes, and create-only writes.
+          </li>
+          <li>
+            The crate root only re-exports the stable Redis utility API and dependency facade. It
+            never creates namespaces, retries dependency failure, or decides cache policy.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>AI Evaluation SQLx Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier AI evaluation SQLx root summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-ai-eval-sqlx::model</code> owns SQL-independent bounded pending-run query
+            limits, content-free reconciliation references, and redacted diagnostics.
+          </li>
+          <li>
+            <code>rustee-ai-eval-sqlx::store</code> owns PostgreSQL reservation, exact
+            identity-conflict classification, completion settlement, pending-row decoding, and
+            sanitized storage failures.
+          </li>
+          <li>
+            The crate root only re-exports the stable public ledger API and deployment-owned
+            migration reference. It never applies migrations at startup or retries a pending
+            evaluation.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>AI Batch Jobs Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier AI batch-jobs root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-ai-batch-jobs::submission</code> owns reference-only submission payloads,
+            run-key binding, submission-runner contracts, the submitter adapter, handler dispatch,
+            and redacted submission failures.
+          </li>
+          <li>
+            <code>rustee-ai-batch-jobs::artifact</code> owns reference-only artifact-reconciliation
+            payloads, reconciliation-key binding, artifact-runner contracts, reconciler adaptation,
+            handler dispatch, and redacted artifact failures.
+          </li>
+          <li>
+            The crate root only re-exports the stable durable-job API. It never stores raw provider
+            work or artifacts, schedules retries, or turns at-least-once delivery into exactly-once
+            behavior.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Server Module Boundaries</h2>
+        <p>This detail supersedes the earlier server root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-server::options</code> owns explicit HTTP/1 transport limits, defaults, and
+            validation.
+          </li>
+          <li>
+            <code>rustee-server::runtime</code> owns listener binding, connection admission, Hyper
+            HTTP/1 lifecycle, declared request-body limit admission, bounded request-body
+            conversion, clone-local Tower readiness, request timeout and concurrency admission,
+            connection metadata, content-free connection diagnostics, and graceful draining.
+          </li>
+          <li>
+            The crate root only re-exports the stable server API. It does not create TLS, HTTP/2,
+            proxy-trust, or deployment-policy contracts.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Observability Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier observability root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-observability::subscriber</code> owns opt-in formatted tracing subscriber
+            installation and <code>RUST_LOG</code> filtering. Applications retain subscriber
+            composition, exporter construction, sampling policy, and shutdown.
+          </li>
+          <li>
+            <code>rustee-observability::request_id</code> owns generated correlation identifiers,
+            the typed request extractor, clone-local Tower readiness, request-span lifecycle,
+            optional integration parent hooks, bounded completion fields, and response-header
+            injection.
+          </li>
+          <li>
+            <code>rustee-observability::metrics::collector</code> owns bounded mutable request
+            lifecycle collection, histogram configuration, saturating aggregate counters, and
+            poisoned-state recovery. <code>rustee-observability::metrics::model</code> owns
+            immutable exporter-neutral request snapshots.
+            <code>rustee-observability::metrics::layer</code> owns Tower lifecycle instrumentation.
+            <code>rustee-observability::metrics::tests</code> owns request-metrics regression
+            coverage. <code>rustee-observability::metrics</code> re-exports the stable metrics API
+            and names.
+          </li>
+          <li>
+            The crate root only re-exports the stable observability API. It does not own telemetry
+            exporter policy, trusted client correlation, or remote trace-context parsing.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Configuration Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier configuration root summary in the module catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-config::model</code> owns configuration source identity, redacted
+            diagnostics, and secret values. Error text identifies keys but never records their
+            values; crate-private construction admits only fixed error categories.
+          </li>
+          <li>
+            <code>rustee-config::builder</code> owns object-only one-time source admission, fixed
+            precedence, recursive merge behavior, and schema deserialization.
+            <code>rustee-config::builder::environment</code> owns OS-safe environment-source
+            snapshots, portable ASCII normalized nested-path admission, JSON value parsing, and
+            conflict rejection.
+          </li>
+          <li>
+            <code>rustee-config::environment</code> owns generic required and optional typed
+            environment parsing plus non-Unicode value classification with value-free errors.
+          </li>
+          <li>
+            The crate root only re-exports the stable configuration API. It does not load files,
+            select a secret manager, watch configuration changes, or impose application schema
+            policy.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>OpenAPI Module Boundaries</h2>
+        <p>This detail supersedes the earlier OpenAPI root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-openapi::validation</code> owns the private bounded metadata, identifier,
+            and schema-admission rules shared by all declaration types.
+          </li>
+          <li>
+            <code>rustee-openapi::model</code> owns public error, Rustee-route translation, and HTTP
+            method contracts without document assembly or JSON rendering.
+          </li>
+          <li>
+            <code>rustee-openapi::document</code> owns deterministic duplicate-rejecting component,
+            operation ID, method/path, and security assembly, cross-declaration validation, and JSON
+            response rendering.
+          </li>
+          <li>
+            <code>rustee-openapi::operation::model</code> owns validated operation declarations,
+            path-parameter inspection, and deterministic JSON rendering.
+            <code>rustee-openapi::operation::builder</code> owns builder-only metadata admission,
+            duplicate detection, response construction, and operation-local security declaration;
+            it requires valid case-insensitive HTTP header parameter names.
+            <code>rustee-openapi::operation</code> is the stable public facade. The
+            <code>rustee-openapi::schema</code> module retains its focused declaration and rendering
+            contract.
+            <code>rustee-openapi::security::scheme::oauth</code> owns OAuth flow declarations,
+            endpoint and scope validation, and flow rendering.
+            <code>rustee-openapi::security::scheme</code> owns HTTP, API-key, OpenID Connect,
+            mutual-TLS, and OAuth security-scheme assembly plus scheme rendering.
+            <code>rustee-openapi::security</code> owns AND/OR security-requirement declaration and
+            rendering. The crate root re-exports the stable OpenAPI API.
+            <code>rustee-openapi::tests::document</code>,
+            <code>rustee-openapi::tests::operation</code>,
+            <code>rustee-openapi::tests::security</code>, and
+            <code>rustee-openapi::tests::validation</code> own the matching declaration regression
+            coverage; route-handler inspection and runtime authentication remain application
+            concerns.
+          </li>
+          <li>
+            <code>rustee::openapi</code> is an opt-in facade with an explicit stable OpenAPI
+            re-export list. It does not automatically expose future <code>rustee-openapi</code>
+            additions, inspect handlers, or supply runtime authentication.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>MCP OAuth Module Boundaries</h2>
+        <p>This detail supersedes the earlier MCP OAuth root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-ai-mcp-oauth::authorization::transaction</code> owns one-time state and
+            PKCE transaction contracts, capability-value generation, and bounded expiry-pruning
+            local transaction storage. <code>rustee-ai-mcp-oauth::authorization::protocol</code>
+            owns callback, redirect, and trusted token-exchange payload models.
+            <code>rustee-ai-mcp-oauth::authorization</code> re-exports the stable authorization
+            facade.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::authorization::flow</code> owns bounded authorization
+            redirect construction, atomic callback completion, resource binding, explicit
+            persistence, per-token-store-key refresh coalescing, and revocation-before-local-removal
+            orchestration. It neither owns browser sessions nor replays MCP actions.
+          </li>
+          <li>
+            <code>rustee-ai-mcp-oauth::model</code> owns shared redacted access-token/error models
+            and token validation. <code>rustee-ai-mcp-oauth::config</code> owns trusted
+            configuration and bounded RFC 6749 scope-token admission.
+            <code>rustee-ai-mcp-oauth::discovery</code> and
+            <code>rustee-ai-mcp-oauth::tokens</code> retain bounded metadata discovery, token-set
+            and bounded local token-slot persistence, encrypted-store contracts, and HTTP exchange
+            or revocation adapters. The crate root owns the stable public facade and shared JSON
+            content-type admission; its sibling test module owns common OAuth fixtures.
+            <code>rustee-ai-mcp-oauth::tests::config</code>,
+            <code>rustee-ai-mcp-oauth::tests::discovery</code>, and
+            <code>rustee-ai-mcp-oauth::tests::model</code> own their matching regression coverage.
+            <code>rustee-ai-mcp-oauth::tests::http</code> owns JSON content-type and loopback HTTP
+            exchange, revocation, and discovery contract coverage.
+            <code>rustee-ai-mcp-oauth::tests::lifecycle</code> owns authorization redirect, PKCE
+            callback, refresh, and revocation lifecycle regression coverage.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Kafka Delayed Retry Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier Kafka delayed-retry adapter summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-events-kafka-sqlx::adapter::router</code> owns durable failure staging
+            before source-offset commit, retry-policy fallback, non-empty per-field payload/key
+            admission, sanitized database failure mapping, and redacted adapter diagnostics.
+          </li>
+          <li>
+            <code>rustee-events-kafka-sqlx::adapter::relay</code> owns database-clock backlog reads,
+            lease claim and release, stored routing metadata plus attempt/payload/key revalidation,
+            Kafka publication with post-acknowledgement confirmation, bounded relay loops, its
+            private content-free row
+            model, and redacted adapter diagnostics.
+          </li>
+          <li>
+            <code>rustee-events-kafka-sqlx::adapter::config</code> owns exact whole-millisecond
+            timing, readiness, and the shared non-zero, payload-aware relay batch-size and loop
+            contracts. <code>rustee-events-kafka-sqlx::adapter::observation</code> owns
+            aggregate-only pass telemetry and observer panic isolation.
+          </li>
+          <li>
+            The crate root feature-gates and re-exports the stable adapter API. It does not start a
+            relay task, run a migration, create Kafka topics, or choose deployment health policy.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Kafka Delayed Retry Metrics Module Boundaries</h2>
+        <p>
+          This detail supersedes the earlier delayed-retry observability summary in the module
+          catalogue.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-events-kafka-sqlx-observability::adapter</code> is the feature-gated facade
+            for delayed-retry relay observation.
+            <code>rustee-events-kafka-sqlx-observability::adapter::collector</code> owns bounded
+            histogram configuration, mutex-protected aggregate state, backlog receipt, and recovery
+            from collector-state poisoning.
+            <code>rustee-events-kafka-sqlx-observability::adapter::model</code> owns immutable
+            exporter snapshots.
+            <code>rustee-events-kafka-sqlx-observability::adapter::metric_names</code> owns the
+            stable exported metric names.
+            <code>rustee-events-kafka-sqlx-observability::adapter::tests</code> owns delayed-retry
+            collector regression coverage.
+          </li>
+          <li>
+            The crate root only feature-gates and re-exports the collector API. The collector
+            retains no topics, row identifiers, keys, payloads, endpoints, raw errors, exporter,
+            polling task, registry, or alert policy.
+          </li>
+          <li>
+            <code>rustee-events-kafka-sqlx-observability-prometheus::adapter</code> owns fixed-label
+            Prometheus 0.0.4 text encoding and its explicit no-store scrape response. Its crate root
+            only feature-gates and re-exports the stable encoder facade; it creates no collector,
+            registry, listener, or polling task.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Test Support Module Boundaries</h2>
+        <p>This detail supersedes the earlier test-support root summary in the module catalogue.</p>
+        <ul>
+          <li>
+            <code>rustee-test::response</code> owns bounded in-process response collection, UTF-8
+            and JSON decoding, response assertions, and content-free diagnostics. It keeps response
+            construction private to application dispatch.
+          </li>
+          <li>
+            <code>rustee-test::cookie</code> owns bounded simplified
+            <code>Set-Cookie</code> receipt, atomic jar updates, exact emitted
+            <code>Cookie</code>-header admission and synthesis, and redacted jar inspection.
+          </li>
+          <li>
+            <code>rustee-test::request</code> owns cloneable app dispatch, origin-form string
+            request admission, bounded request body construction, bounded request JSON and header
+            admission, explicit cookie-jar attachment, and the legacy streaming-request helper.
+            <code>rustee-test::tests::support</code> owns the shared serializable greeting fixture.
+            <code>rustee-test::tests::app</code>, <code>rustee-test::tests::request</code>,
+            <code>rustee-test::tests::response</code>, and
+            <code>rustee-test::tests::cookie</code> own their matching in-process regression
+            coverage. The crate root re-exports the stable test API; it does not emulate browser
+            transport policies.
+          </li>
+          <li>
+            <code>rustee-ai-test::model</code> owns content-free recorded invocation metadata and
+            deterministic fake-provider errors. <code>rustee-ai-test::provider</code> owns FIFO
+            completion and stream scripts, synchronized state, and the provider trait adaptation.
+            The crate root re-exports the stable AI test API; it does not emulate a provider
+            protocol or retain request or response content.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Macro Module Boundaries</h2>
+        <p>
+          This detail separates independent procedural-macro compiler boundaries while preserving
+          the existing public macro entry points.
+        </p>
+        <ul>
+          <li>
+            <code>rustee-macros::route_builder</code> owns the <code>routes!</code> input grammar,
+            supported-method diagnostics, and explicit <code>App</code> builder expansion.
+          </li>
+          <li>
+            <code>rustee-macros::from_header</code> owns <code>FromHeader</code> attribute
+            validation, tuple-newtype validation, header-name validation, and extractor
+            implementation generation.
+          </li>
+          <li>
+            <code>rustee-macros::crate_path</code> owns renamed <code>rustee</code> facade
+            resolution shared by generated code. The crate root only exposes compiler-required macro
+            entry points.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Implementation Rules</h2>
+        <ul>
+          <li>
+            Use an explicit readiness, shutdown, timeout, and failure contract for every external
+            dependency.
+          </li>
+          <li>
+            Do not auto-create production schemas, topics, queues, or cloud resources at HTTP
+            startup.
+          </li>
+          <li>
+            Do not trust client-supplied forwarded headers, tenant fields, tokens, model output, MCP
+            context, or external provider data without the documented verification path.
+          </li>
+          <li>
+            Do not hide a provider-specific semantic behind a universal abstraction when it changes
+            acknowledgement, retry, offset, cache, or delivery behavior.
+          </li>
+          <li>
+            Extract a cohesive internal module before a large crate gains another independent
+            domain; re-export stable public types from the crate root during an API-preserving
+            refactor.
+          </li>
+          <li>
+            Use real-backend and recovery contracts where provider behavior matters. Mock suites
+            alone do not qualify a deployment.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>After Completing Work</h2>
         <ol>
-          <li>관련 테스트나 검증 명령을 실행합니다. 실행하지 못했다면 이유를 기록합니다.</li>
-          <li>변경한 코드와 문서가 같은 방향을 말하는지 확인합니다.</li>
-          <li>새로운 설계 결정이 생겼다면 ADR을 추가하거나 기존 ADR에 후속 결정을 연결합니다.</li>
-          <li>최종 응답에서 변경한 HTML 문서와 검증 결과를 짧게 보고합니다.</li>
+          <li>
+            Run the narrowest relevant formatter, tests, compile checks, and documentation checks,
+            then report any unrun qualification scope.
+          </li>
+          <li>
+            Preserve the CI feature gates: run the workspace default and all-feature clippy, test,
+            and doctest matrices; deny <code>clippy::unwrap_used</code> for every all-feature
+            library and first-party binary target; require every workspace member to inherit the
+            root lint policy; keep Cargo build, test, documentation, lint, and benchmark workflow
+            commands locked to the committed dependency graph; and build public documentation with
+            warnings and missing documentation treated as errors across every supported workspace
+            feature.
+          </li>
+          <li>
+            Review the diff for secrets, unrelated changes, broken links, and missing documentation.
+          </li>
+          <li>
+            Update focused documents, ADRs, support status, release evidence, and examples as
+            required by the change.
+          </li>
+          <li>
+            Record external evidence gaps instead of describing an unverified contract as completed.
+          </li>
+          <li>Keep this page current when a maintenance rule or design baseline changes.</li>
         </ol>
       </section>
-
+      <section>
+        <h2>Session Boundary Update</h2>
+        <p>
+          <code>rustee-auth-session::model::session</code> admits only canonical RFC 4122 UUID v4
+          identifiers from cookies and durable restoration.
+          <code>rustee-auth-session::middleware</code> admits exactly one Cookie header before
+          session restoration, while <code>rustee-auth-session::middleware::csrf</code> admits
+          exactly one CSRF header before comparison; ambiguity fails closed.
+          Redis persistence retains its independent session-ID, CSRF-capability, and key-to-record
+          binding checks.
+        </p>
+      </section>
+      <section>
+        <h2>OIDC HTTP Boundary Update</h2>
+        <p>
+          <code>rustee-auth-oidc::http</code> owns shared bounded JSON decoding for JWKS, discovery,
+          token exchange, and opaque-token introspection. A successful provider response must have
+          exactly one <code>application/json</code> or <code>application/*+json</code> Content-Type
+          before the bounded body is read; absent, ambiguous, or non-JSON media types fail closed
+          without provider-response disclosure.
+        </p>
+      </section>
+      <section>
+        <h2>Redis Cache Boundary Update</h2>
+        <p>
+          <code>rustee-redis::cache</code> validates a positive explicit TTL before encoding or
+          contacting Redis. A zero TTL is a local <code>CacheError::ZeroTtl</code>, not a transport
+          failure. Its explicit create-only JSON helper issues one atomic Redis
+          <code>SET NX EX</code> operation and reports <code>CacheError::EntryExists</code> without
+          replacing a live value. The opt-in Redis contract races two writes to the same temporary
+          key and requires exactly one retained winner. Higher-level adapters preserve those
+          distinctions when their own TTL policy permits them.
+        </p>
+      </section>
+      <section>
+        <h2>OpenAI HTTP Response Boundary Update</h2>
+        <p>
+          <code>rustee-ai-openai::response</code> owns bounded non-streaming response collection and
+          exact single media-type admission through Rustee's shared standard-JSON predicate. JSON
+          paths accept <code>application/json</code> and structured <code>application/*+json</code>;
+          streaming paths accept
+          <code>text/event-stream</code>. Missing, duplicate, malformed, or mismatched content types
+          fail before a response body is parsed, and diagnostics never expose header or body values.
+        </p>
+      </section>
+      <section>
+        <h2>MCP OAuth HTTP Header Boundary Update</h2>
+        <p>
+          <code>rustee-ai-mcp-oauth</code> requires exactly one
+          <code>application/json</code> Content-Type before discovery metadata or token-exchange
+          response bytes are parsed. Missing, duplicated, malformed, or other media types fail
+          closed through the existing content-free metadata or token-exchange error category. The
+          shared header helper is the only media-type admission point for both HTTP paths.
+        </p>
+      </section>
+      <section>
+        <h2>Operations HTTP Response Boundary Update</h2>
+        <p>
+          <code>rustee-events-schema-confluent::transport</code> accepts exactly one documented
+          Confluent JSON media type: Schema Registry v1 or unversioned vendor JSON, or
+          <code>application/json</code>.
+          <code>rustee-jobs-rabbitmq-management::transport</code> accepts exactly one
+          <code>application/json</code> response. Both check the media type before collecting bytes;
+          missing, duplicate, malformed, or mismatched headers normalize to their existing
+          content-free malformed-response error.
+        </p>
+      </section>
+      <section>
+        <h2>MCP HTTP Header Boundary Update</h2>
+        <p>
+          <code>rustee-ai-mcp::http_response</code> admits exactly one
+          <code>Content-Type</code> before selecting JSON or SSE parsing and exactly one valid
+          <code>mcp-session-id</code> before associating an HTTP response with a client session.
+          Duplicate content types follow the existing unsupported-media-type path; duplicate,
+          malformed, or invalid session IDs fail as a malformed MCP response. No header ambiguity
+          can select a parser or session state.
+        </p>
+      </section>
+      <section>
+        <h2>MCP OAuth Refresh Gate Boundary</h2>
+        <p>
+          <code>rustee-ai-mcp-oauth::authorization::refresh_gate</code> owns process-local
+          per-token-store-key refresh coalescing and removes idle gates after every lease is
+          released. It holds its blocking registry mutex only while selecting a gate; token-store
+          and provider I/O remain in <code>authorization::flow</code>. The coordination is
+          deliberately local to one flow instance and never substitutes for distributed refresh
+          serialization.
+        </p>
+      </section>
+      <section>
+        <h2>Bounded JSON Boundary</h2>
+        <p>
+          <code>rustee-json</code> owns bounded JSON materialization shared by Rustee integrations.
+          It stops serialization before retaining a value beyond the caller-supplied byte limit and
+          distinguishes capacity rejection from serialization failure. Its Debug output reports only
+          an outcome category while the trusted source chain remains available to callers that map
+          it. Transport, storage, and domain crates map those two outcomes to their existing public
+          error contracts; framing layers with additional prefix or suffix bytes retain their own
+          writer boundary.
+        </p>
+      </section>
+      <section>
+        <h2>Authentication Comparison Boundary</h2>
+        <p>
+          <code>rustee-auth::constant_time</code> owns one fixed-length byte-comparison
+          implementation for authentication values. It avoids content-dependent early exits only
+          after lengths match; callers must not treat it as length-hiding. Session CSRF and OIDC
+          claim validation use this shared boundary rather than retaining independent comparison
+          loops.
+        </p>
+      </section>
+      <section>
+        <h2>Duration Histogram Boundary</h2>
+        <p>
+          <code>rustee-observability-core::histogram</code> owns incremental bounded admission for
+          non-empty, strictly increasing duration buckets and keeps each cumulative count paired
+          with its bound. The crate root re-exports the stable histogram API. Request, event, job,
+          outbox, recurring-scheduler, and Kafka delayed-retry collectors retain their domain
+          labels, snapshots, and public configuration errors while delegating bucket construction
+          and saturating observation to this shared foundation.
+        </p>
+      </section>
+      <section>
+        <h2>Prometheus Text Boundary</h2>
+        <p>
+          <code>rustee-observability-core::prometheus</code> owns canonical line termination and
+          quoted-label escaping for every Rustee Prometheus text exporter. It escapes backslash,
+          quotation mark, and line feed before a dynamic label reaches the exposition body. Exporter
+          crates retain their metric names, bounded labels, snapshots, and explicit HTTP response
+          policy; this helper has no registry, network, HTTP, or exporter-runtime dependency.
+        </p>
+      </section>
+      <section>
+        <h2>Core Dependency Direction</h2>
+        <p>
+          <code>scripts/check-core-dependency-boundaries.mjs</code> protects only the foundation and
+          HTTP core chain. Do not add local workspace dependencies to <code>rustee-json</code> or
+          <code>rustee-observability-core</code>; keep <code>rustee-core</code> dependent only on
+          <code>rustee-json</code>; and update the reviewed router, server, middleware, or facade
+          dependency set together with architecture documentation only when the direction is
+          intentional. Optional integration crates are deliberately outside this narrow rule.
+        </p>
+      </section>
+      <section>
+        <h2>Public Re-export Stability</h2>
+        <p>
+          <code>scripts/check-public-wildcard-reexports.mjs</code> requires external public
+          re-exports to name their stable items explicitly. A facade must not absorb future
+          <code>pub</code> additions from a dependency through <code>pub use path::*</code>;
+          private imports remain outside this rule. Keep the matching CI and release-qualification
+          self-tests enabled when changing this policy.
+        </p>
+      </section>
+      <section>
+        <h2>HTML Source Formatting</h2>
+        <p>
+          Keep HTML documentation reviewable rather than minified. The canonical formatter is
+          <code>npx --yes prettier@3.5.3 --write "docs/**/*.html"</code>, using the repository
+          <code>.prettierrc.json</code>;
+          <code>scripts/check-html-document-formatting.mjs</code> blocks collapsed source structure
+          in CI and release qualification.
+        </p>
+      </section>
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when AI collaboration, implementation context, or documentation maintenance rules change.</p>
+        <p>
+          Last updated: 2026-08-25. This page is mandatory reading for AI-assisted framework work.
+        </p>
       </footer>
     </main>
   </body>

@@ -1,98 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0033: Recurring Job IANA Time-Zone Calendar</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0033</div>
-        <h1>Recurring Job IANA Time-Zone Calendar</h1>
-        <p class="lead">durable schedule은 host-local time이 아니라 저장된 IANA zone과 명시적 DST 규칙으로 해석합니다.</p>
-        <p class="meta">Status: Accepted | Date: 2026-08-04 | Supersedes: ADR 0029의 UTC-only time-zone 제한</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0033: Recurring Job IANA Time-Zone Calendar</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          UTC-only recurrence는 transaction safety는 단순하지만, local business hour에 실행해야 하는 billing, notification과 regional
-          workflow에는 application 별 wrapper를 강요합니다. host local time을 기본으로 삼으면 replica마다 설정이 달라질 수 있고,
-          DST의 gap과 overlap을 scheduler가 우연히 두 번 또는 한 번 실행할 위험이 있습니다.
+          Business schedules are often expressed in a named civil time zone, where daylight-saving
+          gaps and overlaps cannot be modeled safely with a fixed offset.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-jobs-cron-sqlx</code>는 schedule definition마다 validated IANA
-            <code>RecurringJobTimeZone</code>을 저장합니다. <code>RecurringJob::new</code>의 default는 <code>UTC</code>이고,
-            <code>with_time_zone</code>으로 명시합니다. <code>0003_rustee_recurring_job_time_zone.sql</code>은 기존 row를
-            <code>UTC</code>로 forward-migrate합니다. migration은 base schedule 뒤에 적용하며, optional governor migration을
-            쓴 deployment는 이를 먼저 적용합니다.
-          </p>
-        </div>
         <p>
-          cron fields는 stored IANA wall clock로 계산하지만, <code>next_run_at</code>, occurrence idempotency key와 PostgreSQL
-          locking은 UTC instant를 계속 사용합니다. forward DST transition의 존재하지 않는 local time은 skip합니다. backward
-          transition의 ambiguous local time은 더 이른 UTC instant만 materialize하고, 같은 wall-clock time의 나중 instant는
-          materialize하지 않습니다. pause, resume과 late pass는 all-missed catch-up을 하지 않고 database clock 뒤의 첫 허용
-          occurrence로 advance합니다.
+          Store an explicit durable IANA time zone, defaulting existing schedules to UTC. Skip
+          forward DST gaps and stage only the earlier UTC occurrence of a backward overlap.
         </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>same key의 IANA zone 변경은 definition drift이며 registration conflict가 됩니다. deployment는 changed schedule을 새 key 또는 explicit migration으로 관리합니다.</li>
-          <li>host OS zone, process locale와 PostgreSQL session zone은 recurrence 의미를 바꾸지 않습니다.</li>
-          <li>bundled <code>chrono-tz</code> tzdb version은 future local occurrence를 바꿀 수 있습니다. dependency/tzdb update는 affected schedule inventory, DST boundary test, migration/rollback plan과 operator approval을 포함한 qualification gate입니다.</li>
-          <li>holiday/business calendar, tenant-specific exception, alternate overlap policy, all-missed replay, polling runtime와 alert threshold는 application/deployment policy로 남습니다.</li>
-          <li>outbox stage/next-run update와 shared fixed-window governor의 PostgreSQL atomicity는 ADR 0029와 ADR 0030의 경계를 유지합니다.</li>
-        </ul>
+        <p>
+          Time-zone definition drift is rejected. Holiday calendars, catch-up policy, and tzdb
+          update qualification remain application and deployment responsibilities.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>host-local time default</td><td>replica/region 차이와 deployment configuration drift를 schedule semantics로 만들므로 채택하지 않습니다.</td></tr>
-            <tr><td>DST overlap을 두 번 fire</td><td>external side effect가 의도치 않게 중복될 기본값이 되므로 채택하지 않습니다. 필요한 domain은 distinct explicit schedules를 둡니다.</td></tr>
-            <tr><td>DST gap을 앞/뒤 시각으로 이동</td><td>사용자가 쓰지 않은 wall-clock time을 추측하므로 채택하지 않습니다.</td></tr>
-            <tr><td>time zone을 cron expression에 embed</td><td>parser portability와 durable definition comparison을 불명확하게 하므로 separate typed field를 사용합니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. IANA tzdb data changes are operationally significant and require requalification before production rollout.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

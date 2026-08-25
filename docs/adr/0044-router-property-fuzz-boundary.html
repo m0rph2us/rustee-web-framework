@@ -1,86 +1,45 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0044: Route and OpenAPI Parser Property and Fuzz Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../testing.html">Test</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0044 · Accepted · 2026-08-04</div>
-        <h1>Route and OpenAPI parser property and fuzz boundary</h1>
-        <p class="lead">작은 결정론적 property 계약은 pull request에서, route와 public OpenAPI parser의 sanitizer 기반 libFuzzer 탐색은 별도 nightly 작업에서 실행합니다.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0044: Route and OpenAPI Parser Property and Fuzz Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          router route template, nested prefix, OpenAPI route conversion과 API-key header-name metadata는 외부 URI 또는 public application configuration을 만나는 경계입니다. 선택한 예제만으로는
-          segment count, parameter grammar, static-route precedence, HTTP field-name byte 조합을 충분히 탐색하기 어렵습니다. 반대로 libFuzzer는 nightly,
-          LLVM sanitizer와 C++ toolchain을 요구하므로 모든 pull request의 기본 runner에 넣으면 feedback과 platform portability가 나빠집니다.
-          기존 문서에는 property/fuzz 전략이 있었지만 실제 target, seed corpus, 실행 lane은 없었습니다.
+          Route and OpenAPI grammar parse untrusted application input and need more coverage than
+          hand-picked examples. Route declarations that silently collapse repeated path separators
+          can disagree with upstream routing, caches, or externally documented paths.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <ul>
-          <li><code>rustee-router</code>는 <code>proptest</code>로 parser acceptance grammar, named parameter value preservation, static-route-over-parameter precedence를, <code>rustee-openapi</code>는 accepted Rustee template의 parameter set과 <code>{parameter}</code> rendering을 workspace test에서 검사합니다.</li>
-          <li><code>fuzz/</code>는 root Cargo workspace와 분리된 unpublished workspace입니다. <code>route_pattern</code> target은 arbitrary UTF-8 bytes를 public <code>App::try_route</code>/<code>App::try_nest</code> construction parser에, <code>openapi_route</code> target은 <code>OpenApiRoute::from_rustee</code>에, <code>openapi_security_scheme</code> target은 <code>OpenApiSecurityScheme::api_key(name, Header)</code>에 전달합니다.</li>
-          <li>curated seed corpus는 <code>fuzz/corpus/route_pattern</code>, <code>fuzz/corpus/openapi_route</code>, <code>fuzz/corpus/openapi_security_scheme</code>에 version control하며, crash artifact와 fuzz build output은 version control하지 않습니다. 발견된 crash는 minimized input, focused regression test, 원인 수정 순서로 승격합니다.</li>
-          <li><code>Fuzz</code> workflow는 pinned nightly와 <code>cargo-fuzz</code>로 Linux에서 매주와 manual dispatch 때 bounded sanitizer run을 수행합니다. 일반 pull request에는 property test만 남깁니다.</li>
-          <li>fuzz target은 authentication, database, network, credential, user data 또는 production service를 호출하지 않습니다. fuzz 결과가 coverage, security approval 또는 full protocol compatibility를 자동으로 증명하지 않습니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Consequences</h2>
-        <ul>
-          <li>일상 CI는 stable/MSRV feedback을 유지하면서 parser regression을 randomized shrinking으로 재현할 수 있습니다.</li>
-          <li>sanitizer run에는 nightly와 C++ standard library headers가 필요합니다. 그 toolchain이 없는 local machine에서는 workspace property test를 실행하고 CI fuzz artifact를 확인합니다.</li>
-          <li>현재 coverage는 router construction, OpenAPI route conversion과 API-key header-name metadata boundary입니다. request URI decode, query/cookie runtime parser, HTTP body/static range parser, extractor/state machine은 independent target과 targeted property contract를 추가한 뒤에만 이 lane에 포함됩니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>모든 fuzz를 pull request마다 실행</td><td>nightly/sanitizer cost와 nondeterministic exploration time이 기본 feedback lane을 지배하므로 채택하지 않습니다.</td></tr>
-            <tr><td>fuzz target만 두고 seed 또는 artifact policy를 두지 않음</td><td>실패 재현과 corpus provenance가 약해지므로 채택하지 않습니다.</td></tr>
-            <tr><td>hand-written random loop만 사용</td><td>shrinking, persistent corpus, sanitizer instrumentation과 crash minimization을 잃으므로 채택하지 않습니다.</td></tr>
-            <tr><td>fuzz workspace를 publishable workspace member로 편입</td><td>libFuzzer/nightly dependency가 public package and release graph에 섞이므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
         <p>
-          새 parser 또는 state machine fuzz target은 input ownership, resource bound, seed provenance, crash-to-regression procedure와 CI budget을 함께
-          결정해야 합니다. HTTP wire, backend driver, cryptographic verification, credentials 또는 external service fuzzing은 isolated fixture와
-          security review 없이는 이 target에 추가하지 않습니다.
+          Use property tests for documented invariants and independent libFuzzer targets with seed
+          corpora for route and OpenAPI parsing. Both Rustee route declarations and OpenAPI route
+          conversion reject repeated path separators, and router matching does not collapse them at
+          request time.
         </p>
       </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../testing.html">테스트와 검증 전략</a>, <a href="../architecture.html">구조</a>, and <a href="./0009-testing-and-verification-strategy.html">ADR 0009</a>.</p>
-      </footer>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Fuzzing complements deterministic regression cases and supported-platform CI; it does not
+          establish semantic route or API correctness by itself. Applications configure one
+          unambiguous route template and may apply any deliberate external path canonicalization
+          before Rustee dispatch.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-11.</p></footer>
     </main>
   </body>
 </html>

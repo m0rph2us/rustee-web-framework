@@ -1,23 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { readWorkspaceReleaseInventory } from "./workspace-release-inventory.mjs";
 
 const workspaceRoot = resolve(process.cwd());
 const inventoryPath = join(workspaceRoot, "docs", "release-inventory.html");
-const document = await readFile(inventoryPath, "utf8");
-const match = document.match(
-  /<script id="workspace-release-inventory" type="application\/json">\s*([\s\S]*?)\s*<\/script>/,
-);
-
-if (!match) {
-  throw new Error(`${inventoryPath}: workspace release inventory JSON was not found`);
-}
-
-const inventory = JSON.parse(match[1]);
-if (inventory.schema !== 1 || !Array.isArray(inventory.packages)) {
-  throw new Error(`${inventoryPath}: unsupported workspace release inventory schema`);
-}
 
 const workspaceMetadata = JSON.parse(
   execFileSync("cargo", ["metadata", "--no-deps", "--format-version=1", "--locked"], {
@@ -25,6 +13,7 @@ const workspaceMetadata = JSON.parse(
     encoding: "utf8",
   }),
 );
+const inventory = await readWorkspaceReleaseInventory(inventoryPath, workspaceMetadata.packages);
 const workspacePackages = new Map(workspaceMetadata.packages.map((pkg) => [pkg.name, pkg]));
 const candidates = inventory.packages.filter((entry) => entry.intent === "candidate");
 const missingWorkspacePackages = candidates.filter((entry) => !workspacePackages.has(entry.name));

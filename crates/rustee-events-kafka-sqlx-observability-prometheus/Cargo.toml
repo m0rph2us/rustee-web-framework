@@ -17,6 +17,7 @@ rdkafka = [
 [dependencies]
 rustee-core = { path = "../rustee-core", version = "0.1.0", optional = true }
 rustee-events-kafka-sqlx-observability = { path = "../rustee-events-kafka-sqlx-observability", version = "0.1.0", optional = true }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 http.workspace = true
 
 [dev-dependencies]

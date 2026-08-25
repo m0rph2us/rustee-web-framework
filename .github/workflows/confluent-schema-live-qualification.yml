@@ -1,0 +1,45 @@
+name: Confluent Schema Registry live qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      registry_write_approved:
+        description: "An approved non-production registry and retained generated subject are authorized"
+        required: true
+        type: boolean
+        default: false
+      authentication:
+        description: "Credential type configured in the protected environment"
+        required: true
+        type: choice
+        options:
+          - basic
+          - bearer
+
+permissions:
+  contents: read
+
+concurrency:
+  group: confluent-schema-live-qualification
+  cancel-in-progress: false
+
+jobs:
+  compatibility:
+    name: Opt-in registry compatibility contract
+    if: ${{ inputs.registry_write_approved }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: confluent-schema-registry-qualification
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.94.1
+      - name: Run the approved live registry contract
+        run: cargo test -p rustee-events-schema-confluent --test confluent_live_contract --locked -- --ignored
+        env:
+          RUSTEE_CONFLUENT_SCHEMA_REGISTRY_LIVE: "1"
+          RUSTEE_CONFLUENT_SCHEMA_REGISTRY_URL: ${{ secrets.RUSTEE_CONFLUENT_SCHEMA_REGISTRY_URL }}
+          RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_KEY: ${{ inputs.authentication == 'basic' && secrets.RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_KEY || '' }}
+          RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_SECRET: ${{ inputs.authentication == 'basic' && secrets.RUSTEE_CONFLUENT_SCHEMA_REGISTRY_API_SECRET || '' }}
+          RUSTEE_CONFLUENT_SCHEMA_REGISTRY_BEARER_TOKEN: ${{ inputs.authentication == 'bearer' && secrets.RUSTEE_CONFLUENT_SCHEMA_REGISTRY_BEARER_TOKEN || '' }}

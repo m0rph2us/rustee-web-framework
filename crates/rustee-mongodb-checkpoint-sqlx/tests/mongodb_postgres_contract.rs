@@ -7,7 +7,8 @@ use rustee_mongodb::{
     next_change_until, readiness, shutdown,
 };
 use rustee_mongodb_checkpoint_sqlx::{
-    CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL, PostgresChangeStreamCheckpointStore,
+    CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL,
+    CHANGE_STREAM_CHECKPOINT_RESUME_TOKEN_BOUND_MIGRATION_SQL, PostgresChangeStreamCheckpointStore,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
@@ -32,6 +33,10 @@ async fn pool() -> PgPool {
 
 async fn reset_checkpoints(pool: &PgPool) {
     sqlx::raw_sql(CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(CHANGE_STREAM_CHECKPOINT_RESUME_TOKEN_BOUND_MIGRATION_SQL)
         .execute(pool)
         .await
         .unwrap();

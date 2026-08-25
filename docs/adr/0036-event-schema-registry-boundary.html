@@ -1,103 +1,42 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0036: Event Schema Registry Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0036</div>
-        <h1>Event Schema Registry Boundary</h1>
-        <p class="lead">schema artifact의 typed identity와 registry verification을 제공하되, provider protocol과 rollout authority는 application deployment에 둡니다.</p>
-        <p class="meta">Status: Accepted | Date: 2026-08-04</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0036: Event Schema Registry Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          versioned event envelope의 decode/upcast contract만으로 producer와 consumer fleet의 schema change를 안전하게 배포할 수는 없습니다.
-          subject, version, compatibility direction, source artifact, registry response와 retained record의 rollout window를 함께 검토해야 합니다.
-          반면 framework가 특정 registry endpoint를 고정하거나 consumer loop에서 schema를 자동 등록하면 credential ownership, startup failure,
-          broker wire format, topic lifecycle과 release ordering을 hidden side effect로 만들게 됩니다.
+          Schema registry publication must verify an exact source-controlled artifact and declared
+          policy without pretending to prove semantic compatibility or control Kafka.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-events-schema</code>는 <code>Event</code> type에 묶인 JSON Schema artifact, format-plus-exact-source SHA-256 fingerprint,
-            stable subject/version catalog와 object-safe <code>EventSchemaRegistry</code> adapter contract를 제공합니다. catalog는 duplicate version과
-            subject의 event type/declared compatibility policy drift를 거부하고, registry acknowledgement의 subject/version/fingerprint가 local artifact와
-            정확히 일치하는지만 확인합니다.
-          </p>
-        </div>
         <p>
-          registry adapter implementation, remote compatibility semantics, endpoint/credential/ACL, publication and verification timing, topic mapping,
-          schema ID/header serialization, consumer-first rollout과 rollback authority는 application deployment가 소유합니다. Rustee는 schema를 자동 publish하지 않고,
-          Kafka topic을 만들거나, source offset을 변경하거나, JSON Schema 두 문서의 의미적 compatibility를 추론하지 않습니다.
-        </p>
-        <p>
-          첫 provider adapter인 optional <code>rustee-events-schema-confluent</code>는 Confluent-compatible REST endpoint의 effective policy를
-          local declaration과 equality check하고 exact lookup, absent artifact registration, exact relookup을 수행합니다. external endpoint는 HTTPS이고
-          request는 bounded하며 Basic/bearer credential은 Debug surface에서 redacted됩니다. 이 adapter도 registry policy mutation, Kafka wire header,
-          serializer, topic/offset management와 automatic retry를 제공하지 않습니다.
+          Use typed JSON Schema artifacts with exact fingerprints and stable subject/version
+          catalogs. The Confluent adapter checks effective policy, exact lookup, absent
+          registration, and exact relookup through bounded redacted transport.
         </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>artifact는 source control과 typed Rust event version에서 함께 review됩니다. format identifier와 exact source bytes가 fingerprint input이므로 whitespace-only 변경도 explicit review가 필요합니다.</li>
-          <li>declared <code>Backward</code>, <code>Forward</code>, <code>Full</code>, <code>None</code> policy는 local catalog에서 stable하지만, semantic enforcement는 remote registry adapter와 provider qualification의 책임입니다.</li>
-          <li>registry success는 older payload upcast, retained record replay, Kafka offset correctness 또는 external side-effect exactly-once를 보장하지 않습니다. consumer-first deployment, replay dry-run과 idempotency evidence가 계속 필요합니다.</li>
-          <li>adapter error detail은 generic framework error text/metric label로 흘리지 않습니다. application은 provider audit, credential rotation과 incident retention을 별도 policy로 정합니다.</li>
-          <li>현재 artifact format은 JSON Schema입니다. Avro, Protobuf 또는 provider-specific normalization은 별도 typed contract와 compatibility evidence가 준비된 뒤 검토합니다.</li>
-          <li>Confluent adapter는 local HTTP contract로 policy mismatch, lookup/register/relookup과 credential redaction을 검증합니다. explicit ignored live qualification은 approved non-production registry의 unique retained subject와 effective <code>BACKWARD</code> policy를 요구합니다. 실제 provider version, ACL/credential rotation, outage, multi-region behavior와 consumer rollout은 deployment qualification이 필요합니다.</li>
-        </ul>
+        <p>
+          The adapter does not publish events, inject headers, create topics, move offsets, or infer
+          compatibility. Consumer-first rollout, rollback, replay, and live provider evidence remain
+          deployment-owned.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>Kafka producer가 provider registry를 직접 호출하고 header를 자동 삽입</td><td>publish latency, credential, provider wire format과 failure policy를 framework core에 고정하므로 채택하지 않습니다.</td></tr>
-            <tr><td>framework가 두 JSON Schema를 비교해 compatibility를 판정</td><td>provider semantics와 language feature 차이를 일반 비교기로 잘못 단순화하므로 채택하지 않습니다.</td></tr>
-            <tr><td>consumer handler가 시작될 때 schema를 등록</td><td>read path에 external mutation과 startup ordering을 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>schema fingerprint에 parsed JSON canonical form을 사용</td><td>source artifact의 실제 변경과 provider normalization 차이를 감추므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="./0007-event-stream-integration-boundary.html">ADR 0007</a>, <a href="../event-schema-operations.html">event schema runbook</a>, and <a href="../events.html">Kafka event stream</a>.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

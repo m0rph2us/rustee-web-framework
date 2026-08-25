@@ -1,189 +1,123 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee 출하 계획과 지원 정책</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Release Plan and Support Policy</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">기능 로드맵</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./roadmap.html">Roadmap</a
+          ><a href="./support-matrix.html">Support matrix</a
+          ><a href="./qualification-register.html">Qualification</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Delivery Plan</div>
-        <h1>작은 core를 먼저 출하하고, 통합은 증명된 만큼 지원합니다</h1>
+        <div class="eyebrow">Release Plan and Support Policy</div>
+        <h1>Release a Small Core First; Support Integrations Only to the Proven Level</h1>
         <p class="lead">
-          Rustee는 모든 데이터베이스, broker, AI provider, enterprise topology를 한 번에 완성해야 v1이 되는 프로젝트가 아닙니다.
-          framework baseline과 선택적 adapter의 지원 약속을 분리하고, 각 약속에는 같은 수준의 검증과 운영 책임을 요구합니다.
+          Rustee release claims are evidence-based. Optional adapters retain their own support level
+          and do not inherit production support from the core.
         </p>
       </section>
-
       <section>
-        <h2>계획의 기준</h2>
-        <div class="decision">
-          <p>
-            이 문서는 출시 순서와 지원 선언의 단일 기준입니다. <a href="./roadmap.html">기능 로드맵</a>은 구현 항목과
-            완료 상태를, <a href="./implementation-review.html">구현 계획 재검토</a>는 현재 공백과 다음 작업을,
-            <a href="./release-checklist.html">release checklist</a>는 clean source부터 tag, publish까지의 실행 절차를 기록합니다.
-            문서가 다르면 이 문서의 출하 게이트를 우선하고 같은 변경에서 정정합니다.
-          </p>
-        </div>
-        <ul>
-          <li><strong>v1은 framework baseline의 안정성 약속입니다.</strong> 선택적 adapter나 enterprise deployment를 모두 포함한다는 뜻이 아닙니다.</li>
-          <li><strong>공통 facade를 억지로 만들지 않습니다.</strong> database, queue, event, AI provider의 서로 다른 acknowledgement, transaction, retry 의미는 provider별 crate와 contract에 남깁니다.</li>
-          <li><strong>기능은 코드가 아니라 증거로 승격합니다.</strong> real backend contract, failure policy, lifecycle, observability, runbook, version matrix가 있어야 지원 상태가 올라갑니다.</li>
-          <li><strong>enterprise는 edition이 아니라 qualification입니다.</strong> cluster, multi-tenant, cloud, regulated environment는 workload별 ADR과 deployment evidence가 있을 때만 선언합니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>지원 단계</h2>
+        <h2>Support Levels</h2>
         <table>
           <thead>
-            <tr><th>단계</th><th>의미</th><th>필수 증거</th></tr>
+            <tr>
+              <th>Level</th>
+              <th>Meaning</th>
+            </tr>
           </thead>
           <tbody>
-            <tr><td>Experimental</td><td>API와 deployment model이 변할 수 있는 탐색 단계입니다.</td><td>unit/in-process test, 명시적인 비목표와 위험 문서</td></tr>
-            <tr><td>Contract-verified</td><td>특정 provider version의 핵심 happy path와 실패 경계를 실제 transport/backend에서 확인했습니다.</td><td>pinned backend contract, cancellation/retry 또는 failure test, redacted diagnostics</td></tr>
-            <tr><td>Supported</td><td>사용자가 production adoption을 판단할 수 있는 공식 adapter입니다.</td><td>지원 version matrix, readiness/lifecycle, bounded observability, outage/duplicate contract, upgrade/rollback 및 operator runbook</td></tr>
-            <tr><td>Enterprise-qualified</td><td>특정 topology와 조직 정책에서 추가 검증을 마친 Supported adapter입니다.</td><td>topology ADR, TLS/IAM/credential/tenant threat model, load or soak evidence, disaster/reconciliation procedure</td></tr>
-          </tbody>
-        </table>
-        <p>
-          이 단계는 crate의 semver 안정성과 별개입니다. pre-1.0 crate는 API를 바꿀 수 있지만, 이미 발표한 operational
-          guarantee를 문서 없이 약화시키지 않습니다. Supported 또는 Enterprise-qualified 선언은 release note와
-          <a href="./testing.html">검증 매트릭스</a>를 동시에 갱신해야 합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>출하 트랙</h2>
-        <table>
-          <thead>
-            <tr><th>트랙</th><th>범위</th><th>현재 우선순위</th><th>출하 조건</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>F0: Release governance</td><td>public API inventory, compatibility, examples, dependency/release provenance</td><td>진행 중</td><td>MSRV/stable CI, doctest/example/link check, changelog/migration template, license/advisory/SBOM policy, release checklist</td></tr>
-            <tr><td>F1: Framework baseline v1</td><td>core, router, server, middleware, config, lifecycle, observability, static delivery, explicit optional OpenAPI document/security metadata with static OAuth2 and <code>mutualTLS</code> metadata/default/operation override, optional <code>routes!</code> builder and <code>FromHeader</code> derive</td><td>F0 다음</td><td>documented HTTP/1.1 origin contract, canonical proxy deployment contract, graceful shutdown and redaction regression, explicit OpenAPI route/schema/security-metadata/OAuth/mutual-TLS default-override consistency, macro runtime/valid/misuse compile contract, public API freeze and semver baseline</td></tr>
-            <tr><td>I1: Persistence and security</td><td>PostgreSQL/Redis/MongoDB, header API-key auth/OIDC/session, tenant isolation</td><td>F1과 병렬</td><td>provider별 failure policy, bounded active/retired API-key pepper dual-read, PostgreSQL keyed fingerprint-store persistence/atomic audit와 raw-key-free active/unexpired-source metadata clone, client-key/pepper replacement fingerprint derivation/backfill, migration/restore procedure, real backend security and outage contract; unsupported topology는 명시</td></tr>
-            <tr><td>I2: Delivery and events</td><td>NATS, Redis Streams, RabbitMQ, SQS, Kafka, outbox/inbox</td><td>I1 뒤</td><td>duplicate/ack-loss/outage/drain evidence, DLQ replay and reconciliation runbook, topology drift or readiness audit, provider-specific version matrix</td></tr>
-            <tr><td>I3: AI application</td><td>provider adapter, streaming, tool, RAG, budget, audit, bounded evaluation with optional reference-only job and PostgreSQL run ledger, exact-key response cache, batch submission plus artifact-reconciliation control plane with optional PostgreSQL artifact ledger and explicit OpenAI Batch file/lifecycle/row-structure adapter, MCP OAuth client/resource-server adapters</td><td>I2 뒤</td><td>live-provider opt-in contract, tenant authorization, spend reservation/reconciliation, audit retention/retry, document/vector source contract, evaluation grader/catalog authorization/report retention/fresh-run governance, cache key/erase/retention/outage governance, batch catalog/artifact authorization, row-idempotency/operator procedure/model-response/billing reconciliation, PostgreSQL outage/recovery, authorization-server and canonical-proxy evidence</td></tr>
-            <tr><td>E: Enterprise topology</td><td>cluster, sharding, read/write split, multi-region, direct protocol expansion</td><td>각 I track의 Supported 뒤</td><td>workload ADR, topology compatibility matrix, credential/TLS/tenant model, performance and recovery evidence</td></tr>
+            <tr>
+              <td>Experimental</td>
+              <td>
+                Public design/implementation exists, but a complete compatibility matrix is absent.
+              </td>
+            </tr>
+            <tr>
+              <td>Supported</td>
+              <td>
+                Documented contract, supported-version matrix, targeted automated tests, operational
+                guidance, and maintainer ownership are present.
+              </td>
+            </tr>
+            <tr>
+              <td>Enterprise-qualified deployment</td>
+              <td>
+                An adopter has selected a provider and topology, then recorded approved
+                recovery/rollback, observability, security review, and on-call evidence for that
+                deployment.
+              </td>
+            </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>v1 경계</h2>
-        <div class="decision">
-          <p>
-            Rustee v1은 F1의 public surface를 안정화하는 release입니다. PostgreSQL, Redis, MongoDB, OIDC, queue,
-            Kafka, AI crate는 독립적으로 Contract-verified에서 Supported로 올라갈 수 있으며, 하나가 미완성이라는 이유로
-            core HTTP framework의 v1을 끝없이 미루지 않습니다.
-          </p>
-        </div>
+        <h2>Release Tracks</h2>
         <ul>
-          <li>v1 hard gate: Rust 1.94.1과 stable에서 Linux CI, core/facade의 public API compatibility baseline, format/lint/unit/wire/doctest/example/link 검증, documented proxy trust/cleartext origin boundary, shutdown/redaction regression입니다.</li>
-          <li>v1 release gate: canonical reverse-proxy deployment contract, public <a href="./migration-guide.html">migration guide</a>/<a href="./release-notes.html">release notes</a>, dependency advisory triage와 reproducible source artifact입니다.</li>
-          <li>v1 비목표: built-in TLS/ACME, HTTP/2, WebSocket upgrade, generic ORM, universal queue facade, automatic schema migration, automatic AI tool loop, cluster control plane입니다. 필요하면 별도 ADR과 feature track으로 진입합니다.</li>
-          <li>macOS/Windows는 every-PR Rust 1.94.1 <code>cargo check --workspace --all-targets</code>와 MCP stdio Rust-fixture lifecycle로 compile compatibility를 확인하는 candidate platform입니다. runtime and container-backed support를 약속하려면 별도 CI evidence와 support policy가 필요합니다.</li>
+          <li>
+            The core track includes the facade, foundational shared packages, core HTTP path,
+            router, server, selected middleware, configuration, observability, OpenAPI, tests, and
+            examples.
+          </li>
+          <li>
+            Integration tracks cover database, Redis, MongoDB, identity, jobs, events, AI, MCP, and
+            edge delivery independently.
+          </li>
+          <li>
+            Security advisories, MSRV changes, supported dependency changes, provider versions, and
+            breaking contracts receive explicit release notes and migration guidance.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>첫 release 기준선</h2>
+        <h2>v1 Boundary</h2>
         <p>
-          2026-08-04 현재 workspace의 첫 intentional source baseline commit은 존재하지만, release tag와 registry publish record는 없습니다.
-          따라서 public API diff를 이전 release와 비교하는 automated semver gate는 아직 실행할 baseline이 없습니다. 이 상태에서는 <code>cargo-semver-checks</code>를
-          억지로 green check로 추가하지 않습니다. clean preflight와 tag/publish의 구체적 실행 순서는
-          <a href="./release-checklist.html">release checklist</a>를 따릅니다.
+          v1 requires a stable documented core API, compatible MSRV policy, focused tests,
+          documentation, source/release evidence, and an intentional support statement. It does not
+          require a framework maintainer to operate every optional provider or an adopter's
+          enterprise topology.
         </p>
-        <ol>
-          <li>첫 source baseline commit은 <a href="./release-inventory.html">release inventory</a>로 publish 후보 crate와 <code>publish = false</code>인 workspace-only crate, public facade와 직접 사용 가능한 leaf crate를 확정합니다. CI는 이 HTML의 structured inventory와 <code>cargo metadata</code>, candidate-only source archive assembly를 대조합니다.</li>
-          <li>첫 <code>v0.1.0</code> source tag와 publish record가 public API baseline이 됩니다. 이전 crate version이 없다면 initial release는 human API review와 required CI evidence로 검토합니다.</li>
-          <li>그 다음 minor/patch release부터 prior tag 또는 prior published version을 baseline으로 <code>cargo-semver-checks</code>를 release gate에 추가합니다. pre-1.0 변경도 release note와 migration guidance 없이 숨기지 않습니다.</li>
-          <li>baseline을 만들기 전에는 official Supported 선언이나 v1 stability promise를 하지 않습니다.</li>
-        </ol>
       </section>
-
       <section>
-        <h2>Dependency Advisory Policy</h2>
+        <h2>Change Control</h2>
         <ul>
-          <li><code>.github/workflows/security-audit.yml</code>은 RustSec advisory database로 current lockfile을 검사합니다. 모든 checked-in workflow의 직접 <code>uses:</code> reference는 full commit SHA와 version comment로 고정하고, Fast PR/release lane의 <code>check-workflow-action-pins.mjs</code>가 mutable tag/branch가 다시 들어오는 것을 차단합니다. 이 검사는 third-party composite action 내부의 transitive reference를 검증하지 않습니다.</li>
-          <li><code>deny.toml</code>과 dedicated CI lane은 all-feature graph의 SPDX license, yanked dependency, wildcard dependency와 unknown registry/git source를 검사합니다. dev/build dependency도 포함합니다. 현재 허용 목록 밖의 license, advisory 또는 source는 CI를 통과할 수 없습니다.</li>
-          <li>CI failure는 publish 전에 해결합니다. <code>deny.toml</code>은 빈 exception 목록을 version-control 하며, advisory 또는 license exception을 허용하지 않습니다. 이 원칙을 바꾸려면 새 ADR, 영향 분석, compensating control, owner와 만료일을 포함한 별도 변경과 release note가 필요합니다.</li>
-          <li>release qualification workflow는 <code>v*</code> tag 또는 manual dispatch에서 stable format/lint/test/doctest, HTML/inventory, native Kafka compile profile과 inventory-approved candidate source archive assembly를 실행하고 모든 publish-candidate <code>.crate</code> source package, <code>SHA256SUMS</code>, all-feature/all-target CycloneDX 1.5 JSON SBOM archive를 각각 90일 보관합니다. first publish 전 local path dependency가 registry에 없으므로 archive assembly는 <code>--no-verify</code>이며, dependency publish 뒤 <code>verify-published-release-candidates.mjs</code>가 registry source consumer compile verification을 수행하는 별도 publish gate입니다.</li>
-          <li>GitHub artifact attestation이 가능한 repository에서는 같은 workflow가 source package checksum subject와 SBOM JSON subject에 keyless provenance를 발행합니다. 이는 crates.io publish를 자동 실행하거나 registry upload identity를 증명하지 않으므로 publish credential owner, release approval, published package checksum 검토는 첫 release gate로 남습니다. 상세 범위는 <a href="./supply-chain.html">공급망과 릴리스 증거</a>를 따릅니다.</li>
+          <li>
+            Update the release inventory, support matrix, release notes, migration guide, and
+            qualification register with a changed framework or deployment claim.
+          </li>
+          <li>
+            Do not promote a framework contract based only on unit tests, a mock, a local container,
+            or a successful compile.
+          </li>
+          <li>
+            Block a generic release on unresolved critical advisories, unreviewed breaking changes,
+            missing provenance, failed required contract lanes, or missing maintainer approval.
+          </li>
+          <li>
+            An Enterprise-qualified deployment claim additionally requires that adopter's
+            <a href="./qualification-register.html">qualification register</a> to pass
+            qualified-record verification with current evidence.
+          </li>
+          <li>
+            Follow the <a href="./release-checklist.html">release checklist</a> for source and
+            publication evidence.
+          </li>
         </ul>
       </section>
-
-      <section>
-        <h2>첫 네 개 milestone</h2>
-        <ol>
-          <li><strong>F0.1 - release evidence를 CI에 고정:</strong> Rust 1.94.1/stable matrix의 format, lint, workspace test/doctest, HTML link, release inventory, direct workflow action SHA pin, candidate-only source archive assembly과 native Kafka compile profile은 required CI job으로 고정했습니다. <code>hello-world</code>, <code>json-api</code>, <code>middleware-example</code>, <code>security-jwt</code>, <code>jobs-example</code>, <code>ai-pipeline</code>은 publish 대상이 아닌 workspace-only public API example으로 같은 compile evidence에 포함하며, JSON/middleware/security/job/AI representative in-process flow도 실행합니다. local job publisher와 recorded AI provider는 production provider qualification을 대체하지 않습니다. tag qualification도 같은 stable preflight를 재실행하고 CycloneDX SBOM, checksum archive와 keyless provenance를 생성합니다. pre-publication local path dependency는 registry에서 아직 해석되지 않으므로 source archive assembly와 post-publication registry consumer compile verification을 분리합니다. 첫 source baseline commit은 존재하지만 source tag와 registry publish approval은 다음 release owner gate입니다.</li>
-          <li><strong>F1.1 - framework baseline 닫기:</strong> canonical Nginx proxy의 spoofed <code>Forwarded</code> overwrite, <code>proxy_cache</code> gzip/identity representation separation, shutdown 중 active request drain과 config parse/schema error redaction contract는 CI에 고정했습니다. opt-in <code>PanicCatchLayer</code>는 pre-response handler panic을 fixed 500으로 redaction하는 in-process/real TCP contract를 추가했습니다. observability는 framework global exporter configuration을 추가하지 않으며 endpoint/credential/sampling/shutdown을 application-owned tracer provider에 둡니다. <a href="./edge-delivery.html">edge delivery policy</a>는 vendor-neutral TLS/cache/purge/compression ownership과 qualification evidence를 정했습니다. 다음은 application panic hook/restart와 chosen CDN deployment contract를 실제 topology에서 확인하는 일입니다.</li>
-          <li><strong>I1.1 - 보안과 저장소의 실패 경계:</strong> external IdP revocation, MongoDB recovery policy, outbox alert/export policy, restore/rotation procedure를 provider별로 닫습니다. MongoDB transaction commit/abort, change-stream checkpoint/shutdown, trusted-context BSON tenant read/update/delete/first-match aggregation boundary와 tenant-field mutation rejection은 replica-set CI에 고정했고, PostgreSQL checkpoint adapter는 opaque token load/upsert/corruption-rejection, database-clock writer-lease contention/renewal/expiry/stale-write rejection과 new-client resume-to-next-event combined contract를 고정했습니다. CI는 stopped replica set 및 stopped checkpoint store의 bounded readiness failure와 restart 뒤 recovery도 확인합니다. raw driver, aggregation <code>$lookup</code>/<code>$unionWith</code>, change-stream tenant access review는 아직 release gate이며, lease owner identity와 renewal scheduler는 application deployment가 소유합니다.</li>
-          <li><strong>I2.1 - delivery reliability:</strong> RabbitMQ broker outage and management TLS/ACL, SQS IAM/KMS and real AWS opt-in, Redis Streams reclaim/retention, Kafka consumer delivery collector의 protected scrape/alert ownership과 source-settlement interpretation, retained-subject를 남기는 explicit Confluent Schema Registry live qualification의 provider/version/credential/ACL/outage와 consumer-first rollout/replay/external idempotency, PostgreSQL delayed-retry relay migration, alert/backoff, restore operator procedure를 각자의 contract로 검증합니다.</li>
-        </ol>
-        <p>
-          AI live provider/vector qualification과 enterprise topology는 I1/I2의 evidence를 소모하지 않는 독립 track으로 유지합니다.
-          provider 수를 추가하거나 추상화를 넓히는 일은 위 gate가 통과된 뒤에만 우선순위를 얻습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Outbox 운영 신호</h2>
-        <p>
-          <code>rustee-outbox-observability-prometheus</code>는 bounded relay collector의 pass/outcome/row-count/duration을 explicit
-          Prometheus text response로 노출합니다. 이는 I1의 exporter 경계를 제공하지만 alert threshold, scrape authorization,
-          migration/restore, external side-effect idempotency와 broader outage evidence를 자동으로 Supported로 올리지는 않습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>2026-08-04 출하 순서 확인</h2>
-        <p>
-          이번 재검토에서 F0/P0가 가장 앞선다는 점을 다시 확인했습니다. workspace의 <code>main</code>에는 첫 source baseline commit이 있지만
-          release inventory와 CI만으로 public API semver comparison이나 publish approval이 시작되지는 않았습니다.
-          F1은 optional database, broker, AI adapter의 완료를 기다리지 않고 진행합니다. F1 뒤 I1/I2는 모든 adapter를 한 번에
-          Supported로 올리지 않고 owner가 선택한 하나의 reference deployment부터 provider evidence를 쌓습니다. Kafka의 delayed retry,
-          schema boundary, delivery observer와 consumer readiness는 Contract-verified code evidence이며 Confluent/provider outage,
-          rollout, replay와 external side-effect evidence를 대체하지 않습니다. AI Batch의 typed row/result conversion과 artifact runbook은
-          I3의 Experimental 근거이며 provider 비용, tenant authorization, partial-result/billing reconciliation을 자동 승인하는 근거가 아닙니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>변경 통제</h2>
-        <ul>
-          <li>새 crate나 provider는 먼저 Experimental로 문서화하고, “누가 어떤 인프라를 운영하는가”를 명시합니다.</li>
-          <li>Supported/Enterprise-qualified 승격, v1 public API freeze, 지원 platform 변경은 <a href="./adr/index.html">ADR</a>와 이 문서를 함께 갱신합니다.</li>
-          <li>release blocker는 <a href="./implementation-review.html">구현 계획 재검토</a>와 <a href="./support-matrix.html">지원 현황 매트릭스</a>의 표에 반영합니다. 해결되지 않은 위험을 status 문구로 감추지 않습니다.</li>
-          <li>AI 에이전트는 작업 시작 시 이 문서, 구현 재검토, 영향 영역 문서를 읽고 완료 시 status와 evidence를 갱신합니다.</li>
-        </ul>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this plan whenever release scope, support level, hard gate, or milestone ordering changes.</p>
+        <p>
+          Last updated: 2026-08-20. Update this plan when support levels, release tracks, or v1
+          criteria change.
+        </p>
       </footer>
     </main>
   </body>

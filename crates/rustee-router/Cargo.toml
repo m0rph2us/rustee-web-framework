@@ -20,5 +20,9 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
+[[bench]]
+name = "route_dispatch"
+harness = false
+
 [lints]
 workspace = true

@@ -1,6 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 const workflowDirectory = new URL("../.github/workflows/", import.meta.url);
-const workflowNames = (await readdir(workflowDirectory)).filter((name) => name.endsWith(".yml"));
+const workflowNames = (await readdir(workflowDirectory))
+  .filter((name) => /\.ya?ml$/u.test(name))
+  .sort();
 const unpinned = [];
 
 for (const workflowName of workflowNames) {

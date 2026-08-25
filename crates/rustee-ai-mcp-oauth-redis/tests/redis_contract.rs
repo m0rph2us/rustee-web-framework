@@ -98,7 +98,13 @@ async fn redis_persists_encrypted_mcp_oauth_state_and_tokens() {
         .expect("authorization redirect must contain state");
     let mut raw_connection = connection.clone();
     let raw_state: Option<String> = raw_connection
-        .get(format!("{namespace}:{state}"))
+        .get(format!(
+            "rustee:mcp:oauth:transaction-key:v1:{}:{}:{}:{}",
+            namespace.len(),
+            namespace,
+            state.len(),
+            state,
+        ))
         .await
         .unwrap();
     let raw_state = raw_state.expect("transaction envelope must be stored");
@@ -128,7 +134,13 @@ async fn redis_persists_encrypted_mcp_oauth_state_and_tokens() {
 
     let mut raw_connection = connection.clone();
     let raw_tokens: Option<String> = raw_connection
-        .get(format!("{}:{}", token_namespace, key.as_str()))
+        .get(format!(
+            "rustee:mcp:oauth:token-key:v1:{}:{}:{}:{}",
+            token_namespace.len(),
+            token_namespace,
+            key.as_str().len(),
+            key.as_str(),
+        ))
         .await
         .unwrap();
     let raw_tokens = raw_tokens.expect("token envelope must be stored");

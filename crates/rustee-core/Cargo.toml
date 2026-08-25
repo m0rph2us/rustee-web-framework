@@ -13,10 +13,16 @@ futures-util.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+percent-encoding.workspace = true
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded.workspace = true
+tower.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

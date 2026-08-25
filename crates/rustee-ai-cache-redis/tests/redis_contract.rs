@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use rustee_ai::{ChatResponse, Usage};
 use rustee_ai_cache::{AiCacheEntry, AiCacheKey, AiResponseCache};
-use rustee_ai_cache_redis::RedisAiResponseCache;
+use rustee_ai_cache_redis::{RedisAiResponseCache, RedisAiResponseCacheError};
 use rustee_redis::{RedisConfig, connect};
 use uuid::Uuid;
 
@@ -51,5 +51,25 @@ async fn redis_cache_round_trips_and_exact_invalidation_removes_only_the_selecte
     assert_eq!(loaded.response().usage().total_tokens(), 10);
 
     cache.invalidate(key()).await.unwrap();
+    assert!(cache.get(key()).await.unwrap().is_none());
+
+    let rejected_response = ChatResponse::new(
+        "response-outside-retention-policy",
+        "provider-model",
+        "this response must not reach Redis",
+        [],
+        Usage::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        cache
+            .put(
+                key(),
+                AiCacheEntry::new(rejected_response).unwrap(),
+                Duration::from_secs(24 * 60 * 60 + 1),
+            )
+            .await,
+        Err(RedisAiResponseCacheError::TtlExceedsMaximum)
+    ));
     assert!(cache.get(key()).await.unwrap().is_none());
 }

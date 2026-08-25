@@ -8,6 +8,7 @@ repository.workspace = true
 description = "PostgreSQL transactional outbox relay and inbox deduplication for Rustee envelopes"
 
 [dependencies]
+futures-util.workspace = true
 rustee-events = { path = "../rustee-events", version = "0.1.0" }
 rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
 sqlx.workspace = true
@@ -16,7 +17,6 @@ tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-futures-util.workspace = true
 serde.workspace = true
 
 [lints]

@@ -1,0 +1,260 @@
+//! `PostgreSQL` persistence for AI evaluation-run reservations and reconciliation.
+
+use std::fmt;
+
+use futures_util::future::BoxFuture;
+use rustee_ai_eval::{
+    AiEvaluationReference, AiEvaluationRunLedger, AiEvaluationRunReservation,
+    MAX_EVALUATION_IDENTIFIER_BYTES,
+};
+use sqlx::{PgPool, Row};
+
+use crate::{PendingAiEvaluationRun, PendingAiEvaluationRunLimit};
+
+/// Durable `PostgreSQL` implementation of [`AiEvaluationRunLedger`].
+///
+/// `(scope, run_key)` is the primary key. Repeating the same exact catalog reference is
+/// idempotent; reusing the scoped run key for another catalog fails instead of overwriting the
+/// original record. A failure after reservation remains pending so the coordinator cannot reload
+/// the suite or repeat provider usage automatically.
+#[derive(Clone)]
+pub struct PostgresAiEvaluationRunLedger {
+    pool: PgPool,
+}
+
+impl PostgresAiEvaluationRunLedger {
+    /// Creates a durable run ledger from an application-owned `PostgreSQL` pool.
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// Returns pending run references in oldest-first order for application reconciliation.
+    ///
+    /// This method never loads catalogs, calls models, grades completions, changes status, or
+    /// schedules a retry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresAiEvaluationRunLedgerError`] when storage is unavailable or metadata is
+    /// invalid.
+    pub async fn pending(
+        &self,
+        limit: PendingAiEvaluationRunLimit,
+    ) -> Result<Vec<PendingAiEvaluationRun>, PostgresAiEvaluationRunLedgerError> {
+        let limit = i64::try_from(limit.get())
+            .map_err(|_| PostgresAiEvaluationRunLedgerError::InvalidMetadata)?;
+        let rows = sqlx::query(
+            "SELECT scope, catalog_id, run_key \
+             FROM rustee_ai_evaluation_run_ledger WHERE status = 'pending' \
+             ORDER BY reserved_at ASC, scope ASC, run_key ASC LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+        rows.iter().map(pending_run_from_row).collect()
+    }
+
+    async fn reserve_run(
+        &self,
+        reference: AiEvaluationReference,
+    ) -> Result<AiEvaluationRunReservation, PostgresAiEvaluationRunLedgerError> {
+        validate_reference(&reference)?;
+        let result = sqlx::query(
+            "INSERT INTO rustee_ai_evaluation_run_ledger (scope, run_key, catalog_id, status) \
+             VALUES ($1, $2, $3, 'pending') \
+             ON CONFLICT (scope, run_key) DO NOTHING",
+        )
+        .bind(reference.scope())
+        .bind(reference.run_key())
+        .bind(reference.catalog_id())
+        .execute(&self.pool)
+        .await
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+        if result.rows_affected() == 1 {
+            return Ok(AiEvaluationRunReservation::Reserved);
+        }
+        self.classify_existing(&reference).await
+    }
+
+    async fn classify_existing(
+        &self,
+        reference: &AiEvaluationReference,
+    ) -> Result<AiEvaluationRunReservation, PostgresAiEvaluationRunLedgerError> {
+        let row = self.find_existing(reference).await?;
+        let status = row
+            .try_get::<String, _>("status")
+            .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+        match status.as_str() {
+            "pending" => Ok(AiEvaluationRunReservation::Pending),
+            "completed" => Ok(AiEvaluationRunReservation::Completed),
+            _ => Err(PostgresAiEvaluationRunLedgerError::InvalidMetadata),
+        }
+    }
+
+    async fn record_run_completed(
+        &self,
+        reference: AiEvaluationReference,
+    ) -> Result<(), PostgresAiEvaluationRunLedgerError> {
+        validate_reference(&reference)?;
+        let result = sqlx::query(
+            "UPDATE rustee_ai_evaluation_run_ledger \
+             SET status = 'completed', completed_at = COALESCE(completed_at, clock_timestamp()) \
+             WHERE scope = $1 AND run_key = $2 AND catalog_id = $3 \
+               AND status IN ('pending', 'completed')",
+        )
+        .bind(reference.scope())
+        .bind(reference.run_key())
+        .bind(reference.catalog_id())
+        .execute(&self.pool)
+        .await
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+        if result.rows_affected() == 1 {
+            return Ok(());
+        }
+        self.classify_completion_conflict(&reference).await
+    }
+
+    async fn classify_completion_conflict(
+        &self,
+        reference: &AiEvaluationReference,
+    ) -> Result<(), PostgresAiEvaluationRunLedgerError> {
+        self.find_existing(reference).await?;
+        Err(PostgresAiEvaluationRunLedgerError::MissingReservation)
+    }
+
+    async fn find_existing(
+        &self,
+        reference: &AiEvaluationReference,
+    ) -> Result<sqlx::postgres::PgRow, PostgresAiEvaluationRunLedgerError> {
+        let row = sqlx::query(
+            "SELECT catalog_id, status FROM rustee_ai_evaluation_run_ledger \
+             WHERE scope = $1 AND run_key = $2",
+        )
+        .bind(reference.scope())
+        .bind(reference.run_key())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+        let Some(row) = row else {
+            return Err(PostgresAiEvaluationRunLedgerError::MissingReservation);
+        };
+        validate_matching_reference(&row, reference)?;
+        Ok(row)
+    }
+}
+
+impl fmt::Debug for PostgresAiEvaluationRunLedger {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PostgresAiEvaluationRunLedger")
+            .field("pool", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl AiEvaluationRunLedger for PostgresAiEvaluationRunLedger {
+    type Error = PostgresAiEvaluationRunLedgerError;
+
+    fn reserve(
+        &self,
+        reference: AiEvaluationReference,
+    ) -> BoxFuture<'static, Result<AiEvaluationRunReservation, Self::Error>> {
+        let ledger = self.clone();
+        Box::pin(async move { ledger.reserve_run(reference).await })
+    }
+
+    fn record_completed(
+        &self,
+        reference: AiEvaluationReference,
+    ) -> BoxFuture<'static, Result<(), Self::Error>> {
+        let ledger = self.clone();
+        Box::pin(async move { ledger.record_run_completed(reference).await })
+    }
+}
+
+/// Durable evaluation-run ledger failure with redacted debug output.
+#[derive(thiserror::Error)]
+pub enum PostgresAiEvaluationRunLedgerError {
+    /// Stored identifiers or state were invalid.
+    #[error("PostgreSQL AI evaluation run ledger metadata is invalid")]
+    InvalidMetadata,
+    /// A scoped run key was reused for a different catalog identity.
+    #[error("AI evaluation run key conflicts with an existing catalog identity")]
+    IdentityConflict,
+    /// An exact reservation was absent before completion recording or duplicate verification.
+    #[error("AI evaluation run reservation is missing")]
+    MissingReservation,
+    /// `PostgreSQL` storage did not complete; source detail remains available to application logs.
+    #[error("PostgreSQL AI evaluation run ledger storage failed")]
+    Storage(#[source] sqlx::Error),
+}
+
+impl PostgresAiEvaluationRunLedgerError {
+    fn storage(error: sqlx::Error) -> Self {
+        Self::Storage(error)
+    }
+}
+
+impl fmt::Debug for PostgresAiEvaluationRunLedgerError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::InvalidMetadata => "InvalidMetadata",
+            Self::IdentityConflict => "IdentityConflict",
+            Self::MissingReservation => "MissingReservation",
+            Self::Storage(_) => "Storage",
+        };
+        formatter
+            .debug_tuple("PostgresAiEvaluationRunLedgerError")
+            .field(&name)
+            .finish()
+    }
+}
+
+fn pending_run_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<PendingAiEvaluationRun, PostgresAiEvaluationRunLedgerError> {
+    let scope = row
+        .try_get::<String, _>("scope")
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+    let catalog_id = row
+        .try_get::<String, _>("catalog_id")
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+    let run_key = row
+        .try_get::<String, _>("run_key")
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+    let reference = AiEvaluationReference::new(scope, catalog_id, run_key)
+        .map_err(|_| PostgresAiEvaluationRunLedgerError::InvalidMetadata)?;
+    Ok(PendingAiEvaluationRun::from_reference(reference))
+}
+
+fn validate_reference(
+    reference: &AiEvaluationReference,
+) -> Result<(), PostgresAiEvaluationRunLedgerError> {
+    for value in [
+        reference.scope(),
+        reference.catalog_id(),
+        reference.run_key(),
+    ] {
+        if value.is_empty() || value.contains('\0') || value.len() > MAX_EVALUATION_IDENTIFIER_BYTES
+        {
+            return Err(PostgresAiEvaluationRunLedgerError::InvalidMetadata);
+        }
+    }
+    Ok(())
+}
+
+fn validate_matching_reference(
+    row: &sqlx::postgres::PgRow,
+    reference: &AiEvaluationReference,
+) -> Result<(), PostgresAiEvaluationRunLedgerError> {
+    let catalog_id = row
+        .try_get::<String, _>("catalog_id")
+        .map_err(PostgresAiEvaluationRunLedgerError::storage)?;
+    if catalog_id == reference.catalog_id() {
+        Ok(())
+    } else {
+        Err(PostgresAiEvaluationRunLedgerError::IdentityConflict)
+    }
+}

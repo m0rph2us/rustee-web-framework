@@ -1,86 +1,43 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0050: PostgreSQL API-key Store</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0050: PostgreSQL API-Key Store</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../testing.html">Test</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0050 · Accepted · 2026-08-04</div>
-        <h1>PostgreSQL keyed API-key store</h1>
-        <p class="lead">optional SQLx adapter가 fingerprint-only credential record, rotation/revocation과 successful-auth audit을 database transaction으로 제공합니다.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0050: PostgreSQL Keyed API-Key Store</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          ADR 0049의 generic store boundary는 raw credential exposure를 줄이지만, application마다 last-used update와 audit append를 따로 구현하면
-          partial success, duplicate fingerprint overwrite, expired/revoked key acceptance가 생길 수 있습니다. PostgreSQL은 Rustee의 existing SQLx support line에
-          포함되어 있어 concrete reference adapter가 가장 작은 운영 증거가 됩니다.
+          The generic fingerprint-store contract needs an optional operational PostgreSQL
+          implementation with safe rotation and audit behavior.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <ul>
-          <li><code>rustee-auth-sqlx</code>는 optional crate입니다. application이 <code>API_KEY_STORE_MIGRATION_SQL</code>을 deployment migration sequence에 넣으며 HTTP startup에서 migration을 실행하지 않습니다.</li>
-          <li>credential row에는 32-byte fingerprint, serialized <code>Principal</code>, active/revoked state, optional expiry, created/revoked/last-used metadata만 저장합니다. raw API key, pepper, header name은 schema와 adapter API에 없습니다.</li>
-          <li><code>authenticate</code>는 database clock으로 active/expiry condition을 만족하는 row 하나를 update하고 principal을 읽은 뒤 success audit row를 append하고 commit합니다. 어느 단계든 실패하면 sanitized unavailable response가 되고 successful authentication을 반환하지 않습니다.</li>
-          <li>unknown, revoked, expired fingerprint는 rejected result이며 audit row를 만들지 않습니다. success audit은 fingerprint가 아니라 opaque record UUID만 참조합니다.</li>
-          <li><code>register</code>는 duplicate fingerprint를 overwrite하지 않습니다. <code>clone_active_record</code>는 replacement fingerprint에 database-clock active/unexpired source principal/expiry를 lock-protected transaction으로 copy하고 source/replacement audit을 만들지 않습니다. <code>rotate</code>도 database-clock active/unexpired previous record만 one transaction에서 revoke하며, <code>revoke</code>는 idempotent state transition입니다.</li>
-          <li>adapter는 PostgreSQL restore/outage, migration ordering, backup access, serialized principal evolution, retention, RLS policy, pepper/KMS dual-read migration과 client-key issuance를 소유하지 않습니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Consequences</h2>
-        <ul>
-          <li>application은 auth layer와 PostgreSQL store를 바로 조합할 수 있고 client key plaintext를 database write path로 전달하지 않습니다.</li>
-          <li>rotation API는 no-overlap replacement를 제공하고, <code>clone_active_record</code>는 authorized application flow가 derived fingerprint만 전달하는 overlap migration을 돕습니다. deployment는 retained window, replacement fingerprint derivation/backfill과 old record revocation을 명시적으로 수행합니다.</li>
-          <li>stored principal JSON은 application-owned identity data입니다. role/scope/tenant semantics 또는 schema evolution을 변경할 때 migration, access review, rollback plan을 같이 검증합니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>generic <code>rustee-sqlx</code> crate에 identity schema를 추가</td><td>pool/lifecycle helper와 identity storage ownership을 섞으므로 채택하지 않습니다.</td></tr>
-            <tr><td>HTTP startup에서 migration 자동 실행</td><td>privilege, deployment ordering과 rollback control을 server process에 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>unknown attempt도 fingerprint로 audit</td><td>untrusted input retention과 write amplification을 normal authentication path로 만들므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Verification and follow-up</h2>
         <p>
-          PostgreSQL 16 container contract는 active last-used/audit atomicity, duplicate fingerprint non-overwrite, expired/revoked rejection,
-          database-clock active/unexpired-source only rotation and metadata clone/no clone audit, repeated revocation, stopped database에서 bounded/redacted store readiness failure와 restart 뒤 requalification을 확인합니다. migration/restore drill, backup/RLS access,
-          KMS/pepper rotation, audit retention과 alert owner는 qualification register의 deployment-owned gate입니다.
+          Provide <code>rustee-auth-sqlx</code> with PostgreSQL keyed fingerprint records, bounded
+          readiness, source-overlap metadata cloning, no-overlap rotation/revocation, expiry, and
+          atomic successful-auth audit.
         </p>
       </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../authentication.html">인증과 권한</a>, <a href="../database.html">데이터베이스</a>, <a href="./0005-authentication-and-authorization.html">ADR 0005</a>, and <a href="./0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>.</p>
-      </footer>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Deployment owns migration, database policy, peppers/KMS, principal JSON evolution,
+          retention, backups, and recovery. The store remains optional and fail-closed on
+          unavailability. Its public storage diagnostics retain only a failure category; trusted SQL
+          sources remain available to application handling.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-09.</p></footer>
     </main>
   </body>
 </html>

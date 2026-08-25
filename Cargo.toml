@@ -2,6 +2,8 @@
 members = [
   "crates/rustee",
   "crates/rustee-core",
+  "crates/rustee-json",
+  "crates/rustee-observability-core",
   "crates/rustee-router",
   "crates/rustee-server",
   "crates/rustee-middleware",
@@ -85,6 +87,8 @@ members = [
 default-members = [
   "crates/rustee",
   "crates/rustee-core",
+  "crates/rustee-json",
+  "crates/rustee-observability-core",
   "crates/rustee-router",
   "crates/rustee-server",
   "crates/rustee-middleware",
@@ -193,6 +197,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 opentelemetry = { version = "=0.32.0", default-features = false, features = ["trace"] }
 opentelemetry_sdk = { version = "=0.32.1", default-features = false, features = ["trace"] }
+percent-encoding = "2.3"
 proc-macro-crate = "=3.5.0"
 proc-macro2 = "=1.0.107"
 proptest = "1.11.0"

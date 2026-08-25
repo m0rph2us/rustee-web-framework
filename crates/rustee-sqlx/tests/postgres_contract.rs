@@ -46,7 +46,7 @@ async fn pool_connects_and_executes_the_readiness_query() {
     let pool = connect(&database_url(), PoolConfig::default())
         .await
         .unwrap();
-    readiness(&pool).await.unwrap();
+    readiness(&pool, Duration::from_secs(1)).await.unwrap();
     let answer: i32 = sqlx::query_scalar("SELECT 40 + 2")
         .fetch_one(&pool)
         .await

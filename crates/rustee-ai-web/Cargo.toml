@@ -8,16 +8,18 @@ repository.workspace = true
 description = "SSE and NDJSON HTTP responses for Rustee AI streams"
 
 [dependencies]
+async-stream.workspace = true
 bytes.workspace = true
-futures-util.workspace = true
 http.workspace = true
 rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
+serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
+futures-util.workspace = true
 http-body-util.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 
 [lints]

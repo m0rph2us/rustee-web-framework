@@ -1,3 +1,5 @@
+//! Compile-checked in-memory durable job registration and worker example.
+
 use std::{
     convert::Infallible,
     sync::{Arc, Mutex},
@@ -6,6 +8,7 @@ use std::{
 use futures_util::future::BoxFuture;
 use rustee_jobs::{
     DeliveryAction, Job, JobClient, JobContext, JobEnvelope, JobMessage, JobPublisher, JobRegistry,
+    JobRegistryRegistrationError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -56,10 +59,12 @@ struct HandledWelcomeEmail {
     attempt: u16,
 }
 
-fn registry(handled: Arc<Mutex<Vec<HandledWelcomeEmail>>>) -> JobRegistry {
+fn registry(
+    handled: Arc<Mutex<Vec<HandledWelcomeEmail>>>,
+) -> Result<JobRegistry, JobRegistryRegistrationError> {
     let mut registry = JobRegistry::new();
-    registry
-        .register::<SendWelcomeEmail, _>(move |job: SendWelcomeEmail, context: JobContext| {
+    registry.register::<SendWelcomeEmail, _>(
+        move |job: SendWelcomeEmail, context: JobContext| {
             let handled = Arc::clone(&handled);
             async move {
                 handled
@@ -72,9 +77,9 @@ fn registry(handled: Arc<Mutex<Vec<HandledWelcomeEmail>>>) -> JobRegistry {
                     });
                 Ok::<_, Infallible>(())
             }
-        })
-        .expect("the example job name is static and valid");
-    registry
+        },
+    )?;
+    Ok(registry)
 }
 
 #[tokio::main]
@@ -85,13 +90,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     JobClient::new(publisher.clone()).enqueue(&envelope).await?;
 
     let handled = Arc::new(Mutex::new(Vec::new()));
-    let action = registry(Arc::clone(&handled))
-        .dispatch(
-            &publisher
-                .take_payload()
-                .expect("the acknowledged local publisher retained one payload"),
-            1,
-        )
+    let payload = publisher.take_payload().ok_or_else(|| {
+        std::io::Error::other("the acknowledged local publisher retained no payload")
+    })?;
+    let action = registry(Arc::clone(&handled))?
+        .dispatch(&payload, 1)
         .await?;
     assert_eq!(action, DeliveryAction::Acknowledge);
     println!(
@@ -125,6 +128,7 @@ mod tests {
 
         let handled = Arc::new(Mutex::new(Vec::new()));
         let action = registry(Arc::clone(&handled))
+            .unwrap()
             .dispatch(&publisher.take_payload().unwrap(), 2)
             .await
             .unwrap();

@@ -12,6 +12,7 @@ chrono.workspace = true
 chrono-tz.workspace = true
 cron.workspace = true
 rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 rustee-outbox-sqlx = { path = "../rustee-outbox-sqlx", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true

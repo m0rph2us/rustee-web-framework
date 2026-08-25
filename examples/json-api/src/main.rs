@@ -1,3 +1,5 @@
+//! Compile-checked in-memory JSON API example for a Rustee service.
+
 use std::{
     net::SocketAddr,
     sync::atomic::{AtomicU64, Ordering},

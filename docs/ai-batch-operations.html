@@ -1,33 +1,157 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee AI Batch Operations</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header"><div class="site-header-inner"><a class="brand" href="./index.html">Rustee</a><nav class="nav" aria-label="문서"><a href="./design-philosophy.html">철학</a><a href="./architecture.html">구조</a><a href="./database.html">데이터베이스</a><a href="./redis.html">Redis</a><a href="./mongodb.html">MongoDB</a><a href="./authentication.html">인증</a><a href="./queues.html">Queue</a><a href="./events.html">Event</a><a href="./ai.html">AI</a><a href="./testing.html">Test</a><a href="./operations.html">운영</a><a href="./roadmap.html">로드맵</a><a href="./ai-context.html">AI 유지관리</a><a href="./adr/index.html">ADR</a></nav></div></header>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./ai.html">AI</a
+          ><a href="./qualification-register.html">Qualification</a>
+        </nav>
+      </div>
+    </header>
     <main class="page">
-      <section class="hero"><div class="eyebrow">AI Batch Operations</div><h1>Batch artifact reconciliation runbook</h1><p class="lead">OpenAI Batch output/error file을 안전하게 도메인 결과로 반영하고 보존 또는 삭제를 결정하기 위한 application-owned 운영 절차입니다.</p></section>
-      <section><h2>적용 범위</h2><div class="decision"><p>Rustee는 batch 제출과 artifact reservation의 멱등 경계를 제공하지만, 모델 결과의 의미와 외부 side effect의 정확성은 애플리케이션이 소유합니다. 이 문서는 <code>rustee-ai-batch</code>, <code>rustee-ai-batch-jobs</code>, <code>rustee-ai-batch-sqlx</code>, <code>rustee-ai-openai</code>을 함께 쓸 때의 최소 운영 기준입니다.</p></div><ul><li>durable job에는 prompt, raw JSONL, model body, provider error message를 넣지 않습니다.</li><li>artifact ledger에는 scope, catalog ID, run key, output/error role, opaque file ID, reconciliation key만 남습니다.</li><li>결과 row의 도메인 저장은 provider <code>custom_id</code>와 application domain idempotency key를 함께 사용합니다.</li><li><code>Pending</code>은 실패 상태가 아니라 불명확한 상태입니다. framework가 release, replay, delete, refund를 자동 수행하지 않습니다.</li></ul></section>
-      <section><h2>사전 조건</h2><table><thead><tr><th>영역</th><th>운영자가 확인할 것</th></tr></thead><tbody><tr><td>데이터베이스</td><td><code>AI_BATCH_ARTIFACT_LEDGER_MIGRATION_SQL</code>을 deployment migration으로 적용하고, application tenant authorization/RLS와 backup/restore 정책을 검증합니다.</td></tr><tr><td>도메인 ledger</td><td>각 <code>custom_id</code>가 가리키는 business effect를 중복 없이 확인하고 기록하는 transaction 또는 provider idempotency key를 준비합니다.</td></tr><tr><td>provider artifact</td><td>input/output/error file의 owner, 최소 retention 기간, 접근 권한, export 금지 범위, delete 승인자를 정합니다.</td></tr><tr><td>queue</td><td>submission 및 artifact reconciliation job의 idempotency key, retry/DLQ route, alert 기준, 수동 재발행 권한을 정합니다.</td></tr><tr><td>비용</td><td>partial completion, cancelled/expired batch, failed row, provider billing 조회와 domain result의 차이를 분리해 검토할 담당자를 정합니다.</td></tr></tbody></table></section>
-      <section><h2>정상 흐름</h2><ol><li>application이 모델별 request body를 검증해 JSONL을 만들고, 명시적으로 업로드한 뒤 input file ID와 run key를 catalog/receipt에 기록합니다. Rustee <code>ChatRequest</code> Responses row와 non-empty ordered <code>EmbeddingInput</code> Embeddings row는 typed builder를 선택할 수 있지만 provider-only fields는 explicit body로 남습니다.</li><li>provider batch 상태를 application scheduler가 조회합니다. 완료·실패·취소의 판단은 provider snapshot과 서비스 정책을 함께 사용합니다.</li><li>output file 또는 error file을 선택하면 application이 scope, catalog ID, run key, artifact kind, file ID, 새 reconciliation key로 reference-only job을 만듭니다.</li><li>worker는 durable envelope key가 reconciliation key와 정확히 같은지 확인한 뒤 <code>PostgresAiBatchArtifactLedger</code>을 reserve합니다.</li><li>새 <code>Reserved</code> attempt만 tenant authorization 뒤 file을 bounded download하고 structural JSONL parser로 row를 읽습니다. parser가 만든 response body는 application이 명시적으로 소비할 때만 접근하며, Responses row는 explicit <code>into_chat_response()</code> validation을, Embeddings row는 catalog의 expected input count를 주는 <code>into_embeddings(count)</code> validation을 선택할 수 있습니다.</li><li>application processor는 row마다 domain key와 <code>custom_id</code>를 사용해 validation, partial-result policy, transaction, external provider idempotency를 수행합니다.</li><li>모든 의도된 row effect를 확인한 뒤에만 exact artifact reference를 <code>record_reconciled</code>합니다. 중복 delivery는 <code>Reconciled</code>을 받고 artifact를 다시 열지 않습니다.</li><li>application retention policy가 허용할 때만 input/output/error file을 명시적으로 delete하고 provider acknowledgement를 기록합니다.</li></ol></section>
-      <section><h2>Pending 처리</h2><p>다운로드, parser, domain processor, 또는 final record 단계에서 실패하면 reference는 <code>Pending</code>으로 남습니다. 같은 key의 job을 다시 보내도 ledger는 processing을 시작하지 않습니다. 이 규칙은 이미 반영된 row 또는 확인되지 않은 external side effect가 중복되는 것을 막습니다.</p><pre><code>pending reference
-  -&gt; authorize scope and catalog ownership
-  -&gt; inspect provider batch/file availability
-  -&gt; inspect domain records keyed by (domain_key, custom_id)
-  -&gt; classify every intended row: applied, absent, rejected, or unknown
-  -&gt; resolve billing/partial-result policy when relevant
-  -&gt; either retain for manual review, or issue a new reconciliation key
-  -&gt; schedule one new reference-only artifact job</code></pre><p>새 attempt는 기존 <code>scope</code>, catalog ID, run key, artifact kind, file ID를 유지할 수 있지만 reconciliation key는 새 값이어야 합니다. 기존 pending row를 update, delete, release하거나 같은 key를 재사용하지 않습니다.</p></section>
-      <section><h2>Partial Result Policy</h2><ul><li><strong>completed with failed rows:</strong> output/error artifact를 각각 별도 reference로 처리하고, successful row와 failed row의 도메인 policy를 분리합니다.</li><li><strong>cancelled or expired:</strong> provider가 만든 partial artifact를 결과로 가정하지 않습니다. snapshot count, artifact availability, billing, 그리고 domain ledger를 확인합니다.</li><li><strong>malformed or oversize JSONL:</strong> parser failure로 pending을 남기고 raw artifact를 queue/log/cache에 복사하지 않습니다. provider support 또는 explicit application export 절차를 사용합니다.</li><li><strong>unknown domain outcome:</strong> provider file 재처리보다 external provider lookup 또는 manual review를 우선합니다. domain idempotency가 증명될 때만 새 attempt를 발급합니다.</li></ul></section>
-      <section><h2>Retention And Deletion</h2><p>Rustee의 upload, download, delete API는 모두 caller-selected operation입니다. artifact ledger의 <code>Reconciled</code>은 provider file이 삭제되었거나 billing이 확정되었다는 뜻이 아닙니다.</p><table><thead><tr><th>artifact</th><th>최소 확인</th><th>삭제 전 판단</th></tr></thead><tbody><tr><td>input file</td><td>batch receipt와 provider result discovery가 보존됨</td><td>재제출, audit, legal hold, prompt retention policy</td></tr><tr><td>output file</td><td>모든 intended row의 domain ledger와 artifact reconciliation 상태</td><td>partial result, downstream export, user erase request, billing dispute window</td></tr><tr><td>error file</td><td>failure classification과 retry/manual-review decision</td><td>support investigation, error-code aggregate, user-visible remediation policy</td></tr></tbody></table><p>delete 응답은 exact provider acknowledgement여야 하며, delete 실패는 queue retry로 숨기지 않습니다. application은 retention deadline, retry ownership, alert, audit record를 명시합니다.</p></section>
-      <section><h2>Release Gate</h2><ul><li>real PostgreSQL migration, simultaneous reserve, restart, pending query, and outage/recovery contract를 실행합니다.</li><li>first live lifecycle check는 ignored test와 protected manual workflow <code>.github/workflows/openai-batch-live-qualification.yml</code>로 제공합니다. workflow는 approved boolean input, unique run key, protected <code>openai-batch-qualification</code> Environment의 <code>OPENAI_API_KEY</code>/<code>RUSTEE_OPENAI_BATCH_MODEL</code> secret이 모두 있을 때만 upload/submit/retrieve/cancel을 실행합니다.</li><li>real provider의 completed/failed/cancelled/expired/partial output/error artifact를 opt-in spend-controlled environment에서 검증합니다.</li><li>application domain ledger가 duplicate job, worker crash after partial rows, crash after domain commit before <code>record_reconciled</code>, and explicit new-key retry를 통과함을 증명합니다.</li><li>tenant authorization, RLS, artifact retention/delete schedule, billing reconciliation, broker DLQ/replay authority, on-call alert와 manual review owner를 release evidence로 남깁니다.</li></ul></section>
-      <section><h2>Qualification Matrix</h2><table><thead><tr><th>증거</th><th>자동화 범위</th><th>추가 승인 또는 기록</th></tr></thead><tbody><tr><td>adapter contract</td><td><code>cargo test -p rustee-ai-openai --offline</code>은 typed Responses/Embeddings input, ordered Embeddings output, response/error row parse, size limit, redaction, create/retrieve/cancel/delete를 검증합니다.</td><td>provider model alias, provider API version, tenant data policy는 포함하지 않습니다.</td></tr><tr><td>artifact ledger</td><td><code>cargo test -p rustee-ai-batch -p rustee-ai-batch-jobs --offline</code>과 PostgreSQL contract는 first reservation, duplicate reuse, <code>Pending</code>, exact completion, new-key retry를 검증합니다.</td><td>application row ledger, RLS, crash recovery, DLQ authority는 deployment test로 증명합니다.</td></tr><tr><td>mixed/partial artifact</td><td>output/error role을 별도 artifact reference로 dispatch하고 local parser/ledger contract로 재다운로드와 same-key replay를 막습니다.</td><td>application이 each <code>custom_id</code>를 applied, absent, rejected, unknown으로 분류한 evidence와 billing 판단을 남깁니다.</td></tr><tr><td>live lifecycle</td><td>protected manual workflow는 ignored <code>live_batch_lifecycle_is_explicitly_opt_in</code>으로 upload/submit/retrieve/cancel 경로만 검증합니다.</td><td>spend/retention approval과 unique run key를 input으로 제공하고 <code>openai-batch-qualification</code> Environment approval 뒤 실행합니다. raw prompt/output 없이 workflow run ID, provider batch ID, run key, status, timestamp만 qualification record에 남깁니다.</td></tr><tr><td>live result artifacts</td><td>자동 실행하지 않습니다.</td><td>completed, failed, cancelled, expired와 partial output/error artifact를 격리된 tenant/test data에서 명시적으로 검증하고 delete/retention 및 billing reconciliation 결론을 기록합니다.</td></tr></tbody></table><p>credential, raw JSONL, prompt, completion, vector, provider error message는 qualification report나 CI log에 넣지 않습니다. 이 표의 live evidence가 없으면 provider Batch 상태는 <em>Experimental</em>을 넘지 않습니다.</p></section>
-      <section><h2>Provider Expiration</h2><p><code>OpenAiBatchRequest::with_output_expiration(OpenAiBatchOutputExpiration)</code>은 generated output/error file에만 one-hour through 30-day provider expiration을 명시합니다. batch creation time이 anchor이고 input file, domain copy, billing 또는 <code>Pending</code> record는 바꾸지 않습니다. cancelled batch는 provider가 final partial artifact를 만든 뒤에만 application retention procedure로 검토합니다.</p></section>
-      <section><h2>금지 사항</h2><ul><li><code>Pending</code> record를 generic retry worker가 자동 release 또는 overwrite하는 것</li><li>model output/error message/raw JSONL을 job payload, application log, response cache, evaluation report에 기본 저장하는 것</li><li>provider <code>custom_id</code>만 보고 domain write의 멱등성을 주장하는 것</li><li>artifact ledger completion만 보고 file deletion, billing settlement, external side effect completion을 추정하는 것</li><li>provider file ID를 tenant authorization 없이 직접 download하는 것</li></ul></section>
-      <footer class="doc-footer"><p>Last updated: 2026-08-03. Update this runbook whenever a provider batch adapter, artifact ledger, queue retry policy, domain idempotency procedure, retention policy, or operator escalation path changes.</p></footer>
+      <section class="hero">
+        <div class="eyebrow">AI Batch Operations</div>
+        <h1>Batch Artifact Reconciliation Runbook</h1>
+        <p class="lead">
+          This runbook governs application-owned reconciliation of OpenAI Batch output and error
+          artifacts. Rustee supplies idempotent submission and reservation boundaries; the
+          application owns result meaning and external side effects.
+        </p>
+      </section>
+      <section>
+        <h2>Scope and Preconditions</h2>
+        <ul>
+          <li>
+            Durable jobs do not contain prompts, raw JSONL, provider request bodies, or provider
+            error messages.
+          </li>
+          <li>
+            Batch job diagnostics retain only safe outcome categories while trusted runner sources
+            remain available to application retry and DLQ handling.
+          </li>
+          <li>
+            The artifact ledger stores only scope, catalog ID, run key, artifact role, opaque file
+            ID, and reconciliation key.
+          </li>
+          <li>
+            Each result row combines provider <code>custom_id</code> with an application domain
+            idempotency key.
+          </li>
+          <li>
+            Deployment applies <code>AI_BATCH_ARTIFACT_LEDGER_MIGRATION_SQL</code> and then
+            <code>AI_BATCH_ARTIFACT_LEDGER_IDENTIFIER_BOUND_MIGRATION_SQL</code>. The second
+            migration rejects legacy rows outside the bounded ASCII identifier contract; explicitly
+            repair or remove them before readiness is declared.
+          </li>
+          <li>
+            Deployment also verifies tenant authorization/RLS and restore policy, defines artifact
+            owners/retention/deletion approval, and defines job retry/DLQ authority.
+          </li>
+          <li>
+            <code>Pending</code> is ambiguity, not an ordinary failure. Rustee never automatically
+            releases, replays, deletes, or refunds it.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Normal Flow</h2>
+        <ol>
+          <li>
+            Validate the model-specific request body, create JSONL, upload explicitly, and record
+            the input-file ID and run key in the application catalog or receipt.
+          </li>
+          <li>
+            Poll provider batch state through an application scheduler. Completion, failure, or
+            cancellation is a service-policy decision based on the provider snapshot.
+          </li>
+          <li>
+            Create a reference-only reconciliation job for an output or error file with scope,
+            catalog ID, run key, artifact kind, file ID, and a new reconciliation key.
+          </li>
+          <li>
+            Verify the durable envelope key matches the reconciliation key and reserve it in
+            <code>PostgresAiBatchArtifactLedger</code>.
+          </li>
+          <li>
+            Only a new <code>Reserved</code> attempt may authorize and download the file under
+            bounds, then structurally parse JSONL.
+          </li>
+          <li>
+            Apply each row using its domain key and <code>custom_id</code>, including domain
+            validation, transaction, partial-result policy, and external-provider idempotency.
+          </li>
+          <li>
+            After all intended effects are verified, record the exact artifact as reconciled. A
+            duplicate delivery observes <code>Reconciled</code> and does not reopen the artifact.
+          </li>
+          <li>
+            Delete input, output, or error files only through an explicit retention policy and
+            record the exact provider acknowledgement.
+          </li>
+        </ol>
+      </section>
+      <section>
+        <h2>Pending and Partial Results</h2>
+        <ul>
+          <li>
+            Download, parse, processor, or final-record failure leaves the reference
+            <code>Pending</code>. Re-sending the same key does not begin processing again.
+          </li>
+          <li>
+            Process output and error artifacts separately. Do not infer domain success from a
+            completed batch or an available artifact.
+          </li>
+          <li>
+            For cancelled or expired batches, inspect provider state, artifact availability,
+            billing, and the domain ledger before selecting a manual action.
+          </li>
+          <li>
+            Malformed or oversized JSONL stays pending; never copy raw artifacts into a queue, log,
+            cache, or ordinary report.
+          </li>
+          <li>
+            When a domain outcome is unknown, inspect the external provider or use manual review
+            before a new reconciliation attempt.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Retention, Qualification, and Prohibitions</h2>
+        <ul>
+          <li>
+            Reconciled means only that the reference was reconciled. It does not mean the provider
+            file was deleted, billing settled, or external effects completed.
+          </li>
+          <li>
+            Live qualification is an opt-in, spend-controlled workflow with protected credentials
+            and a unique run key. Retain only safe identifiers, status, and timestamps as evidence.
+          </li>
+          <li>
+            Before promotion, prove PostgreSQL migration, simultaneous reservation, restart, pending
+            query, outage/recovery, domain-ledger idempotency, RLS, DLQ authority, and on-call
+            ownership.
+          </li>
+          <li>
+            Never automatically overwrite or release a pending record, assume provider
+            <code>custom_id</code> proves domain idempotency, or download a file ID without tenant
+            authorization.
+          </li>
+        </ul>
+      </section>
+      <footer class="doc-footer">
+        <p>
+          Last updated: 2026-08-08. Update this runbook when batch reconciliation, retention, or
+          live qualification changes.
+        </p>
+      </footer>
     </main>
   </body>
 </html>

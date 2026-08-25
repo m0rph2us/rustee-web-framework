@@ -1,115 +1,105 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee Macro Boundary</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Macro Boundaries</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./architecture.html">구조</a>
-          <a href="./testing.html">Test</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./openapi.html">OpenAPI</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Optional Ergonomics</div>
-        <h1>매크로는 기존 HTTP 계약만 구현합니다</h1>
+        <div class="eyebrow">Macro Boundaries</div>
+        <h1>Macros Implement Existing HTTP Contracts</h1>
         <p class="lead">
-          <code>rustee-macros</code>는 non-macro Rustee API 위에 선택적으로 얹히는 편의 계층입니다.
-          <code>routes!</code>는 기존 route registration 반복을 줄이고, <code>FromHeader</code> derive는 헤더 값을 newtype으로 읽는 반복을 줄입니다.
-          둘 다 handler 의미나 HTTP 정책을 추론하지 않습니다.
+          Macros are optional ergonomics around explicit Rustee APIs. They do not create a parallel
+          routing, extraction, or schema system.
         </p>
       </section>
-
       <section>
         <h2>Route Builder</h2>
         <p>
-          facade에서 <code>rustee = { features = [&quot;macros&quot;] }</code>를 선택한 뒤, one application builder expression과
-          explicit route registrations를 <code>routes!</code>에 전달합니다. path는 ordinary expression이며 application construction 때
-          기존 <code>App</code> validation을 거칩니다.
-        </p>
-        <pre><code>let app = rustee::routes!(
-    App::new().with_state(state);
-    GET "/todos" =&gt; list_todos,
-    POST "/todos" =&gt; create_todo,
-    HEAD "/todos/:id" =&gt; todo_head,
-);</code></pre>
-        <p>
-          <code>GET</code>, <code>HEAD</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code>,
-          <code>OPTIONS</code>, <code>TRACE</code>, <code>CONNECT</code>를 지원합니다. custom HTTP method는 macro를 우회해
-          existing <code>App::route</code>를 사용합니다. macro는 at least one entry를 요구하지만 route pattern, handler signature,
-          extractor, state, fallback과 middleware 의미는 바꾸지 않습니다.
+          <code>routes!</code> builds routes through the same <code>App</code> APIs used without
+          macros. It validates supported macro methods at compile time and relies on the shared
+          <code>App</code> validator for route grammar, including repeated-separator rejection, so
+          macro and macro-free routes retain one contract.
         </p>
       </section>
-
       <section>
         <h2>Header Derive</h2>
         <p>
-          facade에서 <code>rustee = { features = [&quot;macros&quot;] }</code>를 선택한 뒤, header name을 명시한 one-field tuple
-          newtype에 <code>#[derive(rustee::FromHeader)]</code>를 붙입니다. 내부 field는 <code>FromStr</code>를 구현해야 합니다.
-        </p>
-        <pre><code>#[derive(rustee::FromHeader)]
-#[rustee(header = "x-request-id")]
-struct RequestId(u64);</code></pre>
-        <p>
-          생성된 implementation은 기존 <code>rustee::FromHeader</code> trait과 <code>Header&lt;T&gt;</code> extractor를 사용합니다.
-          parse 또는 header text decoding 실패는 기존 Rustee <code>bad_request</code> boundary로 끝나며, header value를 error에 포함하지 않습니다.
+          <code>FromHeader</code> derives explicit header extraction for supported shapes. A typed
+          <code>Header&lt;T&gt;</code> requires exactly one value for its declared field and rejects
+          duplicates before user parsing. It preserves normal extraction failure and HTTP response
+          behavior instead of inventing an implicit authentication or authorization rule.
         </p>
       </section>
-
       <section>
-        <h2>의도적인 제한</h2>
+        <h2>Intentional Limits</h2>
         <ul>
-          <li><code>routes!</code>는 new router type이나 attribute route registration을 만들지 않고, supplied builder expression에 existing method call만 연결합니다.</li>
-          <li>custom method, route pattern validation, duplicate route policy, handler/extractor inference와 middleware order는 manual <code>App</code> API가 소유합니다.</li>
-          <li>header name attribute는 필수이며 HTTP header-name 문법을 compile time에 검사합니다.</li>
-          <li>named field, unit struct, multiple-field tuple struct, enum과 union은 지원하지 않습니다.</li>
-          <li>derive는 handler, middleware, authorization, response status, OpenAPI schema 또는 security scheme를 생성하거나 추론하지 않습니다.</li>
-          <li>facade의 hidden re-export는 generated code용 안정 경로일 뿐 application이 import할 public API가 아닙니다.</li>
-          <li>custom validation, multi-header aggregation, domain error/status mapping은 application의 manual <code>FromHeader</code> implementation으로 남습니다.</li>
+          <li>Macro-free APIs remain first-class and documented.</li>
+          <li>
+            Macros do not infer application state, error policy, OpenAPI semantics, security
+            requirements, or provider configuration.
+          </li>
+          <li>
+            Unsupported input produces a compile diagnostic rather than a best-effort runtime
+            interpretation.
+          </li>
+          <li>
+            Generated code follows the same public contracts, feature gates, and MSRV as its
+            non-macro equivalent.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>컴파일 계약</h2>
-        <p>
-          <code>trybuild</code> suite는 valid newtype과 missing header attribute, wrong struct shape, invalid header name, valid standard methods,
-          unsupported method, missing route entry를 각각 고정합니다. Fast PR과 release qualification은 facade <code>macros</code> feature에서
-          header parse와 route dispatch regression, 이 diagnostic suite를 실행합니다. workspace-only consumer fixture는 renamed Cargo dependency에서도
-          derive와 route builder의 generated code가 facade alias를 찾는지 확인합니다. Rustee facade 자체는 application dependency로 남아야 합니다.
-        </p>
+        <h2>Implementation Boundaries</h2>
+        <ul>
+          <li>
+            <code>rustee-macros::route_builder</code> owns the <code>routes!</code> grammar and
+            builder expansion.
+          </li>
+          <li>
+            <code>rustee-macros::from_header</code> owns derive validation and
+            <code>FromHeader</code> implementation generation.
+          </li>
+          <li>
+            <code>rustee-macros::crate_path</code> resolves renamed <code>rustee</code> dependencies
+            for generated code; the crate root only exposes compiler-required macro entry points.
+          </li>
+        </ul>
       </section>
-
       <section>
-        <h2>확장 규칙</h2>
-        <p>
-          attribute route macro, schema derive 또는 handler signature inference는 현재 기능의 follow-up이 아닙니다. 추가하려면 non-macro API parity,
-          generated HTTP semantics의 ownership, semver/diagnostic compatibility, compile-fail fixture와 별도 ADR을 먼저 정합니다.
-        </p>
+        <h2>Verification and Evolution</h2>
+        <ul>
+          <li>
+            Compile tests cover accepted input, rejected input, diagnostics, and generated API
+            compatibility.
+          </li>
+          <li>
+            New syntax requires a documented public use case, a non-macro equivalent, regression
+            tests, and an ADR when it alters a boundary.
+          </li>
+          <li>
+            See <a href="./adr/0040-from-header-derive-boundary.html">ADR 0040</a> and
+            <a href="./adr/0041-routes-builder-macro-boundary.html">ADR 0041</a>.
+          </li>
+        </ul>
       </section>
-
-      <section>
-        <h2>관련 결정</h2>
-        <p>
-          public boundary는 <a href="./adr/0040-from-header-derive-boundary.html">ADR 0040</a>과
-          <a href="./adr/0041-routes-builder-macro-boundary.html">ADR 0041</a>을 따릅니다.
-          테스트와 출하 증거는 <a href="./testing.html">테스트 전략</a>, 현재 지원 상태는
-          <a href="./support-matrix.html">지원 현황</a>에서 확인합니다.
-        </p>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when macro input shape, generated contract, diagnostic policy, or feature ownership changes.</p>
+        <p>
+          Last updated: 2026-08-11. Update this document when macro syntax or generated contracts
+          change.
+        </p>
       </footer>
     </main>
   </body>

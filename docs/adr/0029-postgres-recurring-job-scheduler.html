@@ -1,91 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0029 PostgreSQL Recurring Job Scheduler Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0029: PostgreSQL Recurring Job Scheduler</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../database.html">데이터베이스</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../testing.html">Test</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0029</div>
-        <h1>PostgreSQL recurring job scheduler의 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0029: PostgreSQL Recurring Job Scheduler Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          one-time delay는 outbox row의 <code>available_at</code>으로 durable하게 처리할 수 있지만, recurring job은 template,
-          next occurrence, process restart와 multi-replica ownership을 별도로 보장해야 합니다. memory timer는 restart에 state를
-          잃고, cron callback이 broker에 직접 publish하면 next-run update와 publish 사이에 dual-write gap이 생깁니다. 같은 job
-          envelope ID를 반복해서 쓰면 broker/consumer idempotency semantics도 깨집니다.
+          Recurring jobs need durable schedule state and atomic materialization with
+          business-delivery infrastructure rather than in-memory timers.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            optional <code>rustee-jobs-cron-sqlx</code> crate를 채택합니다. deployment는 outbox migrations 뒤
-            <code>0001_rustee_recurring_jobs.sql</code>을 적용하고 governor를 쓸 때 <code>0002_rustee_recurring_job_rate_governor.sql</code>을
-            뒤이어 적용합니다. typed payload, job name/version, destination, cron
-            expression, priority와 next run을 PostgreSQL에 저장하고, application-owned <code>PostgresRecurringJobs</code>
-            supervisor가 bounded <code>fire_due</code> pass를 호출합니다.
-          </p>
-        </div>
         <p>
-          각 pass는 PostgreSQL clock을 읽고 due schedule을 <code>FOR UPDATE SKIP LOCKED</code>로 lock합니다. lock된 row마다 fresh
-          <code>JobId</code>와 schedule occurrence idempotency key를 가진 envelope을 <code>rustee-outbox-sqlx</code>에 stage하고,
-          next run 및 last-fired timestamp를 <strong>같은 transaction</strong>에서 갱신합니다. commit 전 error 또는 cancellation은
-          stage와 advance를 함께 rollback합니다. application key의 identical re-registration만 idempotent하게 허용하고, definition
-          drift는 explicit conflict로 거부합니다.
+          Register typed recurring jobs in PostgreSQL. An application-owned supervisor claims due
+          schedules with <code>SKIP LOCKED</code>, stages a fresh outbox job, and advances the next
+          occurrence in one transaction.
         </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>여러 scheduler replica는 due row를 중복 materialize하지 않고, crash 뒤 committed schedule/outbox state만 다시 처리합니다.</li>
-          <li>late schedule은 schedule당 한 fresh job만 stage하고 database clock 뒤의 첫 occurrence로 advance합니다. 모든 missed tick을 replay하지 않습니다.</li>
-          <li>IANA time-zone/DST calendar는 <a href="./0033-recurring-job-time-zone-calendar.html">ADR 0033</a>을 따릅니다. holiday calendar와 tenant-specific calendar policy는 framework가 추측하지 않습니다.</li>
-          <li><code>pause</code>는 future selection만 막습니다. <code>resume</code>는 paused 기간의 tick을 replay하지 않고 database clock 다음 local occurrence로 다시 시작합니다. 어느 쪽도 이미 committed outbox row를 retract하거나 downstream worker를 cancel하지 않으므로 application cancellation policy가 별도로 필요합니다.</li>
-          <li>scheduler는 worker, relay, metrics exporter, polling cadence 또는 alert threshold를 자동으로 시작하지 않습니다. readiness, backoff, capacity와 shutdown은 deployment가 소유합니다.</li>
-          <li>outbox priority는 local relay claim order만 바꾸며 fairness 또는 broker-level ordering을 제공하지 않습니다. shared-key fixed-window scheduler governor는 <a href="./0030-postgres-scheduler-rate-governor.html">ADR 0030</a>의 별도 PostgreSQL transaction boundary이며, tenant fairness와 external-provider quota를 제공하지 않습니다. priority 경계는 <a href="./0028-durable-outbox-priority-boundary.html">ADR 0028</a>과 함께 해석합니다.</li>
-        </ul>
+        <p>
+          Missed ticks are not automatically replayed in bulk. Holiday calendars, tenant fairness,
+          quotas, topology, and supervisor lifecycle remain application responsibilities.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>process-local cron timer</td><td>restart, multi-replica ownership과 transaction rollback에서 schedule state가 사라져 채택하지 않습니다.</td></tr>
-            <tr><td>cron callback이 broker에 직접 publish</td><td>next occurrence update와 broker publish가 atomic하지 않고 outbox boundary를 우회하므로 채택하지 않습니다.</td></tr>
-            <tr><td>provider별 recurring queue API</td><td>NATS, Redis Streams, RabbitMQ와 SQS의 capability와 calendar semantics를 하나의 promise로 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>automatic all-missed-occurrence replay</td><td>outage 뒤 downstream 폭주와 external side effect duplication risk를 기본값으로 만들므로 채택하지 않습니다. catch-up은 explicit future policy여야 합니다.</td></tr>
-            <tr><td>host-local time zone/DST를 framework default로 설정</td><td>지역, tenant와 domain마다 다른 configuration을 host setting에 숨기므로 채택하지 않습니다. stored IANA zone과 explicit DST policy는 ADR 0033을 따릅니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. ADR 0030 adds the fixed-window governor; ADR 0033 supersedes this record's UTC-only time-zone limitation. Catch-up policy와 framework-owned scheduler runtime은 여전히 별도 ADR이 필요합니다.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

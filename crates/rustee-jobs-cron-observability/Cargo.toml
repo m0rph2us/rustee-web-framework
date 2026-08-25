@@ -9,6 +9,7 @@ description = "Exporter-neutral PostgreSQL recurring-scheduler pass metrics for 
 
 [dependencies]
 rustee-jobs-cron-sqlx = { path = "../rustee-jobs-cron-sqlx", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [lints]
 workspace = true

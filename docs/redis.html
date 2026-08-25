@@ -1,243 +1,206 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee Redis와 상태 저장소</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Redis Integration</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./testing.html">Testing</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Redis and State Stores</div>
-        <h1>외부 상태는 명시적으로, 장애 정책은 역할별로</h1>
+        <h1>Explicit State, Explicit Failure Policy</h1>
         <p class="lead">
-          Redis는 빠른 cache 이상의 역할을 합니다. Rustee는 Redis를 cache, session, OIDC authorization transaction, rate limit, Pub/Sub을 위한
-          선택적 상태 저장소로 지원하되, 데이터 일관성이나 장애 시 동작을 숨기는 전역 기능으로 만들지 않습니다.
+          Redis is an optional external state store for caching, sessions, rate limiting, and
+          streams. Rustee never turns it into hidden global state or an automatic cache.
         </p>
       </section>
-
       <section>
-        <h2>결정 요약</h2>
-        <div class="decision">
-          <p>
-            첫 공식 client 경로는 redis-rs의 Tokio용 <code>redis::aio::ConnectionManager</code>입니다.
-            <code>RedisConfig</code>는 기본 5초의 bounded initial connect와 endpoint/credential 없는 failure를 제공하고, 이 client는 clone 가능한 multiplexed connection을 사용해 이후 끊긴 연결을 재연결합니다. Rustee는 Stage 6에서
-            선택적 <code>rustee-redis</code> crate를 제공하며, keyed HTTP policy는 provider-neutral <code>rustee-rate-limit</code>, Redis Lua adapter는 <code>rustee-rate-limit-redis</code>로 분리합니다. <code>rustee-core</code>에는 Redis 의존성을 추가하지 않습니다.
-          </p>
-        </div>
-        <p>
-          애플리케이션은 Redis client를 <code>AppState</code>에 보관하고 <code>State&lt;AppState&gt;</code>로 꺼냅니다.
-          Rustee는 redis-rs command API를 새 trait로 감싸지 않으며, 필요한 경우 원래 client API에 바로 접근할 수 있습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>역할별 지원</h2>
+        <h2>Responsibilities</h2>
         <table>
           <thead>
             <tr>
-              <th>역할</th>
-              <th>초기 지원</th>
-              <th>반드시 명시할 것</th>
+              <th>Area</th>
+              <th>Rustee owns</th>
+              <th>Application owns</th>
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>Client lifecycle</td>
+              <td>Optional client injection, caller-bounded readiness, and shutdown guidance</td>
+              <td>
+                Endpoint, TLS, credentials, topology, pool, readiness deadline, and retry policy
+              </td>
+            </tr>
             <tr>
               <td>Cache</td>
-              <td>key prefix, TTL, serializer 경계를 갖는 helper와 cache-aside example</td>
-              <td>TTL, invalidation 주체, cache miss와 Redis 장애 시 source-of-truth fallback</td>
+              <td>Focused helper contracts where enabled</td>
+              <td>Key design, TTL, invalidation, consistency, and stale-data policy</td>
             </tr>
             <tr>
-              <td>Session</td>
-              <td><code>rustee-auth-session-redis</code>의 opaque server-side session adapter</td>
-              <td>cookie 보안 설정, session TTL/namespace, rotation, Redis 장애 시 fail-closed 503</td>
+              <td>Sessions</td>
+              <td>Opaque-session storage adapter and secure-cookie integration</td>
+              <td>Cookie domain, retention, key rotation, logout, and incident response</td>
             </tr>
             <tr>
-              <td>OIDC transaction</td>
-              <td><code>rustee-auth-oidc-redis</code>의 one-time state/nonce/PKCE verifier adapter</td>
-              <td>versioned namespace, remaining TTL, Redis <code>GETDEL</code> atomic consume, Redis 장애 시 login fail-closed</td>
+              <td>Rate limiting</td>
+              <td>Keyed fixed-window layer and Redis Lua store</td>
+              <td>Identity key, limits, abuse policy, fallback, and customer communication</td>
             </tr>
             <tr>
-              <td>Rate limit</td>
-              <td><code>rustee-rate-limit</code> keyed fixed-window Tower layer와 <code>rustee-rate-limit-redis</code> Lua atomic store</td>
-              <td>trusted key source, fixed-window burst 허용 여부, namespace, Redis 장애 시 명시적 allow 또는 deny 정책</td>
-            </tr>
-            <tr>
-              <td>Pub/Sub</td>
-              <td>전용 연결을 사용하는 background-worker recipe</td>
-              <td>구독 재연결, 메시지 유실 허용 범위, durable delivery 필요 여부</td>
-            </tr>
-            <tr>
-              <td>분산 락과 queue</td>
-              <td>분산 락은 초기 제외. queue는 Stage 10의 <a href="./queues.html">Redis Streams job provider</a>가 consumer group, durable delayed retry, DLQ, pending reclaim을 구현</td>
-              <td>lease ownership, fencing token, consumer group, pending reclaim, retry, 전달 보장 요구</td>
+              <td>Durable jobs</td>
+              <td>
+                Redis Streams provider with acknowledgement, retry, DLQ, and reclaim contracts
+              </td>
+              <td>Stream provisioning, retention, topology, replay, and worker supervision</td>
             </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>권장 애플리케이션 구조</h2>
-        <pre><code>use redis::{aio::ConnectionManager, AsyncCommands};
-use rustee::{App, Json, Path, State};
-
-#[derive(Clone)]
-struct AppState {
-    cache: ConnectionManager,
-}
-
-async fn get_user(
-    State(state): State&lt;AppState&gt;,
-    Path(id): Path&lt;i64&gt;,
-) -&gt; Result&lt;Json&lt;User&gt;, AppError&gt; {
-    let key = format!("rustee:users:v1:{id}");
-    let mut cache = state.cache.clone();
-
-    if let Some(json) = cache.get::&lt;_, Option&lt;String&gt;&gt;(&amp;key).await? {
-        return Ok(Json(serde_json::from_str(&amp;json)?));
-    }
-
-    let user = users::find(id).await?;
-    let json = serde_json::to_string(&amp;user)?;
-    cache.set_ex::&lt;_, _, ()&gt;(&amp;key, json, 300).await?;
-    Ok(Json(user))
-}</code></pre>
+        <h2>Integration Boundary</h2>
         <p>
-          이는 Rustee Stage 4와 Stage 6이 완료됐을 때의 목표 형태입니다. 실제 서비스에서는 cache read와 write의
-          Redis 오류를 같은 방식으로 처리하지 않습니다. cache는 원본 DB로 우회할 수 있지만, session이나 rate limit은
-          보안 요구에 따라 다른 정책을 가져야 합니다.
+          <code>rustee-redis</code> injects an application-created client. It does not expose a
+          universal cache, distributed lock, or session as a hidden framework singleton. Namespaces
+          and TTLs must be visible and bounded, while secrets and endpoint details are redacted from
+          diagnostics. Cache writes reject a zero or Redis-unrepresentable TTL as a local
+          configuration error before contacting Redis. Bounded JSON reads and bounded atomic cache
+          consumption each inspect the Redis byte length before returning a value in one server
+          execution, so a cache miss, size rejection, and invalid stored JSON remain distinct
+          outcomes. Redis configuration, connection, readiness, JSON cache helpers, and higher-level
+          cache adapters expose content-free failure categories by default while preserving trusted
+          source errors where an adapter retains one for application handling.
+        </p>
+        <pre><code>#[derive(Clone)]
+struct AppState { redis: redis::Client }
+
+let app = App::new()
+    .get("/profile", profile)
+    .with_state(AppState { redis });</code></pre>
+        <p>
+          One long-lived client is normally created per process and cloned into state. Call
+          <code>readiness(&amp;manager, deadline)</code> with a short, positive deadline; its
+          timeout and diagnostics are content-free while trusted driver sources remain available for
+          application handling. Request retry, stale fallback, and degraded-service behavior remain
+          explicit application policy.
         </p>
       </section>
-
       <section>
-        <h2>연결과 격리 규칙</h2>
-        <ul>
-          <li>일반 command는 <code>ConnectionManager</code>를 clone해 concurrent하게 사용합니다.</li>
-          <li>Pub/Sub, blocking command, 장시간 stream 소비는 일반 request client와 분리한 전용 client 또는 background task를 사용합니다.</li>
-          <li>연결 pool이 실제로 필요한 경우 애플리케이션이 <code>deadpool-redis</code> 같은 도구를 선택합니다. Rustee 초기 core와 adapter는 pool을 강제하지 않습니다.</li>
-          <li>Redis Cluster, Sentinel, TLS, RESP3은 별도 feature와 configuration으로 제공하며, 단일 Redis 기본 경로의 의존성을 늘리지 않습니다.</li>
-          <li>Redis URL과 credential은 configuration/secret provider에서 공급하고, <code>rustee_redis::connect</code>의 sanitized startup failure와 함께 로그나 오류 응답에 포함하지 않습니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>장애와 일관성 정책</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>사용 사례</th>
-              <th>기본 태도</th>
-              <th>Rustee 요구</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>읽기 cache</td>
-              <td>원본 저장소로 우회할 수 있음</td>
-              <td>우회 여부, timeout, metric을 configuration으로 드러냅니다.</td>
-            </tr>
-            <tr>
-              <td>쓰기 cache</td>
-              <td>원본 저장소의 성공을 Redis 쓰기와 혼동하지 않음</td>
-              <td>write-through, invalidate, retry 중 하나를 application이 선택합니다.</td>
-            </tr>
-            <tr>
-              <td>Session과 authorization</td>
-              <td>보안을 우선해 대개 fail-closed가 필요</td>
-              <td><code>SessionLayer</code>는 Redis store failure를 fail-closed 503으로 정규화합니다.</td>
-            </tr>
-            <tr>
-              <td>Rate limit</td>
-              <td>보안과 가용성의 trade-off가 서비스마다 다름</td>
-              <td>Redis 장애 시 allow 또는 deny를 필수 설정으로 둡니다.</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="warning">
-          <p>
-            Rustee는 Redis 장애를 조용히 무시하는 기본값을 제공하지 않습니다. <code>RedisSessionStore</code>는 Redis 오류를
-            store failure로 전달하고 <code>SessionLayer</code>는 503으로 차단합니다. <code>RateLimitLayer</code>는 allow/deny를 기본값으로 숨기지 않고 constructor에서 failure policy를 받습니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>Rate limit</h2>
+        <h2>Create-Only Records</h2>
         <p>
-          <code>RateLimitLayer</code>는 key를 추측하지 않습니다. application은 verified principal, API key fingerprint 또는
-          trusted proxy가 정규화한 client address처럼 이미 trust boundary를 지난 값으로 resolver를 만듭니다. raw bearer token,
-          임의 forwarding header, cookie value를 Redis key로 직접 쓰지 않습니다.
+          <code>set_json_if_absent</code> and <code>set_json_bounded_if_absent</code> write a JSON
+          value with one atomic Redis <code>SET NX EX</code> command. The bounded form rejects an
+          oversized serialized value before the command. Both return <code>CacheError::EntryExists</code>
+          when the exact key is already live and never replace that value. Use them for one-time
+          state such as OAuth authorization transactions; use the ordinary explicit cache write
+          helpers when replacement is part of the application cache policy.
         </p>
-        <pre><code>use rustee_rate_limit::{FixedWindow, RateLimitKey, RateLimitLayer, StoreFailurePolicy};
-use rustee_rate_limit_redis::RedisFixedWindowStore;
-
-let store = RedisFixedWindowStore::new(state.redis.clone(), "app:rate-limit:v1")?;
-let policy = FixedWindow::new(120, Duration::from_secs(60))?;
-let api_limit = RateLimitLayer::new(
-    store,
-    policy,
-    |request: &amp;Request| request
-        .extensions()
-        .get::&lt;Principal&gt;()
-        .and_then(|principal| RateLimitKey::new(format!("principal:{}", principal.subject())).ok()),
-    StoreFailurePolicy::FailClosed,
-);
-
-let app = api_limit.layer(app);</code></pre>
+        <p>
+          The optional MCP OAuth Redis adapter derives its transaction record key from a versioned,
+          length-delimited configured namespace and opaque state. The record key remains
+          authenticated-encryption data, so a format upgrade invalidates unfinished transactions
+          rather than attempting an ambiguous legacy-key lookup.
+        </p>
+        <p>
+          The Redis provider contract races two create-only writes for one temporary key and
+          verifies that exactly one value is retained. It is opt-in locally because it needs Redis,
+          and runs in the Redis CI qualification stage.
+        </p>
+      </section>
+      <section>
+        <h2>Sessions and Rate Limits</h2>
         <ul>
-          <li>allowed response에는 <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code>, <code>RateLimit-Reset</code>을 넣습니다. denied request는 application에 도달하지 않고 429, <code>Retry-After</code>, 같은 rate-limit metadata를 반환합니다.</li>
-          <li>resolver가 trusted key를 만들 수 없으면 layer는 400으로 차단합니다. rate-limit를 적용하지 않을 route는 layer 바깥에 둡니다.</li>
-          <li>store failure는 constructor에서 반드시 선택한 <code>FailClosed</code> 503 또는 <code>FailOpen</code> pass-through로 처리합니다. security-sensitive login, password reset, expensive API에는 대체로 <code>FailClosed</code>를 사용합니다.</li>
-          <li>Redis adapter는 <code>INCR</code>, 첫 TTL 설정, <code>PTTL</code> 조회를 하나의 Lua execution으로 수행합니다. fixed-window는 window 경계 양쪽에서 burst를 허용할 수 있으므로 더 엄격한 smooth rate 요구에는 token-bucket 또는 GCRA provider를 별도 contract로 추가합니다.</li>
+          <li>
+            <code>rustee-auth-session-redis</code> stores opaque server-side sessions with a
+            namespace and TTL. It reads at most 512 KiB per persisted session, rejects a
+            Redis-unrepresentable remaining TTL before persistence, validates the restored CSRF
+            capability, session-key binding, and expiry before restoration, exposes content-free
+            persistence diagnostics while preserving trusted sources, and remains fail-closed at the
+            HTTP boundary. Cookie
+            attributes, session rotation, CSRF policy, user logout, and retention are application
+            decisions.
+          </li>
+          <li>
+            <code>rustee-rate-limit-redis</code> implements a keyed fixed-window decision with Lua.
+            Fixed windows use positive whole milliseconds, and connection and namespace values
+            remain redacted from diagnostics. Its versioned, length-delimited storage key keeps an
+            opaque identity containing delimiters from colliding with another namespace. It does not
+            decide whether the key is an IP address, account, tenant, credential, or route.
+          </li>
+          <li>
+            A Redis outage must not silently become an authorization bypass or unlimited request
+            path. Configure the intended failure behavior and test it.
+          </li>
+          <li>
+            Do not place raw session content, credential material, or unbounded user input in keys,
+            metric labels, logs, or traces.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>의도적으로 제공하지 않는 것</h2>
+        <h2>Redis Streams Jobs</h2>
+        <p>
+          <code>rustee-jobs-redis</code> is an optional durable-job provider. It uses
+          pre-provisioned consumer groups and DLQs, ownership-checked acknowledgement, Redis-clock
+          delayed retry, pending reclaim, and bounded readiness. Delivery is at least once;
+          duplicate handling belongs to the job handler.
+        </p>
         <ul>
-          <li>모든 GET response를 자동으로 Redis에 저장하는 middleware. cache key, authorization, invalidation이 서비스마다 다릅니다.</li>
-          <li>일반적인 <code>lock()</code> helper. 분산 락은 fencing과 lease 만료에 관한 서비스 수준의 정확성 요구가 필요합니다.</li>
-          <li>Redis Pub/Sub을 durable queue로 보이게 하는 API. 전달 보장이 필요하면 Redis Streams 또는 전용 queue adapter를 명시적으로 선택합니다.</li>
-          <li>DB transaction과 Redis write를 하나의 atomic transaction처럼 묶는 API. outbox 또는 보상 작업은 application architecture에서 결정합니다.</li>
+          <li>Worker operation deadlines must exceed blocking reads.</li>
+          <li>
+            Retry, block, and reclaim settings use positive whole milliseconds; unknown-job handling
+            is an explicit delivery outcome with a DLQ path.
+          </li>
+          <li>
+            Internal retry storage keys use a versioned, length-delimited stream and consumer-group
+            namespace, so delimiters in deployment identifiers cannot make two worker routes share
+            retry state. These provider-private keys are not an application namespace API.
+            Reconcile legacy scheduled retries before a worker upgrade that changes this durable
+            key format; do not run old and new worker versions for the same route concurrently.
+          </li>
+          <li>
+            Redis Cluster, Sentinel, retention, operator replay, heartbeat behavior, and production
+            outage qualification are separate release gates.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>구현 순서</h2>
-        <ol>
-          <li>Stage 4의 <code>State</code>와 middleware configuration contract를 안정화합니다.</li>
-          <li>Stage 6에서 <code>rustee-redis</code>, <code>ConnectionManager</code> example과 Redis 7 container의 PING/JSON cache/atomic <code>GETDEL</code>/delete contract를 구현했습니다. <code>rustee-rate-limit</code>의 fixed-window HTTP 429/503/fail-open contract와 <code>rustee-rate-limit-redis</code>의 Lua atomic bounded-concurrency Redis 7 contract도 구현했습니다.</li>
-          <li>Stage 8에서 <code>rustee-auth-session-redis</code> Redis adapter와 Docker-backed session restoration contract, <code>rustee-auth-oidc-redis</code>의 transaction TTL/atomic <code>GETDEL</code> contract를 구현했습니다.</li>
-          <li>Stage 10에서 <code>rustee-jobs-redis</code>가 pre-provisioned Streams consumer group/DLQ, ownership-checked ack, Redis-clock durable delayed retry, pending reclaim을 구현했고 Redis 7 CI가 success ack, retry-DLQ, reclaim attempt, unknown registry job DLQ를 검증합니다. <code>rustee-ai-cache-redis</code>은 tenant-scoped opaque exact key로 선택한 AI response만 versioned namespace와 serialized-entry bound, Redis-second TTL, exact delete로 보관합니다. raw prompt fingerprint, encryption/TLS, tenant erase, retention, Redis outage/restart, Cluster/Sentinel와 cache stampede는 application/deployment release gate입니다. handler heartbeat, job retention/replay runbook도 별도 release gate입니다.</li>
-          <li>Cluster, Sentinel, distributed lock은 실제 요구와 함께 별도 ADR로 확장합니다.</li>
-        </ol>
+        <h2>Operational Rules</h2>
+        <ul>
+          <li>
+            Use namespaced keys that include the owning subsystem and, where needed, a verified
+            tenant boundary.
+          </li>
+          <li>
+            Set bounded TTLs and document who invalidates a value. A TTL is not a substitute for
+            consistency design.
+          </li>
+          <li>
+            Use TLS and least-privilege credentials in production. Never include Redis URLs or
+            credentials in HTTP errors, logs, traces, or metrics labels.
+          </li>
+          <li>
+            Restart behavior, backoff, readiness routing, alerting, and failover drills are
+            deployment responsibilities.
+          </li>
+        </ul>
       </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-02. Update this document when Redis client, state-store adapter, key, TTL, or failure policy changes.</p>
+        <p>
+          Last updated: 2026-08-25. Update this document when Redis adapter behavior or operational
+          ownership changes.
+        </p>
       </footer>
     </main>
   </body>

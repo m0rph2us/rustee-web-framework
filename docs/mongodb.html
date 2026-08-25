@@ -1,345 +1,213 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee MongoDB 문서 저장소</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee MongoDB Integration</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./testing.html">Testing</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">MongoDB Document Database</div>
-        <h1>문서 모델은 그대로 쓰고, HTTP와 운영 경계는 분명하게</h1>
+        <div class="eyebrow">MongoDB Document Store</div>
+        <h1>Use the Official Driver, Keep HTTP and BSON Separate</h1>
         <p class="lead">
-          Rustee는 MongoDB를 SQLx의 backend나 범용 CRUD 기능으로 감싸지 않습니다. 공식 Rust driver를 선택적으로
-          연결하고, BSON document, schema evolution, transaction, change stream의 성질을 드러내는 경로를 제공합니다.
+          Rustee integrates the official MongoDB Rust driver as an optional application-state
+          dependency. BSON documents remain persistence models; HTTP request and response contracts
+          remain explicit DTOs.
         </p>
       </section>
-
       <section>
-        <h2>결정 요약</h2>
-        <div class="decision">
-          <p>
-            Stage 7에서 공식 <code>mongodb</code> async Rust driver를 기반으로 선택적 <code>rustee-mongodb</code>
-            crate를 제공합니다. 현재 crate는 connection configuration, long-lived <code>Client</code>, ping readiness,
-            graceful shutdown, explicit transaction session, shutdown-aware change-stream next helper, durable checkpoint store contract와 PostgreSQL adapter/database-clock writer lease/checkpoint readiness,
-            trusted <code>TenantContext</code> 기반 <code>MongoTenantScope</code>를 구현합니다. driver의 <code>Client</code>는 내부 connection pool과 topology monitoring을 갖고 있으므로,
-            하나의 long-lived client를 <code>AppState</code>에 주입합니다. 별도 third-party pool은 기본 경로에 넣지 않습니다.
-          </p>
-        </div>
-        <p>
-          <code>rustee-mongodb</code>는 connection configuration, readiness, graceful shutdown, explicit transaction과
-          change-stream lifecycle 연동에 집중합니다.
-          query, aggregation, collection API는 공식 driver 형태를 그대로 사용할 수 있어야 합니다. URI parser가 SRV DNS
-          lookup을 수행할 수 있으므로, 실제 연결 검증은 opt-in backend integration test에서 다룹니다.
-        </p>
+        <h2>Support Boundary</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Rustee owns</th>
+              <th>Application owns</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Connections</td>
+              <td>Client injection, bounded readiness, shutdown guidance</td>
+              <td>URI, TLS, credentials, pool, read/write concern, topology, and timeouts</td>
+            </tr>
+            <tr>
+              <td>BSON and documents</td>
+              <td>HTTP error and DTO boundary recipes</td>
+              <td>Collections, typed documents, aggregation, and domain mapping</td>
+            </tr>
+            <tr>
+              <td>Schema evolution</td>
+              <td>Guidance for deployment-time validation and backfills</td>
+              <td>Versions, validators, indexes, migrations, and rollback</td>
+            </tr>
+            <tr>
+              <td>Transactions</td>
+              <td>Explicit session and transaction helpers</td>
+              <td>Whether a transaction is needed, operation ordering, retries, and idempotency</td>
+            </tr>
+            <tr>
+              <td>Change streams</td>
+              <td>Shutdown-aware next-event helper and optional PostgreSQL checkpoint store</td>
+              <td>Replica-set operation, consumer identity, replay, and delivery semantics</td>
+            </tr>
+            <tr>
+              <td>Tenant boundary</td>
+              <td>
+                Verified-context BSON filter, document, update, and selected aggregation helpers
+              </td>
+              <td>
+                Identity verification, collection policy, indexes, raw-driver access control, and
+                review
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </section>
-
       <section>
-        <h2>권장 애플리케이션 구조</h2>
+        <h2>Application Shape</h2>
         <pre><code>use mongodb::{bson::{doc, oid::ObjectId}, Client, Collection};
 use rustee::{Json, Path, State};
 
 #[derive(Clone)]
-struct AppState {
-    mongo: Client,
-}
+struct AppState { mongo: Client }
 
 async fn get_user(
     State(state): State&lt;AppState&gt;,
     Path(id): Path&lt;String&gt;,
 ) -&gt; Result&lt;Json&lt;UserResponse&gt;, AppError&gt; {
-    let id = ObjectId::parse_str(id)?;
-    let users: Collection&lt;UserDocument&gt; = state
-        .mongo
-        .database("app")
-        .collection("users");
-
-    let document = users
-        .find_one(doc! { "_id": id })
-        .await?
+    let users: Collection&lt;UserDocument&gt; = state.mongo.database("app").collection("users");
+    let document = users.find_one(doc! { "_id": ObjectId::parse_str(id)? }).await?
         .ok_or(AppError::not_found("user"))?;
-
     Ok(Json(UserResponse::from(document)))
 }</code></pre>
         <p>
-          <code>UserDocument</code>는 BSON serialization과 collection 구조를 담당하고, <code>UserResponse</code>는 HTTP 계약을
-          담당합니다. <code>ObjectId</code>, 내부 field, schema version을 HTTP API에 자동 노출하지 않습니다.
+          <code>UserDocument</code> owns BSON serialization and collection layout.
+          <code>UserResponse</code> owns the HTTP contract. Do not automatically expose
+          <code>ObjectId</code>, internal fields, or schema versions through an API.
         </p>
       </section>
-
       <section>
-        <h2>지원 경계</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>영역</th>
-              <th>Rustee의 역할</th>
-              <th>애플리케이션의 역할</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>연결과 pool</td>
-              <td><code>ClientOptions</code> 예제, state 주입, readiness와 shutdown hook</td>
-              <td>URI, TLS/credential, pool size, timeout, read/write concern 설정</td>
-            </tr>
-            <tr>
-              <td>document와 BSON</td>
-              <td>HTTP error/DTO 경계와 serialization recipe</td>
-              <td>collection, typed document, aggregation pipeline, domain mapping</td>
-            </tr>
-            <tr>
-              <td>schema evolution</td>
-              <td>index, validator, backfill을 배포 단계에서 다루는 guide</td>
-              <td>schema version, validator, index, data migration과 rollback 정책</td>
-            </tr>
-            <tr>
-              <td>transaction</td>
-              <td><code>begin_transaction</code>, options를 받는 explicit session 시작 helper와 replica-set contract</td>
-              <td>transaction 필요성, 순차 operation, retry 및 idempotency 결정</td>
-            </tr>
-            <tr>
-              <td>change stream</td>
-              <td><code>next_change_until</code>, <code>ChangeStreamCheckpointStore</code>와 <code>rustee-mongodb-checkpoint-sqlx</code>의 opaque BSON token persistence 및 optional PostgreSQL-clock writer lease</td>
-              <td>replica set 운영, consumer identity/renewal schedule, resume invalidation·재처리·delivery semantics</td>
-            </tr>
-            <tr>
-              <td>tenant boundary</td>
-              <td>신뢰된 <code>TenantContext</code>의 <code>tenant_id</code> outer-AND filter, insert/replacement document 검증, tenant field mutation 거부</td>
-              <td>identity에서 context를 검증해 만들기, 모든 collection/query pipeline에 적용, <code>tenant_id</code>-first index와 raw driver administration 권한 통제</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>durable checkpoint과 재시작</h2>
-        <pre><code>use std::time::Duration;
-
-use rustee_mongodb::{
-    ChangeStreamCheckpointStore, ChangeStreamConsumer, ChangeStreamNext, next_change_until,
-};
-use rustee_mongodb_checkpoint_sqlx::{
-    ChangeStreamLeaseAcquire, ChangeStreamLeaseDuration, ChangeStreamLeaseOwner,
-    PostgresChangeStreamCheckpointStore,
-};
-
-let store = PostgresChangeStreamCheckpointStore::new(postgres_pool);
-store.readiness(Duration::from_secs(1)).await?;
-let consumer = ChangeStreamConsumer::new("orders-projection-v1")?;
-let lease = match store.try_acquire_lease(
-    consumer.clone(),
-    ChangeStreamLeaseOwner::new(deployment_instance_id())?,
-    ChangeStreamLeaseDuration::default(),
-).await? {
-    ChangeStreamLeaseAcquire::Acquired(lease) =&gt; lease,
-    ChangeStreamLeaseAcquire::Contended =&gt; return Err(ProjectionAlreadyActive.into()),
-};
-let mut stream = orders.watch().resume_after(store.load(consumer.clone()).await?).await?;
-
-loop {
-    match next_change_until(&amp;mut stream, shutdown_signal()).await? {
-        ChangeStreamNext::Event { event, resume_token } =&gt; {
-            apply_event_idempotently(event).await?;
-            if let Some(token) = resume_token {
-                store.save_while_leased(&amp;lease, token).await?;
-            }
-        }
-        ChangeStreamNext::Shutdown { .. } =&gt; break,
-        ChangeStreamNext::Ended { .. } =&gt; return Err(StreamEnded.into()),
-    }
-}
-
-store.release_lease(lease).await?;</code></pre>
+        <h2>Tenant BSON Boundary</h2>
+        <p>
+          <code>MongoTenantScope</code> is created only from a verified <code>TenantContext</code>.
+          It outer-ANDs <code>tenant_id</code> with caller filters, adds the trusted tenant ID to
+          inserts and replacements, rejects tenant-field mutation, and can create bounded direct
+          foreign-collection lookup and union stages. Its internal <code>tenant_scope</code> module
+          is separate from client lifecycle, transactions, and change-stream helpers; the crate root
+          preserves the stable public API.
+        </p>
         <ul>
-          <li><code>ChangeStreamConsumer</code>는 collection, pipeline, event decoder와 durable handler contract를 모두 식별하는 안정된 이름입니다. 이 중 하나를 바꾸면 기존 resume token을 재사용하지 않고 새 consumer identity 또는 명시적 migration/replay 계획을 사용합니다.</li>
-          <li><code>rustee-mongodb-checkpoint-sqlx</code>는 <code>CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL</code>을 deployment migration에 추가해 opaque driver token을 <code>BYTEA</code>로 저장합니다. server startup에서 migration을 실행하지 않습니다. CI combined contract는 first event를 PostgreSQL에 checkpoint한 뒤 client/stream을 새로 만들고, resume 이후 다음 event만 받는지 확인합니다.</li>
-          <li>event handler의 durable, idempotent effect가 성공한 뒤에만 token을 <code>save_while_leased</code>로 저장합니다. save가 실패하거나 <code>LeaseLost</code>가 되면 새 token을 acknowledge하지 않고 worker를 failure로 종료하거나 backoff합니다. 다음 시작은 이미 처리한 event를 다시 볼 수 있으므로 handler는 at-least-once를 견뎌야 합니다.</li>
-          <li>checkpoint dependency가 readiness timeout 안에 실패하거나 save가 storage error를 반환하면 worker는 stream을 즉시 drop하고 supervisor에 실패를 반환합니다. HTTP readiness는 MongoDB와 checkpoint store를 각각 검사해 필요한 deployment만 false로 전환합니다. 이 adapter는 retry loop나 backoff를 자동으로 시작하지 않습니다.</li>
-          <li>PostgreSQL adapter의 <code>try_acquire_lease</code>는 database clock의 conditional upsert로 한 consumer의 경쟁 writer를 막고, <code>save_while_leased</code>는 만료되었거나 ownership을 잃은 stale writer를 거부합니다. 재시작마다 고유한 deployment instance ID로 owner를 만듭니다.</li>
-          <li>worker는 만료 전에 <code>renew_lease</code>해야 하며, renew나 save가 <code>LeaseLost</code>이면 즉시 stream을 drop하고 supervisor에 넘깁니다. 정상 shutdown은 <code>release_lease</code>로 기다림을 줄일 수 있지만, 이 실패를 복구로 해석하지 않습니다. Rustee는 worker 시작, owner ID 생성, renewal scheduler, rolling strategy를 자동화하지 않습니다.</li>
-          <li>history loss, collection drop/rename, incompatible pipeline 또는 token invalidation은 자동으로 earliest/latest로 되돌리지 않습니다. driver open error를 operator-visible failure로 처리하고 replay 범위와 data reconciliation을 명시합니다.</li>
-          <li>checkpoint는 message queue settlement가 아닙니다. change event delivery, external side effect, restart policy의 exactly-once를 Rustee가 약속하지 않습니다.</li>
+          <li>
+            Never build <code>TenantContext</code> from a request header, JSON body, or query
+            parameter.
+          </li>
+          <li>
+            Use the scope for find, update, delete, and supported aggregation paths. Raw driver
+            access, nested lookup/union, and change-stream pipelines require separate review.
+          </li>
+          <li>
+            Production indexes for tenant-owned collections normally begin with
+            <code>tenant_id</code>; actual key order must follow query and shard-key analysis.
+          </li>
+          <li>
+            This helper is not server-enforced MongoDB RLS. Use least-privilege database identities
+            and test tenant A/B isolation for every new query shape.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>테넌트 BSON 경계</h2>
-        <pre><code>use mongodb::bson::doc;
-use rustee_mongodb::{MongoTenantScope, TenantContext};
-
-let scope = MongoTenantScope::new(TenantContext::new(verified_tenant_id)?);
-orders.insert_one(scope.document(doc! { "order_id": order_id, "state": "open" })?).await?;
-
-let order = orders
-    .find_one(scope.filter(doc! { "order_id": order_id }))
-    .await?;
-
-orders
-    .update_many(
-        scope.filter(doc! { "state": "open" }),
-        scope.update(doc! { "$set": { "state": "closed" } })?,
-    )
-    .await?;
-
-let totals = orders
-    .aggregate(scope.aggregation_pipeline(
-        doc! { "state": "closed" },
-        [doc! { "$count": "orders" }],
-    ))
-    .await?;</code></pre>
-        <h3>foreign collection aggregation</h3>
-        <pre><code>let lookup = scope.lookup_stage(
-    "order_items",
-    "items",
-    doc! { "order_id": "$order_id" },
-    doc! { "$expr": { "$eq": ["$order_id", "$$order_id"] } },
-    [],
-)?;
-let joined = orders
-    .aggregate(scope.aggregation_pipeline(doc! {}, [lookup]))
-    .await?;
-
-let union = scope.union_with_stage("archived_orders", doc! {}, [])?;
-let current_and_archived = orders
-    .aggregate(scope.aggregation_pipeline(doc! {}, [union]))
-    .await?;</code></pre>
+        <h2>Transactions and Change Streams</h2>
         <ul>
-          <li><code>TenantContext</code>는 verified identity 또는 trusted server-side routing에서만 만듭니다. request header, JSON body, query parameter의 tenant 값으로 직접 만들지 않습니다.</li>
-          <li><code>filter</code>는 caller filter의 바깥 <code>$and</code>에 <code>tenant_id</code> equality를 넣습니다. caller filter가 <code>$or</code>를 포함해도 이 조건은 모든 결과에 적용됩니다. find와 update/delete selection에 사용합니다. <code>aggregation_pipeline</code>은 이 filter를 target collection의 첫 <code>$match</code>로 넣고 이후 stage를 그대로 이어 줍니다.</li>
-          <li><code>document</code>는 insert 또는 replacement document에 trusted <code>tenant_id</code>를 넣고, 이미 다른 값이나 다른 BSON type이 있으면 거부합니다. matching value를 가진 typed model은 그대로 사용할 수 있습니다.</li>
-          <li><code>update</code>는 classic modifier update만 받고 <code>tenant_id</code>의 set/unset 및 path mutation을 거부합니다. replacement는 <code>document</code>를 사용합니다. aggregation-pipeline update와 <code>$rename</code>은 generic tenant safety를 증명할 수 없으므로 이 helper의 지원 경계 밖입니다.</li>
-          <li>이것은 MongoDB 서버가 강제하는 RLS가 아닙니다. <code>lookup_stage</code>와 <code>union_with_stage</code>는 named direct foreign collection의 첫 <code>$match</code>에 같은 trusted tenant outer-AND condition을 넣습니다. nested <code>$lookup</code>/<code>$unionWith</code>, change-stream pipeline과 raw driver query는 그 범위 밖이므로 각 foreign collection의 scope와 최소 권한을 별도로 review합니다. <code>connect</code>가 돌려주는 <code>Client</code>와 re-exported <code>mongodb</code> crate는 migration/admin 작업에 쓸 수 있지만 request handler에 넓게 주입하지 않습니다.</li>
-          <li>tenant-owned collection의 production index는 일반적으로 <code>tenant_id</code>를 leading field로 둡니다. 실제 key 순서는 query shape와 shard key 설계를 포함해 deployment에서 검증합니다.</li>
+          <li>
+            <code>begin_transaction</code> starts an explicit session and transaction. The
+            application attaches operations to that session and commits or aborts it; Rustee never
+            creates a transaction per request.
+          </li>
+          <li>
+            Transactions and change streams require a replica set or sharded deployment. Avoid
+            parallel operations within one MongoDB transaction.
+          </li>
+          <li>
+            Change streams run in supervisor-owned workers, not infinite HTTP handlers. Handlers
+            must be idempotent because restart and duplicate delivery are possible.
+          </li>
+          <li>
+            <code>next_change_until</code> returns event, end, or shutdown with the opaque driver
+            resume token observed at that point. Its debug summary reports only the outcome variant
+            and token presence, never event content or token data. Persist a token only after
+            durable event handling succeeds.
+          </li>
+          <li>
+            Invalid tokens, history loss, collection changes, and incompatible pipelines are
+            operator-visible failures. Rustee never automatically falls back to earliest or latest
+            history.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>연결과 lifecycle</h2>
+        <h2>Durable Checkpoints</h2>
+        <p>
+          <code>rustee-mongodb-checkpoint-sqlx</code> can store opaque BSON resume tokens bounded to
+          1 MiB in PostgreSQL and optionally acquire a database-clock writer lease. Deployment
+          applies the initial checkpoint migration and its forward-only byte-bound migration;
+          application startup does not. Its default diagnostics are content-free while trusted
+          storage sources remain available to application handling.
+        </p>
         <ul>
-          <li>애플리케이션 프로세스마다 long-lived <code>Client</code> 하나를 만들고 clone해 공유합니다. driver가 server별 pool을 관리합니다.</li>
-          <li><code>ClientOptions</code>에서 connect timeout, server selection timeout, pool size, TLS와 application name을 명시합니다.</li>
-          <li>readiness endpoint는 짧은 timeout 안에서 선택한 database에 ping을 수행합니다. MongoDB 장애가 허용되지 않는 서비스는 readiness를 false로 만듭니다.</li>
-          <li>graceful shutdown에서는 새 요청을 멈춘 뒤 background worker를 종료하고 <code>Client::shutdown()</code>을 호출할 수 있게 합니다.</li>
-          <li>connection URI와 credential, command body의 민감 값은 log, trace, HTTP error response에 포함하지 않습니다.</li>
-          <li>MongoDB outage에서는 configured server-selection deadline 안에 readiness가 실패하도록 두고, application readiness를 false로 전환합니다. checkpoint를 PostgreSQL에 저장하면 <code>PostgresChangeStreamCheckpointStore::readiness(timeout)</code>도 별도 dependency check로 둡니다. Rustee는 request를 자동 재시도하거나 stale data로 대체하지 않습니다. replica-set 또는 checkpoint store recovery 뒤 새 client/worker를 어떻게 시작할지는 supervisor 정책으로 명시합니다.</li>
+          <li>
+            A stable consumer name identifies the collection, pipeline, decoder, and handler
+            contract. Change it when any of those meanings change.
+          </li>
+          <li>
+            Save a checkpoint after the durable, idempotent effect succeeds. Storage failure or lost
+            lease stops the worker and returns control to its supervisor.
+          </li>
+          <li>
+            Each restart uses a new deployment-instance owner ID. Lease durations use positive whole
+            milliseconds; renew before expiry and do not reuse stale leases.
+          </li>
+          <li>
+            A checkpoint is not message-queue settlement and does not establish exactly-once
+            behavior for external side effects.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>checkpoint recovery runbook</h2>
-        <ol>
-          <li>MongoDB 또는 checkpoint store readiness가 실패하면 해당 dependency가 필요한 deployment를 ready에서 제외하고, stream worker가 새 event를 처리하거나 token을 쓰지 않게 합니다.</li>
-          <li>PostgreSQL checkpoint store는 migration version과 <code>readiness(timeout)</code>을 확인합니다. storage failure 또는 <code>LeaseLost</code>를 받은 worker는 stream을 drop하고 실패를 supervisor에 반환합니다. 같은 process가 in-place로 다시 save하지 않습니다.</li>
-          <li>dependency가 회복되면 새 deployment instance ID로 lease를 acquire하고, durable token을 load한 뒤 새 driver stream을 엽니다. 기존 owner ID나 stale <code>ChangeStreamLease</code>를 재사용하지 않습니다.</li>
-          <li>resume token invalidation, collection drop/rename, pipeline contract 변경은 자동 fallback 대상이 아닙니다. 새 consumer identity 또는 승인된 replay 범위, duplicate side effect reconciliation을 operator가 선택합니다.</li>
-          <li>recovery 뒤 readiness, lease acquisition, resume-to-next-event와 tenant-isolation smoke check를 관측합니다. raw token, URI, credential, event body를 log/metric label에 넣지 않습니다.</li>
-        </ol>
-      </section>
-
-      <section>
-        <h2>cross-collection tenant review</h2>
-        <ol>
-          <li>request handler의 <code>TenantContext</code>는 verified identity 또는 trusted server-side route에서만 만들고, 모든 target collection read/write는 같은 <code>MongoTenantScope</code>를 사용합니다.</li>
-          <li>single-collection aggregation은 <code>aggregation_pipeline</code>로 시작합니다. 첫 <code>$match</code>가 trusted <code>tenant_id</code> outer-AND condition인지 review합니다.</li>
-          <li>direct foreign collection은 같은 <code>MongoTenantScope</code>의 <code>lookup_stage</code>/<code>union_with_stage</code>로 만들고, join predicate는 <code>let</code>과 <code>$expr</code> filter에 둡니다. helper가 foreign pipeline의 첫 tenant <code>$match</code>를 넣더라도 foreign document의 projection, nested pipeline과 cross-database access policy는 application이 명시합니다.</li>
-          <li>change-stream pipeline, raw driver migration/admin query, reporting export는 request scope 밖의 service identity와 최소 권한으로 분리합니다. tenant policy와 data retention을 code review와 deployment review에 함께 기록합니다.</li>
-          <li>새 query shape마다 tenant A/B fixture로 foreign read, update, delete, aggregate result와 join output이 tenant B data를 포함하지 않는지 contract test를 추가합니다.</li>
-        </ol>
-      </section>
-
-      <section>
-        <h2>schema와 index는 배포의 일부</h2>
+        <h2>Deployment Rules</h2>
         <div class="warning">
           <p>
-            MongoDB가 document database라고 해서 schema 운영이 사라지는 것은 아닙니다. collection validator, index,
-            기존 document backfill은 실행 시간과 lock 영향을 검토해야 하므로 production server startup에서 자동 실행하지 않습니다.
+            Collection validators, indexes, backfills, shard-key changes, credentials, and topology
+            are deployment work. They must not run automatically at production server startup.
           </p>
         </div>
-        <ol>
-          <li>application은 document schema version과 이전 버전 document 읽기 전략을 명시합니다.</li>
-          <li>새 index, validator, data backfill은 CI 검증 뒤 배포 pipeline의 단일 작업으로 실행합니다.</li>
-          <li>새 서버는 변경 전후 문서를 모두 안전하게 읽고 쓸 수 있는 기간을 거쳐 배포합니다.</li>
-          <li>대량 backfill과 shard key 변경은 background job과 운영 runbook으로 분리합니다.</li>
-        </ol>
+        <p>
+          Create one long-lived <code>Client</code> per process and clone it into state. Configure
+          positive connection and server-selection deadlines, pool size, TLS, and application name
+          explicitly; Rustee rejects a zero timeout before the driver is configured. Client
+          configuration and readiness return content-free error categories while retaining the
+          driver source for trusted diagnostics. Configuration debug output retains only redacted
+          connection and routing values plus timeout and presence state. URI, credentials, database
+          names, application names, command bodies, resume tokens, and event bodies must stay out of
+          logs, metrics labels, traces, and HTTP errors.
+        </p>
       </section>
-
-      <section>
-        <h2>transaction과 change stream</h2>
-        <pre><code>use rustee_mongodb::{ChangeStreamNext, begin_transaction, next_change_until};
-
-let mut session = begin_transaction(&amp;client).await?;
-orders.insert_one(order).session(&amp;mut session).await?;
-audit.insert_one(audit_entry).session(&amp;mut session).await?;
-session.commit_transaction().await?;
-
-let mut stream = orders.watch().await?;
-match next_change_until(&amp;mut stream, shutdown).await? {
-    ChangeStreamNext::Event { event, resume_token } =&gt; {
-        handle_event_idempotently(event).await?;
-        persist_checkpoint_after_success(resume_token).await?;
-    }
-    ChangeStreamNext::Shutdown { resume_token } =&gt; persist_checkpoint_before_exit(resume_token).await?,
-    ChangeStreamNext::Ended { resume_token } =&gt; schedule_restart(resume_token).await?,
-}</code></pre>
-        <ul>
-          <li><code>begin_transaction</code>은 session과 transaction만 시작합니다. operation은 모두 session에 연결하고 commit/abort는 application이 명시적으로 수행합니다. 요청마다 자동 transaction을 만들지 않습니다.</li>
-          <li>Rustee는 complete transaction callback을 자동 재시도하지 않습니다. driver가 제공하는 commit retry 외에 complete callback을 다시 실행하려면 external side effect와 idempotency를 application이 먼저 증명해야 합니다.</li>
-          <li>하나의 MongoDB transaction 안에서 parallel operation을 실행하지 않는 제약을 application architecture에 반영합니다. transaction은 replica set 또는 sharded deployment가 필요합니다.</li>
-          <li>change stream은 replica set 또는 sharded deployment가 필요합니다. HTTP handler에서 직접 무한 stream을 유지하지 않고 supervisor가 관리하는 worker에서 소비합니다.</li>
-          <li><code>next_change_until</code>은 shutdown이 이미 ready이면 next event보다 우선하며 event, end, shutdown마다 driver가 관찰한 opaque resume token을 돌려줍니다. shutdown 결과는 현재 stream worker의 종료이므로 stream을 재사용하지 않고 token checkpoint 후 supervisor가 새 stream을 시작합니다. token은 durable event handling이 성공한 뒤에만 저장합니다.</li>
-          <li>change stream worker는 restart와 duplicate event를 견딜 수 있는 idempotent consumer를 구현합니다.</li>
-          <li>change stream은 message queue의 전달 보장을 자동으로 대체하지 않습니다. 정확한 delivery contract가 필요하면 별도 event architecture를 선택합니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>의도적으로 제공하지 않는 것</h2>
-        <ul>
-          <li>collection을 route로 자동 노출하는 generic CRUD endpoint</li>
-          <li>MongoDB와 SQL database를 같은 repository trait로 평준화하는 API</li>
-          <li>server startup 시 자동 index 생성, validator 변경, data backfill</li>
-          <li>요청 단위 자동 session transaction 또는 change stream을 HTTP response로 그대로 중계하는 middleware</li>
-          <li>shard key, read preference, retryable write를 보편적으로 정하는 기본값</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>구현 순서</h2>
-        <ol>
-          <li>Stage 4에서 <code>State</code>, application error, graceful-shutdown extension point를 안정화합니다.</li>
-          <li>Stage 7에서 <code>rustee-mongodb</code>, typed collection example, ping readiness, integration test를 구현합니다. connection/readiness/shutdown helper, explicit transaction session, shutdown-aware change-stream next helper와 MongoDB 8 replica-set의 collection I/O, commit/abort, checkpoint/shutdown contract를 구현했습니다.</li>
-          <li>동일 단계에서 schema evolution, trusted-context BSON tenant boundary, durable checkpoint store와 restart recipe, outage matrix를 provider별로 검증합니다. tenant A/B read/update/delete isolation, tenant-field mutation rejection, direct foreign <code>$lookup</code>/<code>$unionWith</code>의 tenant B exclusion, PostgreSQL opaque-token persistence/corruption rejection, writer-lease contention/renewal/expiry/stale-write rejection, stopped replica set과 stopped checkpoint store의 bounded readiness failure 및 restart 뒤 contract recovery를 구현했습니다. broader recovery, nested aggregation과 change-stream access review는 남아 있습니다.</li>
-          <li>Stage 10에서 replica set, read preference, sharding, observability requirements를 실제 workload와 함께 독립 release gate로 확장합니다.</li>
-        </ol>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when MongoDB driver, document model, schema evolution, transaction, change-stream, or tenant aggregation policy changes.</p>
+        <p>
+          Last updated: 2026-08-19. Update this document when MongoDB adapter behavior or supported
+          topology changes.
+        </p>
       </footer>
     </main>
   </body>

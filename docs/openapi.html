@@ -1,105 +1,106 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee OpenAPI</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./architecture.html">구조</a>
-          <a href="./testing.html">Test</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./macros.html">Macros</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Explicit API Description</div>
-        <h1>OpenAPI는 route 구현을 추측하지 않습니다</h1>
+        <div class="eyebrow">OpenAPI</div>
+        <h1>OpenAPI Does Not Guess Route Implementation</h1>
         <p class="lead">
-          <code>rustee-openapi</code>는 application이 선언한 Rustee route와 operation/schema를 검증해 OpenAPI 3.1 JSON을 제공합니다.
-          handler signature, 인증 정책, 오류 의미와 domain schema는 application이 명시적으로 소유합니다.
+          <code>rustee-openapi</code> is an optional explicit document builder. It validates and
+          converts Rustee route patterns but leaves operation semantics, schemas, descriptions, and
+          security ownership with the application.
         </p>
       </section>
-
       <section>
-        <h2>선택 경계</h2>
+        <h2>Boundary</h2>
         <ul>
-          <li>facade에서는 <code>rustee = { features = [&quot;openapi&quot;] }</code>로 선택하고 <code>rustee::openapi</code>를 사용합니다. core/router에는 schema generator dependency를 추가하지 않습니다.</li>
-          <li><code>OpenApiRoute::from_rustee(&quot;/todos/:todo_id&quot;)</code>는 Rustee parameter grammar를 검증해 <code>/todos/{todo_id}</code>로 변환합니다. document에 넣는 operation은 모든 route parameter를 required path parameter로 선언해야 합니다.</li>
-          <li><code>OpenApiSchema</code>는 bounded JSON object만 받으며 string/integer/boolean/array/object/component reference helper를 제공합니다. model derive, reflection, router table scanning은 제공하지 않습니다.</li>
-          <li><code>OpenApiDocument::security_scheme</code>는 named HTTP Basic/Bearer, API key(header/query/cookie), OpenID Connect discovery, Authorization Code/Client Credentials OAuth2와 <code>mutualTLS</code> component를 명시합니다. header API-key name은 HTTP field-name grammar를 따라야 하며 query/cookie name은 runtime parser를 소유하지 않는 bounded metadata입니다. OAuth endpoint와 discovery URL은 HTTPS 또는 loopback HTTP만 허용하고 credential/query/fragment를 거부합니다. OAuth requirement scope는 declared flow에 존재해야 하며 <code>mutualTLS</code> requirement에는 scope를 넣을 수 없습니다.</li>
-          <li><code>OpenApiDocument::global_security_requirement</code>는 document-wide OR default를 선언합니다. operation은 local requirement로 이를 override하고, <code>anonymous_access()</code>의 <code>{}</code> alternative로 optional access를, <code>clear_security_requirements()</code>의 empty array로 inherited default removal을 명시합니다. runtime authorization은 생성하지 않습니다.</li>
-          <li><code>OpenApiDocument</code>는 ordinary Rustee handler response로 반환됩니다. endpoint mount, document access policy, server URL, runtime authentication/authorization, error body와 release version은 application이 정합니다.</li>
+          <li>
+            Rustee route <code>:parameter</code> segments convert to OpenAPI
+            <code>{parameter}</code> paths only after validation. The shared grammar rejects
+            ambiguous repeated path separators.
+          </li>
+          <li>
+            Applications explicitly attach operations, request/response schemas, tags, descriptions,
+            and security requirements. Raw schema objects are byte-admitted before storage, and
+            duplicate component names, operation IDs, method/path pairs, parameter locations, and
+            response status codes are rejected rather than overwritten. Header parameter names must
+            be valid HTTP field names and compare case-insensitively.
+          </li>
+          <li>
+            OpenAPI metadata documents an API contract; it does not create handlers, validate live
+            authorization, infer error behavior, or change application routing.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>최소 경로</h2>
-        <pre><code>let document = OpenApiDocument::new("Todo API", "0.1.0")?
-    .security_scheme(
-        "oidc",
-        OpenApiSecurityScheme::open_id_connect(
-            "https://issuer.example/.well-known/openid-configuration",
-        )?,
-    )?
+        <h2>Minimal Path</h2>
+        <pre><code>use rustee::{
+    StatusCode,
+    openapi::{
+        OpenApiDocument, OpenApiMethod, OpenApiOperation, OpenApiRoute, OpenApiSchema,
+        OpenApiSecurityRequirement, OpenApiSecurityScheme,
+    },
+};
+
+let document = OpenApiDocument::new("Rustee API", "1.0.0")?
+    .security_scheme("bearerAuth", OpenApiSecurityScheme::http_bearer())?
     .operation(
-        OpenApiRoute::from_rustee("/todos/:todo_id")?,
+        OpenApiRoute::from_rustee("/users/:id")?,
         OpenApiMethod::Get,
-        OpenApiOperation::builder("get_todo")
-            .security_requirement(
-                OpenApiSecurityRequirement::scoped("oidc", ["todos.read"])?
-            )
-            .path_parameter("todo_id", OpenApiSchema::integer())
-            .json_response(StatusCode::OK, "The requested todo", todo_schema)
-            .empty_response(StatusCode::NOT_FOUND, "The todo was not found")
+        OpenApiOperation::builder("get_user")
+            .path_parameter("id", OpenApiSchema::string())
+            .security_requirement(OpenApiSecurityRequirement::scheme("bearerAuth")?)
+            .empty_response(StatusCode::OK, "User")
             .build()?,
-    )?;
-
-let app = App::new()
-    .get("/todos/:todo_id", get_todo)
-    .get("/openapi.json", move || {
-        let document = document.clone();
-        async move { document }
-    });</code></pre>
+    )?;</code></pre>
         <p>
-          문서의 <code>200 application/json</code> 선언은 handler가 실제로 JSON response를 반환한다는 application contract입니다.
-          security requirement도 같은 방식의 public contract입니다. framework가 이를 runtime에서 검사하거나 operation에서 handler,
-          bearer verifier, session/OIDC login, API-key parser, tenant/scope policy를 자동 생성하지 않습니다.
+          Use explicit schemas and descriptions for public APIs. Security metadata can describe
+          bearer, OAuth2, mutual TLS, and API-key requirements, but it does not configure the
+          authentication middleware or validate provider policy.
         </p>
       </section>
-
       <section>
-        <h2>검증과 비목표</h2>
+        <h2>Verification and Non-Goals</h2>
         <ul>
-          <li>unit/facade contract는 route 변환, required path parameter 누락/초과, duplicate parameter, response 누락, component reference, bounded schema, HTTP/API key/OIDC/OAuth2/<code>mutualTLS</code> security component, API-key header grammar, declared OAuth scope와 non-OAuth/OIDC scope 거부, global default/anonymous/clear override와 JSON content type을 확인합니다. route conversion은 property/fuzz contract도 갖습니다.</li>
-          <li>OpenAPI document는 static application metadata입니다. request payload, bearer credential, tenant/subject, prompt와 같은 runtime 데이터를 document에 넣지 않습니다.</li>
-          <li>Implicit/password OAuth flow, runtime token exchange/refresh/revocation, TLS termination, client-certificate validation/trust rotation/principal mapping, auth middleware inference, derive macro, OpenAPI UI hosting, server-variable templating, external schema validator와 route/document drift의 build-time discovery는 scope 밖입니다. 필요하면 provider interoperability와 failure policy를 포함한 ADR을 추가합니다.</li>
+          <li>
+            Test route conversion, duplicate and malformed path rejection, operation attachment,
+            schema references, and security metadata independently.
+          </li>
+          <li>
+            Property and fuzz tests exercise route/OpenAPI parser boundaries. They complement
+            explicit regression cases.
+          </li>
+          <li>
+            Do not derive arbitrary handler semantics, database models, error status, CORS policy,
+            authentication behavior, or provider credentials from a route.
+          </li>
+          <li>
+            See ADRs <a href="./adr/0039-openapi-explicit-description-boundary.html">0039</a> and
+            <a href="./adr/0043-openapi-security-metadata-boundary.html">0043</a> through
+            <a href="./adr/0047-openapi-api-key-header-grammar.html">0047</a>.
+          </li>
         </ul>
       </section>
-
-      <section>
-        <h2>관련 결정</h2>
-        <p>
-          public boundary는 <a href="./adr/0039-openapi-explicit-description-boundary.html">ADR 0039</a>와
-          <a href="./adr/0043-openapi-security-metadata-boundary.html">ADR 0043</a>과
-          <a href="./adr/0045-openapi-oauth2-global-security-boundary.html">ADR 0045</a>,
-          <a href="./adr/0046-openapi-mutual-tls-metadata-boundary.html">ADR 0046</a>,
-          <a href="./adr/0047-openapi-api-key-header-grammar.html">ADR 0047</a>을 따릅니다.
-          release 상태는 <a href="./support-matrix.html">지원 현황</a>과 <a href="./release-plan.html">출하 계획</a>이 기준입니다.
-        </p>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document whenever OpenAPI generation scope, schema ownership, or public feature policy changes.</p>
+        <p>
+          Last updated: 2026-08-19. Update this document when OpenAPI builders, route conversion, or
+          metadata boundaries change.
+        </p>
       </footer>
     </main>
   </body>

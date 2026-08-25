@@ -1,92 +1,153 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee Migration Guide</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./ai.html">AI</a>
-          <a href="./support-matrix.html">지원 현황</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./release-notes.html">Release notes</a>
-          <a href="./release-checklist.html">Release checklist</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./release-plan.html">Release plan</a
+          ><a href="./release-notes.html">Release notes</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Migration Guide</div>
-        <h1>호환성 변경은 code diff가 아니라 운영 절차까지 설명합니다</h1>
+        <h1>Compatibility Changes Include the Operating Procedure</h1>
         <p class="lead">
-          Rustee는 첫 public baseline 이후 API, configuration, schema, provider lifecycle이 바뀌는 release마다
-          실행 순서와 rollback limit을 여기에 기록합니다. release note는 변경 목록이고, 이 문서는 사용자가 실제로 이동하는 방법입니다.
+          A Rustee migration explains code, configuration, schema, provider, and deployment changes
+          together with verification and rollback. A diff alone is not a migration plan.
         </p>
       </section>
-
       <section>
-        <h2>Initial baseline: v0.1.0</h2>
-        <p class="meta">Status: Draft / Unreleased.</p>
-        <div class="warning">
-          <p>
-            이전 Rustee release가 없으므로 <code>v0.1.0</code>에는 source version 간 migration path가 없습니다.
-            첫 tag와 publish record가 만들어진 뒤에만 이 항목은 public compatibility baseline이 됩니다.
-            현재 사용자는 unpublished workspace source를 stable API로 가정해서는 안 됩니다.
-          </p>
-        </div>
+        <h2>Initial Baseline: v0.1.0</h2>
         <p>
-          baseline의 supported scope, optional provider status와 initial limitations은
-          <a href="./release-notes.html">v0.1.0 release note draft</a> 및
-          <a href="./support-matrix.html">지원 현황 매트릭스</a>를 따릅니다.
+          The first public baseline establishes the documented core HTTP, optional integration, and
+          support boundaries recorded in the release inventory and release notes. Consumers should
+          pin the supported MSRV and use explicit feature flags for optional adapters.
         </p>
       </section>
-
       <section>
-        <h2>후속 release의 필수 migration 정보</h2>
-        <table>
-          <thead><tr><th>변경 종류</th><th>guide에 반드시 포함할 내용</th></tr></thead>
-          <tbody>
-            <tr><td>public Rust API</td><td>영향 crate/type/feature, before/after compile example, deprecation 기간과 replacement API, pre-1.0 semver 판단</td></tr>
-            <tr><td>configuration 또는 secret</td><td>old/new key, precedence/default 변화, startup validation effect, secret rotation 순서, failure/rollback behavior</td></tr>
-            <tr><td>database schema 또는 outbox/scheduler</td><td>migration order, lock/backfill/restore plan, mixed-version compatibility, rollback boundary, recurring schedule pause/catch-up effect와 external side-effect idempotency</td></tr>
-            <tr><td>queue/event</td><td>envelope version/upcaster, producer-consumer deploy order, DLQ/replay decision, duplicate/ack-loss reconciliation, retention impact</td></tr>
-            <tr><td>auth/tenant policy</td><td>issuer/key/session/role/tenant rule transition, rotation/revocation order, fail-closed expectation, credential redaction</td></tr>
-            <tr><td>AI/provider</td><td>model/provider/catalog change, authorization and spend effect, row/usage/audit reconciliation, retention/erase change, no-auto-replay limit</td></tr>
-            <tr><td>edge/deployment</td><td>trusted CIDR/header family, TLS/CDN cache/compression/purge change, drain/rollback sequence, chosen topology evidence</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>작성과 검증 순서</h2>
+        <h2>Redis Streams Retry-Key Format</h2>
+        <p>
+          Redis Streams workers derive provider-private delayed-retry keys from a versioned,
+          length-delimited stream and consumer-group namespace. This prevents delimiter-containing
+          identifiers from making separate worker routes share retry storage.
+        </p>
+        <p>
+          For an existing deployment that used the earlier delimiter-only form, reconcile all
+          scheduled retries before replacing workers. The adapter intentionally does not infer old
+          retry ownership because a colliding legacy key cannot be attributed safely to one source
+          route.
+        </p>
         <ol>
-          <li>release owner가 affected surface와 no-downtime 가능 여부를 먼저 분류합니다. 불가능하면 maintenance window 또는 explicit stop-the-world requirement를 적습니다.</li>
-          <li>new reader/consumer 또는 compatibility code를 먼저 배포하고, data/config/producer를 다음에 바꾸며, old path 제거는 rollback window 뒤의 separate release로 둡니다.</li>
-          <li>migration은 test fixture와 real backend/provider contract에서 verify합니다. credential, production tenant data, billable provider call이 필요한 step은 explicit approval을 받아 별도 qualification으로 기록합니다.</li>
-          <li>rollback이 unsafe하거나 provider-side side effect를 되돌릴 수 없으면 그 사실을 숨기지 않고 reconciliation procedure와 operator owner를 적습니다.</li>
-          <li>final guide link와 known limitation을 <a href="./release-notes.html">release note</a>, support-level delta와 <a href="./release-checklist.html">release checklist</a>에 대조합니다.</li>
+          <li>Stop workers for each affected route after its active handlers have drained.</li>
+          <li>
+            Inspect the earlier <code>{stream}:rustee:jobs:{group}:retry:*</code> schedule and
+            hashes; allow known records to run, replay them intentionally, or remove them using the
+            deployment's incident procedure.
+          </li>
+          <li>
+            Deploy the versioned-key worker and verify that its new retry storage starts empty or
+            contains only retries scheduled by the new workers.
+          </li>
         </ol>
       </section>
-
       <section>
-        <h2>비목표</h2>
+        <h2>MCP OAuth Redis Record-Key Format</h2>
         <p>
-          framework는 application의 business-data backfill, credential issuance, cloud IAM/KMS update, CDN purge 또는 external side-effect rollback을 자동 실행하지 않습니다.
-          migration guide는 이 책임을 감추는 convenience API 대신 required operator action과 검증 evidence를 공개합니다.
+          Encrypted MCP OAuth transaction and token records use versioned, length-delimited
+          namespace/state and namespace/token-slot keys. This prevents a delimiter-containing
+          callback state or tenant/user/connection slot from colliding with another configured
+          Redis namespace.
+        </p>
+        <p>
+          Do not automatically read or copy a legacy delimiter-only record. Its full legacy Redis
+          key is authenticated encryption data, and a colliding key cannot establish which
+          transaction or token subject should own the ciphertext. After deployment, restart any
+          uncompleted OAuth authorization flow, reauthorize each affected token slot, and retire
+          legacy entries with the deployment's credential-handling procedure.
         </p>
       </section>
-
+      <section>
+        <h2>Tenant Identifier Admission</h2>
+        <p>
+          <code>TenantContext</code> now rejects NUL-containing values when it is constructed.
+          This keeps a tenant identity representable in both MongoDB BSON data and PostgreSQL's
+          transaction-local RLS setting instead of failing after a database transaction begins.
+        </p>
+        <p>
+          Before upgrading, audit trusted identity and tenant-resolver mappings for NUL-containing
+          values. Correct those source values rather than lossy-normalizing them: a request with
+          such a tenant now fails at context construction, and no database migration is required.
+        </p>
+      </section>
+      <section>
+        <h2>Required Information for Future Releases</h2>
+        <ul>
+          <li>
+            Changed public APIs, feature flags, defaults, configuration keys, environment inputs,
+            and minimum Rust version.
+          </li>
+          <li>
+            Database, outbox, scheduler, checkpoint, or ledger migrations including order,
+            preconditions, forward compatibility, backfill, rollback, and owner.
+          </li>
+          <li>
+            Provider/client version, credential, TLS, topology, topic/queue/schema, cache, identity,
+            or edge-delivery changes.
+          </li>
+          <li>
+            Behavioral changes to authentication, authorization, tenant isolation, retry,
+            acknowledgement, replay, observability, redaction, AI tool approval, or retention.
+          </li>
+          <li>
+            Concrete validation commands, deployment evidence, success criteria, failure signals,
+            stop conditions, and rollback procedure.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Authoring and Verification Order</h2>
+        <ol>
+          <li>Identify affected contracts and update focused HTML documents and ADRs.</li>
+          <li>
+            Ship forward-compatible readers or consumers before writers/producers where the contract
+            needs it.
+          </li>
+          <li>
+            Apply migrations and provisioning through the deployment system, never an implicit HTTP
+            startup action.
+          </li>
+          <li>
+            Run unit, integration, provider, and recovery checks required for the claimed support
+            level.
+          </li>
+          <li>
+            Observe the defined rollout window, complete reconciliation, and retain owner-approved
+            evidence.
+          </li>
+        </ol>
+      </section>
+      <section>
+        <h2>Non-Goals</h2>
+        <p>
+          This guide does not promise automatic cross-version migration, provider replay, data
+          backfill, schema downgrade, credential rotation, or topology rollback. Those operations
+          need application and deployment ownership.
+        </p>
+      </section>
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Add a versioned section before publishing every user-visible compatibility change.</p>
+        <p>
+          Last updated: 2026-08-25. Add a concrete migration section for every release that changes
+          a compatible contract.
+        </p>
       </footer>
     </main>
   </body>

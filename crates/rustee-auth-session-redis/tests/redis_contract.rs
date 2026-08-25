@@ -3,7 +3,7 @@
 use http::{Request as HttpRequest, StatusCode, header::SET_COOKIE};
 use rustee_auth::Principal;
 use rustee_auth_session::{SessionCookieConfig, SessionLayer, SessionManager, SessionUser};
-use rustee_auth_session_redis::RedisSessionStore;
+use rustee_auth_session_redis::{RedisSessionStore, RedisSessionStoreError};
 use rustee_core::{Response, empty_body};
 use rustee_redis::{RedisConfig, connect};
 use rustee_router::App;
@@ -45,7 +45,7 @@ async fn redis_store_restores_a_session_through_the_http_layer() {
         .unwrap()
         .to_owned();
 
-    let service = SessionLayer::new(store, cookie).layer(App::new().post(
+    let service = SessionLayer::new(store.clone(), cookie).layer(App::new().post(
         "/profile",
         |user: SessionUser| async move {
             assert_eq!(user.principal().subject(), "redis-alice");
@@ -65,4 +65,16 @@ async fn redis_store_restores_a_session_through_the_http_layer() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+
+    let oversized_cookie = SessionCookieConfig::new("rustee_oversized", u64::MAX)
+        .unwrap()
+        .with_secure(false)
+        .unwrap();
+    let oversized_manager = SessionManager::new(store, oversized_cookie);
+    assert!(matches!(
+        oversized_manager
+            .establish(Principal::new("redis-oversized").unwrap())
+            .await,
+        Err(RedisSessionStoreError::TtlOutOfRange)
+    ));
 }

@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [route_pattern, openapi_route, openapi_security_scheme]
+        target: [route_pattern, openapi_route, openapi_security_scheme, static_range, query_extractor, path_extractor, json_extractor, test_cookie_jar, trusted_proxy_headers, mcp_sse_frame, mcp_stdio_message, mcp_server_request, mcp_oauth_www_authenticate, openai_sse_input, openai_batch_output_jsonl, event_envelope, job_envelope]
     env:
       CARGO_FUZZ_VERSION: "0.13.2"
       FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '300' }}

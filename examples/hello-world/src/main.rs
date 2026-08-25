@@ -1,3 +1,5 @@
+//! Compile-checked hello-world Rustee service with an `OpenAPI` description.
+
 use std::net::SocketAddr;
 
 use rustee::{
@@ -12,30 +14,25 @@ struct Greeting {
 }
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let openapi = OpenApiDocument::new("Rustee hello world", "0.1.0")
-        .expect("the static document metadata is valid")
-        .operation(
-            OpenApiRoute::from_rustee("/").expect("the root route is valid"),
-            OpenApiMethod::Get,
-            OpenApiOperation::builder("hello")
-                .summary("Returns a greeting")
-                .json_response(
-                    StatusCode::OK,
-                    "A JSON greeting",
-                    OpenApiSchema::object(
-                        std::collections::BTreeMap::from([(
-                            "message".to_owned(),
-                            OpenApiSchema::string(),
-                        )]),
-                        ["message".to_owned()],
-                    )
-                    .expect("the static greeting schema is valid"),
-                )
-                .build()
-                .expect("the static operation is valid"),
-        )
-        .expect("the static OpenAPI document is valid");
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let openapi = OpenApiDocument::new("Rustee hello world", "0.1.0")?.operation(
+        OpenApiRoute::from_rustee("/")?,
+        OpenApiMethod::Get,
+        OpenApiOperation::builder("hello")
+            .summary("Returns a greeting")
+            .json_response(
+                StatusCode::OK,
+                "A JSON greeting",
+                OpenApiSchema::object(
+                    std::collections::BTreeMap::from([(
+                        "message".to_owned(),
+                        OpenApiSchema::string(),
+                    )]),
+                    ["message".to_owned()],
+                )?,
+            )
+            .build()?,
+    )?;
     let app = App::new()
         .get("/", || async {
             Json(Greeting {
@@ -46,5 +43,6 @@ async fn main() -> std::io::Result<()> {
             let openapi = openapi.clone();
             async move { openapi }
         });
-    rustee::serve(SocketAddr::from(([127, 0, 0, 1], 3000)), app).await
+    rustee::serve(SocketAddr::from(([127, 0, 0, 1], 3000)), app).await?;
+    Ok(())
 }

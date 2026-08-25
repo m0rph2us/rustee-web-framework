@@ -7,7 +7,8 @@ use rustee_auth::{
     ApiKeyPepperRing, Principal, RotatingKeyedApiKeyAuthenticator,
 };
 use rustee_auth_sqlx::{
-    API_KEY_STORE_MIGRATION_SQL, ApiKeyRegistration, PostgresApiKeyStore, PostgresApiKeyStoreError,
+    API_KEY_STORE_MIGRATION_SQL, API_KEY_STORE_PRINCIPAL_BOUND_MIGRATION_SQL, ApiKeyRegistration,
+    MAX_SERIALIZED_PRINCIPAL_BYTES, PostgresApiKeyStore, PostgresApiKeyStoreError,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
@@ -26,6 +27,10 @@ async fn pool() -> PgPool {
 
 async fn reset_schema(pool: &PgPool) {
     sqlx::raw_sql(API_KEY_STORE_MIGRATION_SQL)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(API_KEY_STORE_PRINCIPAL_BOUND_MIGRATION_SQL)
         .execute(pool)
         .await
         .unwrap();
@@ -334,12 +339,76 @@ async fn expired_and_duplicate_credentials_reject_unsafe_changes_without_side_ef
 }
 
 #[tokio::test]
+#[ignore = "requires a PostgreSQL server; CI provisions one"]
+async fn oversized_durable_principals_are_rejected_by_schema_or_fail_closed_without_it() {
+    let pool = pool().await;
+    reset_schema(&pool).await;
+    let store = PostgresApiKeyStore::new(pool.clone());
+    let fingerprint = fingerprint("api-key-oversized-principal");
+    let record_id = store
+        .register(ApiKeyRegistration::new(
+            fingerprint.clone(),
+            principal("service-oversized-principal"),
+        ))
+        .await
+        .unwrap();
+    let oversized_principal = serde_json::json!({
+        "subject": "x".repeat(MAX_SERIALIZED_PRINCIPAL_BYTES + 1),
+        "scopes": [],
+    })
+    .to_string();
+
+    let guarded = sqlx::query(
+        "UPDATE rustee_api_key_credentials SET principal = $1::jsonb WHERE key_id = $2",
+    )
+    .bind(&oversized_principal)
+    .bind(record_id.as_uuid())
+    .execute(&pool)
+    .await;
+    assert!(guarded.is_err());
+
+    sqlx::query(
+        "ALTER TABLE rustee_api_key_credentials \
+         DROP CONSTRAINT rustee_api_key_credentials_principal_size_check",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE rustee_api_key_credentials SET principal = $1::jsonb WHERE key_id = $2")
+        .bind(oversized_principal)
+        .bind(record_id.as_uuid())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.authenticate(fingerprint).await.unwrap_err(),
+        ApiKeyError::RejectedApiKey
+    );
+    let last_used_count: i64 = sqlx::query_scalar(
+        "SELECT last_used_count FROM rustee_api_key_credentials WHERE key_id = $1",
+    )
+    .bind(record_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM rustee_api_key_authentication_audit WHERE key_id = $1",
+    )
+    .bind(record_id.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(last_used_count, 0);
+    assert_eq!(audit_count, 0);
+}
+
+#[tokio::test]
 #[ignore = "requires CI to stop its PostgreSQL container before this contract"]
 async fn api_key_store_readiness_fails_within_the_deadline_during_an_outage() {
-    assert!(
-        std::env::var_os("RUSTEE_AUTH_SQLX_EXPECT_OUTAGE").is_some(),
-        "CI must explicitly opt into the stopped-PostgreSQL contract"
-    );
+    if std::env::var("RUSTEE_AUTH_SQLX_EXPECT_OUTAGE").as_deref() != Ok("1") {
+        return;
+    }
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .acquire_timeout(Duration::from_millis(200))

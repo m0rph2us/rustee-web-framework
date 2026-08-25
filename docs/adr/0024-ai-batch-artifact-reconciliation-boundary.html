@@ -1,21 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0024: AI Batch Artifact Reconciliation Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header"><div class="site-header-inner"><a class="brand" href="../index.html">Rustee</a><nav class="nav" aria-label="문서"><a href="../design-philosophy.html">철학</a><a href="../architecture.html">구조</a><a href="../database.html">데이터베이스</a><a href="../redis.html">Redis</a><a href="../mongodb.html">MongoDB</a><a href="../authentication.html">인증</a><a href="../queues.html">Queue</a><a href="../events.html">Event</a><a href="../ai.html">AI</a><a href="../testing.html">Test</a><a href="../operations.html">운영</a><a href="../roadmap.html">로드맵</a><a href="../ai-context.html">AI 유지관리</a><a href="./index.html">ADR</a></nav></div></header>
     <main class="page">
-      <section class="hero"><div class="eyebrow">ADR 0024</div><h1>AI Batch artifact reconciliation boundary</h1><p class="lead">Status: Accepted. Date: 2026-08-03.</p></section>
-      <section><h2>Context</h2><p>Provider batch completion is not a single reliable event. An output or error artifact can represent partial results; a worker can stop after downloading it, after applying some domain rows, or after application effects succeed but before completion is recorded. Retrying raw files or model rows from a generic queue would leak retained content and can duplicate business side effects.</p></section>
-      <section><h2>Decision</h2><div class="decision"><p><code>rustee-ai-batch</code> defines a content-free artifact reference, whole-artifact ledger, loader, and processor contract. <code>rustee-ai-batch-jobs</code> carries only that reference and binds its durable envelope idempotency key to the artifact reconciliation key.</p></div><ul><li><code>AiBatchArtifactReference</code> contains an existing tenant-scoped batch reference, an output/error role, a validated opaque provider file ID, and a stable reconciliation key for one delivery attempt. It cannot contain JSONL, prompts, model bodies, provider error text, or domain result values.</li><li><code>AiBatchArtifactLedger</code> atomically returns <code>Reserved</code>, <code>Reconciled</code>, or <code>Pending</code>. The coordinator loads and processes only a fresh reservation; a recorded reconciliation is reused without artifact access, and an ambiguous attempt is never automatically replayed.</li><li><code>AiBatchArtifactLoader</code> authorizes and obtains the artifact only after durable dispatch starts. <code>AiBatchArtifactProcessor</code> owns model-body decoding, partial-result policy, and domain writes. Each row effect must be idempotent with a domain key plus the provider <code>custom_id</code>.</li><li>Loader, processor, and final-record failures retain <code>Pending</code>. Rustee does not decide whether a retry is safe, does not release the reservation, and does not retry download, parsing, deletion, or side effects automatically. An application reconciliation procedure inspects its row ledger and, only when safe, explicitly schedules a new attempt with a new reconciliation key.</li></ul></section>
-      <section><h2>Consequences</h2><ul><li>OpenAI Batch files can be downloaded and structurally parsed through <code>rustee-ai-openai</code>, then passed to an application-owned loader/processor without storing their raw bytes in Rustee durable jobs or logs.</li><li>A production implementation needs a restart-safe whole-artifact ledger and an atomic or otherwise provably idempotent row-level domain ledger. The in-memory ledger exists only for tests and local development.</li><li>The framework explicitly covers duplicate delivery and ambiguous whole-artifact attempts, but does not claim exactly-once provider delivery, exactly-once external side effects, complete provider billing, or automatic cleanup.</li></ul></section>
-      <section><h2>Alternatives</h2><table><thead><tr><th>대안</th><th>판단</th></tr></thead><tbody><tr><td>raw output JSONL을 queue payload에 넣어 generic worker가 자동 재시도</td><td>prompt/output retention과 tenant authorization을 넓히고 partial domain write를 중복할 수 있으므로 채택하지 않는다.</td></tr><tr><td>framework가 <code>custom_id</code>별 도메인 결과를 자동 저장</td><td>도메인 식별자, transaction, billing, erase 정책을 알 수 없으므로 채택하지 않는다.</td></tr><tr><td>file download 오류에 대해 즉시 reserve를 해제하고 재시도</td><td>이미 발생했을 수 있는 provider/artifact side effect를 구분할 수 없으므로 채택하지 않는다.</td></tr></tbody></table></section>
-      <section><h2>Follow-up</h2><ul><li>OpenAI model-specific request validation and semantic result decoders remain provider/application adapters.</li><li>Production ledger/catalog authorization, row-level idempotency schema, broker retry/DLQ and operator reconciliation procedure, billing, artifact retention/erase schedule, and live provider/outage evidence remain release gates.</li></ul></section>
-      <footer class="doc-footer"><p>Last updated: 2026-08-03. Update this ADR whenever batch artifact access, idempotency, partial-result handling, retention, deletion, or reconciliation ownership changes.</p></footer>
+      <section class="hero">
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0024: AI Batch Artifact Reconciliation Boundary</h1>
+        <p class="meta">Status: Accepted</p>
+      </section>
+      <section>
+        <h2>Context</h2>
+        <p>
+          A completed batch artifact can contain partial, duplicated, or ambiguous domain effects
+          and must not be automatically interpreted as business success.
+        </p>
+      </section>
+      <section>
+        <h2>Decision</h2>
+        <p>
+          Use reference-only reconciliation jobs keyed by scope, catalog, run, artifact role, file
+          ID, and reconciliation key; reserve once, process under authorization, then record exact
+          reconciliation.
+        </p>
+      </section>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Pending artifacts remain ambiguous, not retryable by default. Domain row idempotency,
+          retention/deletion, partial-result policy, and manual recovery stay application-owned.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

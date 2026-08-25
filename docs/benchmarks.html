@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Benchmarking</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="./index.html">Rustee</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./testing.html">Testing</a
+          ><a href="./roadmap.html">Roadmap</a
+          ><a href="./qualification-register.html">Qualification</a>
+        </nav>
+      </div>
+    </header>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">Benchmarking</div>
+        <h1>Record Repeatable Baselines Before Claiming Performance</h1>
+        <p class="lead">
+          Rustee benchmarks are diagnostics for a named workload. They detect changes under a
+          controlled environment; they do not establish a universal latency or throughput claim.
+        </p>
+      </section>
+      <section>
+        <h2>Current Harness</h2>
+        <p>
+          The <code>rustee-router</code> route-dispatch harness builds a small static and
+          parameterized route table, warms it, then repeatedly dispatches a matched parameterized
+          request through the public <code>App::call</code> path. It verifies the response status on
+          each iteration.
+        </p>
+        <pre><code>cargo bench -p rustee-router --bench route_dispatch</code></pre>
+        <p>
+          Set <code>RUSTEE_BENCH_ITERATIONS</code> to an explicit integer from 1 through 10,000,000
+          when the default 100,000 measured iterations is not appropriate. Every run uses a fixed
+          10,000-iteration warmup.
+        </p>
+        <p>
+          Set <code>RUSTEE_BENCH_OUTPUT</code> to write a schema-1 JSON report with the workload,
+          iterations, elapsed time, and calculated operations per second. The manual benchmark
+          workflow records that report as a 90-day artifact together with its source reference and
+          shared-runner identifier.
+        </p>
+      </section>
+      <section>
+        <h2>Recording Rules</h2>
+        <ul>
+          <li>
+            Record the source commit, Rust toolchain, command, iteration count, operating system,
+            CPU model, power mode, and competing workload.
+          </li>
+          <li>
+            Record the route table, request shape, body behavior, runtime model, and result units
+            with the output.
+          </li>
+          <li>
+            Compare only like-for-like runs. Treat a result from a shared CI runner as a smoke
+            baseline, not a release threshold.
+          </li>
+          <li>
+            Store significant results and regression decisions in the release or qualification
+            evidence for the relevant source version.
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>Limits</h2>
+        <ul>
+          <li>
+            This harness does not measure sockets, TLS, HTTP/2, application handlers, database
+            calls, allocators, load balancing, or production tail latency.
+          </li>
+          <li>
+            No automated pass/fail performance threshold exists until maintainers approve a stable
+            workload and controlled runner.
+          </li>
+          <li>
+            Benchmark numbers do not replace transport, provider, security, recovery, or external
+            qualification evidence.
+          </li>
+        </ul>
+      </section>
+      <footer class="doc-footer">
+        <p>
+          Last updated: 2026-08-08. Update this document with each benchmark workload or
+          interpretation change.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

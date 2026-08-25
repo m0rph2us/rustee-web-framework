@@ -1,128 +1,49 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0003: Redis 통합 경계</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0003: Redis Integration Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">ADR</a><a href="../redis.html">Redis</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0003</div>
-        <h1>Redis 통합 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0003: Redis Integration Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          Redis는 cache, session, rate limit, Pub/Sub, distributed coordination 등 서로 다른 성질의 기능에 사용된다.
-          웹 프레임워크가 Redis를 단순 cache로 취급하면 보안과 장애 시 동작이 숨겨지고, 반대로 client와 모든 고수준
-          기능을 core에 넣으면 의존성과 public API가 빠르게 커진다. Tokio 기반 Rustee에는 async, multiplexing, reconnect를
-          갖춘 기본 client 경로와 역할별 정책이 필요하다.
+          Redis is useful for caching, opaque sessions, rate limits, and Streams, but hides
+          important consistency and availability choices when treated as framework global state.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            Redis는 core 의존성이 아닌 선택적 상태 저장소 integration으로 둔다. Stage 6에서 redis-rs의 Tokio용
-            <code>redis::aio::ConnectionManager</code>를 첫 공식 client 경로로 사용하는 <code>rustee-redis</code> crate를 만든다.
-          </p>
-        </div>
-        <ul>
-          <li>Redis client는 <code>AppState</code>에 보관하고 <code>State&lt;AppState&gt;</code>로 전달한다.</li>
-          <li><code>rustee-redis</code>는 redis-rs command API를 대체하지 않으며, connection, configuration, middleware storage adapter에 집중한다.</li>
-          <li>cache는 key prefix와 TTL을 명시하고 원본 저장소와의 invalidation 책임을 application에 남긴다.</li>
-          <li><code>rustee-rate-limit</code>은 trusted application key resolver와 explicit <code>FailOpen</code>/<code>FailClosed</code> policy를 가진 fixed-window Tower layer를 제공하고, <code>rustee-rate-limit-redis</code>은 <code>INCR</code>, first-window TTL, <code>PTTL</code>을 하나의 Lua execution으로 수행한다. session과 rate limit middleware는 Redis 장애 시 allow 또는 deny를 묵시적으로 선택하지 않는다.</li>
-          <li>Pub/Sub과 blocking command는 전용 connection/background task로 분리한다.</li>
-          <li>분산 락과 DB-Redis cross-store atomicity는 초기 convenience API에서 제외한다. durable queue는 Stage 10에서 <code>rustee-jobs-redis</code>의 독립 provider release로 별도 지원한다.</li>
-        </ul>
+        <p>
+          Provide optional client, state-store, rate-limit, session, and Streams job integrations.
+          Require visible namespaces, TTLs, bounded readiness, and explicit failure policy.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>Redis를 쓰지 않는 Rustee 서비스는 core 의존성과 compile time을 늘리지 않는다.</li>
-          <li>기본 client는 clone 가능한 multiplexed connection과 reconnect behavior를 제공해 일반 command 사용이 간결해진다.</li>
-          <li>보안과 가용성 정책이 middleware configuration에 드러나므로 운영자가 의도를 검토할 수 있다.</li>
-          <li>응답 cache와 lock의 보편적 API는 늦어지지만, 잘못된 기본값으로 서비스의 일관성을 훼손할 가능성이 줄어든다.</li>
-          <li>Cluster, Sentinel, Streams의 adapter는 실제 요구를 바탕으로 feature와 별도 ADR로 설계해야 한다.</li>
-        </ul>
+        <p>
+          Rustee does not provide an automatic HTTP cache or universal distributed lock.
+          Applications own topology, TLS, credentials, invalidation, retention, retries, and
+          degraded-service behavior.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>대안</th>
-              <th>판단</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Redis dependency를 core에 포함</td>
-              <td>대부분의 서비스가 필요로 하지 않으며 core 안정성 및 build cost를 해치므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>모든 Redis 사용에 connection pool 강제</td>
-              <td>multiplexed client로 충분한 요청이 많다. 전용 연결이나 pool은 application 또는 별도 feature가 선택한다.</td>
-            </tr>
-            <tr>
-              <td>deadpool-redis를 첫 공식 client로 채택</td>
-              <td>유효한 선택지지만 Rustee의 기본 경로는 redis-rs의 reconnecting multiplexed client로 단순하게 시작한다.</td>
-            </tr>
-            <tr>
-              <td>자동 response cache와 lock middleware 제공</td>
-              <td>권한, invalidation, fencing, failure semantics가 서비스마다 달라 초기 표준 API로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>Redis 장애 시 모두 fail-open</td>
-              <td>cache에는 맞을 수 있으나 session과 rate limit에는 보안상 맞지 않을 수 있어 채택하지 않는다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>Stage 6에서 <code>rustee-redis</code>의 최소 configuration과 <code>ConnectionManager</code> example을 구현한다.</li>
-          <li>cache miss, timeout, reconnect, Redis outage를 포함한 integration test를 작성한다.</li>
-          <li>Stage 8의 <code>rustee-auth-session-redis</code>은 session TTL과 versioned namespace를 보존하며 Redis 오류를 <code>SessionLayer</code>의 fail-closed 503으로 전달한다. rate-limit layer와 Redis Lua bounded-concurrency contract는 구현됐으며, token-bucket/GCRA와 Cluster/Sentinel은 별도 provider release로 검증한다.</li>
-          <li>Stage 10에서 Streams job provider의 consumer group, pending reclaim, retry/DLQ를 독립 provider release로 검증한다.</li>
-          <li>Cluster, Sentinel, distributed lock 요구가 발생하면 실제 workload와 함께 새로운 ADR로 결정한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-02. Supersede this ADR if Rustee changes its Redis client, state-store, or failure-policy direction.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

@@ -284,15 +284,17 @@ async fn usage_ledger_blocks_duplicate_provider_attempts_and_persists_actual_usa
     assert_eq!(response.usage().total_tokens(), 21);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     let persisted = sqlx::query_as::<_, (String, i64, i64)>(
-        "SELECT status, input_tokens, output_tokens FROM rustee_ai_usage_ledger \
-         WHERE tenant = $1 AND idempotency_key = $2",
+        "SELECT status, input_tokens, output_tokens \
+         FROM rustee_ai_usage_ledger WHERE tenant = $1 AND idempotency_key = $2",
     )
     .bind("tenant-a")
     .bind("ai:usage:1")
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(persisted, ("completed".to_owned(), 13, 8));
+    assert_eq!(persisted.0, "completed");
+    assert_eq!(persisted.1, 13);
+    assert_eq!(persisted.2, 8);
 
     let duplicate = AiPipeline::new(provider)
         .complete_with_usage_ledger(request, reservation.clone(), &ledger)
@@ -307,6 +309,17 @@ async fn usage_ledger_blocks_duplicate_provider_attempts_and_persists_actual_usa
         ledger.reserve(reservation.clone()).await.unwrap(),
         AiUsageReservationDecision::AlreadySettled
     );
+    let settled_at_before = sqlx::query_scalar::<_, i64>(
+        "UPDATE rustee_ai_usage_ledger \
+         SET settled_at = TIMESTAMPTZ '2000-01-01 00:00:00+00' \
+         WHERE tenant = $1 AND idempotency_key = $2 \
+         RETURNING (EXTRACT(EPOCH FROM settled_at) * 1000000)::bigint",
+    )
+    .bind("tenant-a")
+    .bind("ai:usage:1")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     ledger
         .record_usage(reservation.settlement(Usage {
             input_tokens: 13,
@@ -314,6 +327,16 @@ async fn usage_ledger_blocks_duplicate_provider_attempts_and_persists_actual_usa
         }))
         .await
         .unwrap();
+    let settled_at_after = sqlx::query_scalar::<_, i64>(
+        "SELECT (EXTRACT(EPOCH FROM settled_at) * 1000000)::bigint \
+         FROM rustee_ai_usage_ledger WHERE tenant = $1 AND idempotency_key = $2",
+    )
+    .bind("tenant-a")
+    .bind("ai:usage:1")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(settled_at_after, settled_at_before);
     let usage_conflict = ledger
         .record_usage(reservation.settlement(Usage {
             input_tokens: 14,

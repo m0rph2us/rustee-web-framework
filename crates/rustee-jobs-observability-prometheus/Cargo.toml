@@ -11,6 +11,7 @@ description = "Prometheus text exporter for Rustee durable job delivery metrics"
 http.workspace = true
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
 rustee-jobs-observability = { path = "../rustee-jobs-observability", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [dev-dependencies]
 http-body-util.workspace = true

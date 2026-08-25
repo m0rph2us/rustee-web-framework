@@ -1,3 +1,5 @@
+//! Compile-checked middleware composition example for a Rustee HTTP service.
+
 use std::{convert::Infallible, net::SocketAddr};
 
 use http::HeaderValue;

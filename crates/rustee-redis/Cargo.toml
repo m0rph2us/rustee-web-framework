@@ -9,6 +9,7 @@ description = "Redis connection and explicit cache helpers for Rustee"
 
 [dependencies]
 redis.workspace = true
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

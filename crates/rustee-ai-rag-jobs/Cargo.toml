@@ -12,6 +12,7 @@ futures-util.workspace = true
 rustee-ai-rag = { path = "../rustee-ai-rag", version = "0.1.0" }
 rustee-jobs = { path = "../rustee-jobs", version = "0.1.0" }
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

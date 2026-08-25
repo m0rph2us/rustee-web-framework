@@ -9,6 +9,7 @@ description = "Exporter-neutral PostgreSQL transactional outbox relay metrics fo
 
 [dependencies]
 rustee-outbox-sqlx = { path = "../rustee-outbox-sqlx", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 
 [lints]
 workspace = true

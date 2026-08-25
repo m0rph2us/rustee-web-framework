@@ -1,68 +1,126 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee Official Examples</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./testing.html">Testing</a
+          ><a href="./release-plan.html">Release plan</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Compile-Checked Examples</div>
-        <h1>Rustee 공식 예제</h1>
-        <p class="lead">각 예제는 workspace-only package로 매 pull request에 compile하며, 대표 public flow는 in-process test로 고정합니다. 여기의 예제는 provider 운영 자격이나 배포 topology를 대신하지 않습니다.</p>
+        <div class="eyebrow">Official Examples</div>
+        <h1>Runnable Examples for the Supported Application Path</h1>
+        <p class="lead">
+          Examples are small applications with a stated contract. They compile in the workspace and
+          represent the intended API shape; they do not replace provider or deployment
+          qualification.
+        </p>
       </section>
-
       <section>
-        <h2>예제 맵</h2>
+        <h2>Example Map</h2>
         <table>
-          <thead><tr><th>package</th><th>경로와 기본 실행</th><th>대표 contract</th><th>명시적 한계</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Example</th>
+              <th>Shows</th>
+              <th>Boundary</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td><code>hello-world</code></td><td><code>examples/hello-world</code>, port 3000</td><td>JSON greeting과 explicit OpenAPI document</td><td>application schema와 deployment policy는 사용자가 소유</td></tr>
-            <tr><td><code>json-api</code></td><td><code>examples/json-api</code>, port 3001</td><td>typed path/query/JSON/state, 201 response와 invalid input</td><td>database persistence와 authorization은 포함하지 않음</td></tr>
-            <tr><td><code>middleware-example</code></td><td><code>examples/middleware</code>, port 3002</td><td>explicit CORS, request ID, panic boundary, compression order</td><td>proxy trust와 production panic policy는 deployment가 선택</td></tr>
-            <tr><td><code>security-jwt</code></td><td><code>examples/security-jwt</code>, port 3003, <code>JWT_HMAC_SECRET</code></td><td>HMAC JWT verified principal과 missing bearer challenge</td><td>OIDC/JWKS, key rotation, issuer outage qualification은 포함하지 않음</td></tr>
-            <tr><td><code>jobs-example</code></td><td><code>examples/jobs</code></td><td>typed envelope, idempotency key, publish와 registry dispatch</td><td>local publisher는 durable broker, ack, retry, DLQ가 아님</td></tr>
-            <tr><td><code>ai-pipeline</code></td><td><code>examples/ai-pipeline</code>, port 3004, <code>OPENAI_API_KEY</code>, <code>OPENAI_MODEL</code></td><td>deployment-configured provider model, AI pipeline, response mapping, failure redaction</td><td>recorded test provider는 live spend, tenant/budget/retention gate가 아님</td></tr>
+            <tr>
+              <td><code>hello-world</code></td>
+              <td>JSON greeting and OpenAPI document quickstart</td>
+              <td>In-process behavior, not a public deployment</td>
+            </tr>
+            <tr>
+              <td><code>json-api</code></td>
+              <td>Typed path, query, JSON, state, and invalid-input flow</td>
+              <td>Domain persistence remains application-owned</td>
+            </tr>
+            <tr>
+              <td><code>middleware</code></td>
+              <td>Explicit CORS, request ID, panic boundary, and compression composition</td>
+              <td>Production proxy and alert policy remain deployment-owned</td>
+            </tr>
+            <tr>
+              <td><code>security-jwt</code></td>
+              <td>HMAC JWT bearer authentication boundary</td>
+              <td>Key distribution and identity-provider operations are not demonstrated</td>
+            </tr>
+            <tr>
+              <td><code>jobs</code></td>
+              <td>Typed publish, registry decode, and handler delivery metadata</td>
+              <td>Local publishing is not broker durability</td>
+            </tr>
+            <tr>
+              <td><code>ai-pipeline</code></td>
+              <td>OpenAI-backed HTTP pipeline with a deployment-configured model</td>
+              <td>Recorded behavior is not billable live-provider qualification</td>
+            </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>검증과 실행</h2>
-        <pre><code>cargo +1.94.1 test -p hello-world -p json-api -p middleware-example -p security-jwt -p jobs-example -p ai-pipeline --offline
-cargo +1.94.1 run -p json-api
-cargo +1.94.1 run -p middleware-example
-JWT_HMAC_SECRET=change-me cargo +1.94.1 run -p security-jwt
-cargo +1.94.1 run -p jobs-example
-OPENAI_API_KEY=... OPENAI_MODEL=your-provider-model-id cargo +1.94.1 run -p ai-pipeline</code></pre>
-        <p><code>ai-pipeline</code>의 run command만 real OpenAI provider request를 만들 수 있습니다. <code>OPENAI_MODEL</code>은 adapter에 전달할 provider model ID이며 application alias를 자동 해석하지 않습니다. live credential, spending limit, tenant policy, output retention과 provider outage handling을 검증할 때는 <a href="./ai.html">AI application integration</a>과 release qualification을 함께 따릅니다.</p>
+        <h2>Running</h2>
+        <pre><code>cargo +1.94.1 run --locked -p hello-world
+cargo +1.94.1 run --locked -p json-api
+cargo +1.94.1 run --locked -p middleware-example
+JWT_HMAC_SECRET=change-me cargo +1.94.1 run --locked -p security-jwt
+cargo +1.94.1 run --locked -p jobs-example
+OPENAI_API_KEY=... OPENAI_MODEL=your-provider-model-id cargo +1.94.1 run --locked -p ai-pipeline</code></pre>
+        <p>
+          Only the AI example contacts a provider when its endpoint is invoked. Its credentials,
+          spending limit, tenant policy, output retention, and outage qualification remain
+          deployment-owned.
+        </p>
       </section>
-
       <section>
-        <h2>변경 규칙</h2>
-        <p>예제의 public API, 환경 변수, 검증 flow 또는 package 이름을 바꾸면 이 문서와 <a href="./architecture.html">구조</a>, <a href="./testing.html">테스트 전략</a>, <a href="./roadmap.html">로드맵</a>, <a href="./release-inventory.html">release inventory</a>, 관련 기능 문서를 같은 변경에서 갱신합니다. 전체 규칙은 <a href="./ai-context.html">AI 유지관리</a>에 있습니다.</p>
+        <h2>Running and Verifying</h2>
+        <pre><code>cargo +1.94.1 check --locked --workspace --all-targets
+cargo +1.94.1 test --locked --workspace --all-targets</code></pre>
+        <p>
+          Examples are binary workspace members, so <code>--all-targets</code> compiles and tests
+          them alongside the framework. <code>--locked</code> uses the committed dependency graph
+          while still allowing a first checkout to download missing crates; maintainer or CI
+          environments with a warm cache may additionally use <code>--offline</code>. Each example
+          must have bounded, deterministic representative tests. An example that needs a provider
+          credential, broker, database, public edge, or billable model call documents an explicit
+          opt-in qualification path instead of making that call part of ordinary CI.
+        </p>
       </section>
-
+      <section>
+        <h2>Change Rules</h2>
+        <ul>
+          <li>Update an example in the same change as any public API it demonstrates.</li>
+          <li>
+            Do not add production credentials, secrets, unbounded payloads, raw prompts, or
+            live-provider assumptions.
+          </li>
+          <li>
+            Keep the example focused on a single workflow and link to a focused integration document
+            for operational details.
+          </li>
+          <li>
+            Update the support matrix and release evidence when a documented example changes the
+            support claim.
+          </li>
+        </ul>
+      </section>
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this page whenever an official example, its runtime environment, or its representative verification changes.</p>
+        <p>
+          Last updated: 2026-08-19. Update this document when official examples or their
+          verification scope changes.
+        </p>
       </footer>
     </main>
   </body>

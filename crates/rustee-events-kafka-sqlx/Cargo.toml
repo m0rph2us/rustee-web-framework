@@ -10,6 +10,7 @@ description = "PostgreSQL durable delayed-retry routing for Rustee Kafka events"
 [features]
 rdkafka = [
   "dep:futures-util",
+  "dep:rustee-events",
   "dep:rustee-events-kafka",
   "rustee-events-kafka/rdkafka",
   "dep:sqlx",
@@ -20,6 +21,7 @@ rdkafka = [
 
 [dependencies]
 futures-util = { workspace = true, optional = true }
+rustee-events = { path = "../rustee-events", version = "0.1.0", optional = true }
 rustee-events-kafka = { path = "../rustee-events-kafka", version = "0.1.0", optional = true }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
@@ -27,8 +29,11 @@ tokio = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
-rustee-events = { path = "../rustee-events", version = "0.1.0" }
 serde.workspace = true
+
+[[test]]
+name = "delayed_retry_contract"
+required-features = ["rdkafka"]
 
 [lints]
 workspace = true

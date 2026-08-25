@@ -9,6 +9,7 @@ description = "Tenant- and ACL-scoped RAG retrieval contracts for Rustee AI"
 
 [dependencies]
 futures-util.workspace = true
+rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
 serde.workspace = true
 thiserror.workspace = true
 

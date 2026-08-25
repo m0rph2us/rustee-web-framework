@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "Approval-gated MCP Streamable HTTP tool server adapter for Rustee"
 
+[features]
+# Exposes minimal parser entry points only to the workspace fuzz harness.
+fuzzing = []
+
 [dependencies]
 base64.workspace = true
 bytes.workspace = true
@@ -15,6 +19,7 @@ http.workspace = true
 http-body-util.workspace = true
 rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde_json.workspace = true
 thiserror.workspace = true
 tower.workspace = true

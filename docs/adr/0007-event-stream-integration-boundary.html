@@ -1,122 +1,50 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0007 Event Stream Integration Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0007: Event Stream Integration Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">ADR</a><a href="../events.html">Events</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0007</div>
-        <h1>Kafka Event Stream 통합 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0007: Kafka Event Stream Integration Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          Kafka는 topic의 partition에 append된 기록을 consumer group이 offset으로 읽는 event-stream system이다. 여러 consumer group이
-          독립적으로 같은 event를 읽을 수 있고, retention 안에서는 offset을 옮겨 replay할 수 있다. 이는 한 message를 처리하고 ack하는
-          background job의 lifecycle과 다르다. 두 모델을 같은 public queue abstraction으로 감싸면 ordering, offset commit, rebalance,
-          replay, schema evolution의 중요 운영 의미가 사라진다.
+          Kafka is a partitioned event log with keys, offsets, consumer groups, and replay semantics
+          that differ from a job queue.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            Kafka는 Stage 9B의 선택적 <code>rustee-events-kafka</code> crate로 통합한다. 이 crate는 <code>rdkafka</code>를 사용하며,
-            typed and versioned event envelope, explicit topic/key, consumer group, post-success offset commit, rebalance, replay와
-            observability 경계를 제공한다. Kafka를 <code>rustee-jobs</code> provider로 취급하지 않는다.
-          </p>
-        </div>
-        <ul>
-          <li>순서는 partition 안에서만 보장되는 것으로 다루며, event producer가 domain partition key를 명시한다.</li>
-          <li>consumer는 business side effect가 성공한 뒤 offset을 commit한다. 첫 Kafka runtime은 partition-safe한 serial synchronous commit을 사용한다. provider-neutral handler는 stable event metadata만 받고, duplicate delivery를 전제로 idempotent하게 작성한다.</li>
-          <li><code>KafkaRetryConfig</code>와 <code>KafkaFailurePublisher</code>는 decode/handler failure를 bounded immediate retry 또는 terminal DLQ로 routing한다. broker acknowledgement 뒤에만 current offset을 commit하므로 publish/commit 사이 장애는 retry/DLQ duplicate를 만들 수 있다. delayed retry와 DLQ replay는 deployment-owned scheduler와 approved runbook으로 분리한다.</li>
-          <li>PostgreSQL DB 변경과 event publish의 atomic handoff에는 <code>rustee-outbox-sqlx</code> transaction outbox를 사용한다. same-transaction stage와 destination별 lease relay, transaction-scoped <code>PostgresInbox</code> projection receipt는 제공하지만 external consumer idempotency와 cross-store exactly-once는 application 책임이다.</li>
-          <li><code>rustee-events</code>의 normal decode는 exact version만 허용하고, older payload는 application이 explicit upcaster로 현재 type으로 변환한다. <code>rustee-events-schema</code>는 typed JSON Schema artifact, exact fingerprint와 subject/version catalog, application-owned registry acknowledgement exact-match를 제공한다. newer version, topic, partition, replication, retention, ACL, remote registry compatibility semantics/credential, schema ID wire format과 consumer-first rollout은 deployment provisioning에서 관리한다.</li>
-          <li>Kafka producer transaction은 provider capability일 뿐, 외부 side effect를 포함한 exactly-once business effect 약속이 아니다.</li>
-        </ul>
+        <p>
+          Provide versioned event envelopes, explicit topic/key, manual post-settlement commit,
+          retry/DLQ routing, bounded observability, schema artifacts, and optional PostgreSQL
+          delayed retry. Keep replay an operator-approved process.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>job 처리와 event propagation의 목적과 failure model이 API와 운영 문서에서 분명해진다.</li>
-          <li>Kafka consumer group, lag, offset, rebalance, replay를 first-class 운영 대상으로 다룰 수 있다.</li>
-          <li>서비스는 event handler의 idempotency, schema compatibility, partition key를 설계해야 한다.</li>
-          <li>Kafka를 쓰지 않는 HTTP service와 <code>rustee-jobs</code> 사용자는 Kafka dependency를 갖지 않는다.</li>
-        </ul>
+        <p>
+          Kafka behavior is at least once across crash boundaries. Topic provisioning, partitions,
+          ACLs, schema rollout, external-effect idempotency, replay, and provider qualification
+          remain deployment-owned.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>대안</th>
-              <th>판단</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Kafka를 <code>rustee-jobs</code> provider로 포함</td>
-              <td>work queue lifecycle이 partition/offset/replay model을 가리므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>모든 Kafka 사용을 raw <code>rdkafka</code>에 맡김</td>
-              <td>가능한 escape hatch는 유지하되 envelope, trace, shutdown, outbox와 document된 운영 contract를 제공할 가치가 있어 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>Kafka transaction으로 exactly-once side effect를 보장한다고 선언</td>
-              <td>database와 external API를 포함하는 일반적인 처리에는 성립하지 않으므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>application startup에서 topic을 자동 생성</td>
-              <td>partition, retention, replication, ACL은 운영 결정이므로 deployment provisioning으로 분리한다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>Stage 9B에서 producer/consumer와 post-success commit, bounded partition lag snapshot, provider-neutral bounded W3C carrier와 OpenTelemetry capture/handler-parent adapter, bounded immediate retry/DLQ route를 구현했고, 실제 Kafka CI contract로 successful handler record의 no-replay, failed handler record의 redelivery, active handler graceful drain/commit, quiescent member handoff, in-flight rebalance 뒤 commit failure/duplicate redelivery, committed lag-zero와 terminal DLQ arrival을 고정했다. PostgreSQL outbox stage/lease/release와 inbox rollback/committed-duplicate contract도 구현했다.</li>
-          <li>strict current-version decode와 explicit older-payload upcaster contract, production group offset을 자동으로 옮기지 않는 operator-owned replay procedure를 구현했다. optional <code>rustee-events-kafka-sqlx</code>가 Kafka source offset commit 전 PostgreSQL durable delayed-retry stage와 due relay를 제공하며, at-least-once duplicate boundary는 ADR 0034에서 관리한다. <code>rustee-events-schema</code> local catalog와 registry acknowledgement mismatch contract는 ADR 0036에서 관리한다. external side-effect idempotency guidance와 schema/replay qualification은 계속 검증한다.</li>
-          <li>real schema registry provider compatibility/credential, wire serialization과 consumer-first rollout evidence, Kafka transaction은 compatibility와 external side-effect 정책을 문서화한 뒤 선택 기능으로 검토한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Supersede this ADR if Rustee changes its event-stream boundary, Kafka delivery contract, or public event abstraction direction.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

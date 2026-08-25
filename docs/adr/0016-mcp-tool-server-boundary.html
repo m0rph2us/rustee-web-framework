@@ -1,115 +1,42 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0016: MCP Server Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0016: MCP Tool Server Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0016</div>
-        <h1>MCP server boundary</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0016: MCP Tool Server Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          Rustee application의 typed tool과 read-only contextual data는 internal model loop뿐 아니라 external MCP client에게도 노출될 수 있다.
-          하지만 tool definition은 caller authorization, tenant scope, user confirmation 또는 side-effect idempotency를
-          설명하지 않는다. unauthenticated <code>tools/list</code>은 privileged capability inventory를 노출할 수 있고,
-          client-selected JSON-RPC ID를 external action idempotency key로 쓰면 replay 또는 collision을 application이
-          통제할 수 없게 된다.
+          An MCP server exposes application capabilities to model-connected clients and requires
+          browser-origin, access, approval, and audit controls.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            <code>rustee-mcp::McpServer</code>은 <code>App::nest</code>에 mount할 수 있는 stateless Streamable HTTP JSON
-            server다. 2025-11-25 <code>initialize</code>, initialized notification, <code>tools/list</code>,
-            <code>tools/call</code>을 제공하며, constructor는 application <code>McpToolAccessPolicy</code>,
-            <code>ToolApprovalPolicy</code>, <code>ToolExecutionAuditSink</code>를 모두 요구한다. optional
-            <code>McpContextProvider</code>는 explicit read-only <code>resources/list</code>,
-            <code>resources/templates/list</code>, <code>resources/read</code>, <code>prompts/list</code>,
-            <code>prompts/get</code>만 제공할 수 있다.
-          </p>
-        </div>
-        <ul>
-          <li>access policy는 verified authentication middleware가 넣은 request extension에서 caller를 읽어 visible registered tool만 선택한다. server는 permitted set 밖 tool을 목록과 execution 양쪽에서 거부한다.</li>
-          <li>server는 <code>Origin</code> header가 없는 native MCP request만 default로 다음 policy에 넘긴다. header가 있으면 configured canonical HTTP(S) allowlist에 없을 때 403으로 거부한다. allowlist는 DNS rebinding defense이며 authentication이나 CORS response policy가 아니다.</li>
-          <li>access policy는 application-created <code>ToolExecutionContext</code>를 만든다. JSON-RPC ID, caller argument, remote metadata는 idempotency key source가 아니다.</li>
-          <li>visible call은 <code>ToolRegistry::execute_with_execution_audit</code>로만 실행한다. approval audit은 handler 전, terminal outcome audit은 handler 후에 기록된다. terminal audit failure는 rollback으로 표현하지 않는다.</li>
-          <li>context provider는 authenticated request를 직접 받고 tenant/user/data authorization을 수행한다. tool visibility 또는 execution context를 재사용해 context access를 허용하지 않으며, context access도 tool execution capability를 만들지 않는다.</li>
-          <li>provider가 선언한 capability만 initialize response에 광고한다. server는 no-pagination list, selected read URI equality, duplicate identifier, configured item bound와 successful response byte bound를 검증하고 raw provider failure를 반환하지 않는다.</li>
-          <li>raw access/approval/audit/handler error, hidden tool name detail, tool output은 failure response에 넣지 않는다. denied 또는 failed call은 generic MCP <code>isError</code> result를 반환한다.</li>
-          <li>request와 successful response는 configured byte bound를 갖는다. JSON response error는 small fixed payload로 남겨 observability와 client behavior를 예측 가능하게 한다.</li>
-          <li>access policy는 synchronous request-time decision이다. async identity lookup은 auth middleware나 request extension materialization 단계에서 완료해 streaming request body를 await 경계로 잡지 않는다.</li>
-        </ul>
+        <p>
+          Mount an optional JSON-response MCP server with fail-closed Origin validation,
+          access-filtered discovery, application-created execution context, approval, and mandatory
+          terminal audit before tool execution.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>external MCP client도 existing Rustee tenant/approval/audit path를 우회할 수 없다.</li>
-          <li>application은 resource/prompt metadata와 body를 remote client에 공개해도 되는 데이터로 명시적으로 선별해야 하며, model/provider context로의 별도 채택에는 ADR 0017의 selection, redaction, budget policy가 계속 필요하다.</li>
-          <li>application은 endpoint authentication, caller-to-tool mapping, semantic-action idempotency key, audit retention/reconciliation과 browser deployment의 CORS policy를 deployment policy로 명시해야 한다.</li>
-          <li>server는 session lifecycle, Streamable HTTP SSE GET, stdio, resource/prompt subscription/completion, sampling/elicitation, OAuth authorization, dynamic inventory notification을 아직 제공하지 않는다.</li>
-          <li>server integration은 core HTTP/router에 MCP protocol type을 넣지 않고 optional crate/Tower service로 유지된다.</li>
-        </ul>
+        <p>
+          Applications own authentication, authorization policy, tools, side effects, context
+          retention, and server lifecycle. Server-initiated requests, sampling, elicitation,
+          subscriptions, and completion remain out of scope.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>모든 registry definition을 모두에게 노출</td><td>privileged capability inventory가 새므로 application access policy로 필터링한다.</td></tr>
-            <tr><td>모든 <code>Origin</code> header를 허용하거나 wildcard allowlist</td><td>local MCP endpoint의 DNS rebinding risk를 키우므로 header-present request는 exact normalized allowlist가 없으면 거부한다.</td></tr>
-            <tr><td>JSON-RPC ID를 tool idempotency key로 재사용</td><td>caller-controlled replay key가 되므로 application이 trusted semantic key를 만든다.</td></tr>
-            <tr><td>audit 없는 direct tool execution</td><td>external capability의 side effect reconciliation을 약화하므로 terminal audit sink를 constructor requirement로 둔다.</td></tr>
-            <tr><td>access policy를 async request future로 노출</td><td>Rustee streaming body가 Sync가 아니며 request lifetime/cancellation을 흐리므로 prior middleware materialization을 요구한다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>session/SSE GET과 stdio는 cancellation, process lifecycle, backpressure, auth failure contract를 별도로 구현한다.</li>
-          <li>resource/prompt subscription/completion, OAuth authorization와 dynamic inventory notification은 caller authorization, credential rotation, compatibility/rollback matrix가 정해진 뒤 검토한다.</li>
-          <li>Supported 승격에는 real transport interoperability matrix, endpoint auth/rotation procedure, audit reconciliation runbook과 upgrade evidence가 필요하다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes MCP server authorization, audit requirements, idempotency ownership, or transport support.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

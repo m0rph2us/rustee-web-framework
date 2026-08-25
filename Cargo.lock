@@ -1484,7 +1484,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1767,9 +1767,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -2101,12 +2101,13 @@ dependencies = [
 
 [[package]]
 name = "icu_collections"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6b649701667bbe825c3b7e6388cb521c23d88644678e83c0c4d0a621a34b43"
+checksum = "2984d1cd16c883d7935b9e07e44071dca8d917fd52ecc02c04d5fa0b5a3f191c"
 dependencies = [
  "displaydoc",
  "potential_utf",
+ "utf8_iter",
  "yoke",
  "zerofrom",
  "zerovec",
@@ -2114,9 +2115,9 @@ dependencies = [
 
 [[package]]
 name = "icu_locale_core"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edba7861004dd3714265b4db54a3c390e880ab658fec5f7db895fae2046b5bb6"
+checksum = "92219b62b3e2b4d88ac5119f8904c10f8f61bf7e95b640d25ba3075e6cac2c29"
 dependencies = [
  "displaydoc",
  "litemap",
@@ -2127,9 +2128,9 @@ dependencies = [
 
 [[package]]
 name = "icu_normalizer"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f6c8828b67bf8908d82127b2054ea1b4427ff0230ee9141c54251934ab1b599"
+checksum = "c56e5ee99d6e3d33bd91c5d85458b6005a22140021cc324cea84dd0e72cff3b4"
 dependencies = [
  "icu_collections",
  "icu_normalizer_data",
@@ -2141,15 +2142,15 @@ dependencies = [
 
 [[package]]
 name = "icu_normalizer_data"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7aedcccd01fc5fe81e6b489c15b247b8b0690feb23304303a9e560f37efc560a"
+checksum = "da3be0ae77ea334f4da67c12f149704f19f81d1adf7c51cf482943e84a2bad38"
 
 [[package]]
 name = "icu_properties"
-version = "2.1.2"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "020bfc02fe870ec3a66d93e677ccca0562506e5872c650f893269e08615d74ec"
+checksum = "bee3b67d0ea5c2cca5003417989af8996f8604e34fb9ddf96208a033901e70de"
 dependencies = [
  "icu_collections",
  "icu_locale_core",
@@ -2161,15 +2162,15 @@ dependencies = [
 
 [[package]]
 name = "icu_properties_data"
-version = "2.1.2"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "616c294cf8d725c6afcd8f55abc17c56464ef6211f9ed59cccffe534129c77af"
+checksum = "8e2bbb201e0c04f7b4b3e14382af113e17ba4f63e2c9d2ee626b720cbce54a14"
 
 [[package]]
 name = "icu_provider"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85962cf0ce02e1e0a629cc34e7ca3e373ce20dda4c4d7294bbd0bf1fdb59e614"
+checksum = "139c4cf31c8b5f33d7e199446eff9c1e02decfc2f0eec2c8d71f65befa45b421"
 dependencies = [
  "displaydoc",
  "icu_locale_core",
@@ -2199,9 +2200,9 @@ dependencies = [
 
 [[package]]
 name = "idna_adapter"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3acae9609540aa318d1bc588455225fb2085b9ed0c4f6bd0d9d5bcd86f1a0344"
+checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
@@ -2730,7 +2731,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3339,7 +3340,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3724,7 +3725,10 @@ dependencies = [
 name = "rustee"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "futures-util",
  "http 1.5.0",
+ "http-body-util",
  "rustee-core",
  "rustee-macros",
  "rustee-openapi",
@@ -3867,6 +3871,8 @@ dependencies = [
  "futures-util",
  "reqwest 0.12.28",
  "rustee-ai",
+ "rustee-core",
+ "rustee-json",
  "serde_json",
  "thiserror",
  "tokio",
@@ -3881,6 +3887,7 @@ dependencies = [
  "futures-util",
  "reqwest 0.12.28",
  "rustee-ai-mcp",
+ "rustee-core",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3918,6 +3925,8 @@ dependencies = [
  "rustee-ai",
  "rustee-ai-batch",
  "rustee-ai-rag",
+ "rustee-core",
+ "rustee-json",
  "serde",
  "serde_json",
  "thiserror",
@@ -3930,6 +3939,7 @@ name = "rustee-ai-rag"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "rustee-ai",
  "serde",
  "serde_json",
  "thiserror",
@@ -3955,6 +3965,7 @@ dependencies = [
  "rustee-ai-rag",
  "rustee-jobs",
  "serde",
+ "thiserror",
  "tokio",
 ]
 
@@ -3972,12 +3983,14 @@ dependencies = [
 name = "rustee-ai-web"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "bytes",
  "futures-util",
  "http 1.5.0",
  "http-body-util",
  "rustee-ai",
  "rustee-core",
+ "serde",
  "serde_json",
  "thiserror",
  "tokio",
@@ -3995,6 +4008,7 @@ dependencies = [
  "rustee-server",
  "rustee-tenant",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror",
  "tokio",
@@ -4086,6 +4100,7 @@ dependencies = [
  "rustee-core",
  "rustee-redis",
  "rustee-router",
+ "serde_json",
  "thiserror",
  "tokio",
  "tower",
@@ -4122,9 +4137,13 @@ dependencies = [
  "http 1.5.0",
  "http-body 1.1.0",
  "http-body-util",
+ "percent-encoding",
+ "rustee-json",
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "tokio",
+ "tower",
  "url",
 ]
 
@@ -4133,6 +4152,7 @@ name = "rustee-events"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "rustee-json",
  "serde",
  "serde_json",
  "thiserror",
@@ -4173,6 +4193,7 @@ name = "rustee-events-kafka-sqlx-observability"
 version = "0.1.0"
 dependencies = [
  "rustee-events-kafka-sqlx",
+ "rustee-observability-core",
 ]
 
 [[package]]
@@ -4183,6 +4204,7 @@ dependencies = [
  "http-body-util",
  "rustee-core",
  "rustee-events-kafka-sqlx-observability",
+ "rustee-observability-core",
  "tokio",
 ]
 
@@ -4191,6 +4213,7 @@ name = "rustee-events-observability"
 version = "0.1.0"
 dependencies = [
  "rustee-events",
+ "rustee-observability-core",
 ]
 
 [[package]]
@@ -4202,6 +4225,7 @@ dependencies = [
  "rustee-core",
  "rustee-events",
  "rustee-events-observability",
+ "rustee-observability-core",
  "tokio",
 ]
 
@@ -4213,6 +4237,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "rustee-events",
+ "rustee-observability-opentelemetry",
  "serde",
  "tokio",
  "tracing",
@@ -4254,6 +4279,7 @@ name = "rustee-jobs"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "rustee-json",
  "serde",
  "serde_json",
  "thiserror",
@@ -4266,6 +4292,7 @@ name = "rustee-jobs-cron-observability"
 version = "0.1.0"
 dependencies = [
  "rustee-jobs-cron-sqlx",
+ "rustee-observability-core",
 ]
 
 [[package]]
@@ -4277,6 +4304,7 @@ dependencies = [
  "rustee-core",
  "rustee-jobs-cron-observability",
  "rustee-jobs-cron-sqlx",
+ "rustee-observability-core",
  "tokio",
 ]
 
@@ -4288,6 +4316,7 @@ dependencies = [
  "chrono-tz",
  "cron",
  "rustee-jobs",
+ "rustee-json",
  "rustee-outbox-sqlx",
  "serde",
  "serde_json",
@@ -4316,6 +4345,7 @@ name = "rustee-jobs-observability"
 version = "0.1.0"
 dependencies = [
  "rustee-jobs",
+ "rustee-observability-core",
 ]
 
 [[package]]
@@ -4327,6 +4357,7 @@ dependencies = [
  "rustee-core",
  "rustee-jobs",
  "rustee-jobs-observability",
+ "rustee-observability-core",
  "tokio",
 ]
 
@@ -4338,6 +4369,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "rustee-jobs",
+ "rustee-observability-opentelemetry",
  "serde",
  "tokio",
  "tracing",
@@ -4409,6 +4441,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustee-json"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "rustee-macro-alias-fixture"
 version = "0.1.0"
 dependencies = [
@@ -4437,6 +4478,7 @@ dependencies = [
  "http-body-util",
  "rustee-ai",
  "rustee-core",
+ "rustee-json",
  "rustee-router",
  "serde",
  "serde_json",
@@ -4518,6 +4560,7 @@ dependencies = [
  "futures-util",
  "http 1.5.0",
  "rustee-core",
+ "rustee-observability-core",
  "rustee-router",
  "tokio",
  "tower",
@@ -4525,6 +4568,10 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
 ]
+
+[[package]]
+name = "rustee-observability-core"
+version = "0.1.0"
 
 [[package]]
 name = "rustee-observability-opentelemetry"
@@ -4552,6 +4599,7 @@ dependencies = [
  "http-body-util",
  "rustee-core",
  "rustee-observability",
+ "rustee-observability-core",
  "rustee-router",
  "tokio",
  "tower",
@@ -4575,6 +4623,7 @@ dependencies = [
 name = "rustee-outbox-observability"
 version = "0.1.0"
 dependencies = [
+ "rustee-observability-core",
  "rustee-outbox-sqlx",
 ]
 
@@ -4585,6 +4634,7 @@ dependencies = [
  "http 1.5.0",
  "http-body-util",
  "rustee-core",
+ "rustee-observability-core",
  "rustee-outbox-observability",
  "rustee-outbox-sqlx",
  "tokio",
@@ -4636,6 +4686,7 @@ name = "rustee-redis"
 version = "0.1.0"
 dependencies = [
  "redis",
+ "rustee-json",
  "serde",
  "serde_json",
  "thiserror",
@@ -4722,6 +4773,7 @@ dependencies = [
  "http 1.5.0",
  "http-body-util",
  "rustee-core",
+ "rustee-json",
  "rustee-router",
  "serde",
  "serde_json",
@@ -4752,7 +4804,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4826,7 +4878,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5579,7 +5631,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6289,7 +6341,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

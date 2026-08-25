@@ -8,3 +8,11 @@ corpus/*
 !corpus/openapi_route/**
 !corpus/openapi_security_scheme/
 !corpus/openapi_security_scheme/**
+!corpus/static_range/
+!corpus/static_range/**
+!corpus/query_extractor/
+!corpus/query_extractor/**
+!corpus/json_extractor/
+!corpus/json_extractor/**
+!corpus/test_cookie_jar/
+!corpus/test_cookie_jar/**

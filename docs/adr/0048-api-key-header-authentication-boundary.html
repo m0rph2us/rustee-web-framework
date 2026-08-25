@@ -1,91 +1,40 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0048: API-key Header Authentication Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0048: API-Key Header Authentication Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../openapi.html">OpenAPI</a>
-          <a href="../testing.html">Test</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0048 · Accepted · 2026-08-04</div>
-        <h1>API-key header authentication boundary</h1>
-        <p class="lead">service API key를 explicit header와 provider-neutral principal verifier로 지원하되, key storage와 rotation policy는 application에 남깁니다.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0048: API-Key Header Authentication Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          machine-to-machine endpoint에는 API key가 여전히 쓰이지만 OpenAPI <code>apiKey</code> metadata만으로 request credential을 안전하게
-          검증할 수는 없습니다. query credential은 URL/log/cache에 남기기 쉽고 cookie credential은 browser scope와 CSRF semantics를 요구합니다.
-          repeated HTTP field가 comma로 결합될 수 있으므로 one opaque key를 여러 field value에서 임의로 선택하거나 결합해서는 안 됩니다.
+          Service API keys need a narrow transport contract that avoids accidental query/cookie use
+          and preserves sanitized authentication failures.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <ul>
-          <li><code>ApiKeyLayer::header</code>는 application이 명시한 valid HTTP field name 하나만 사용합니다. query/cookie source와 OpenAPI-driven auto-configuration은 제공하지 않습니다.</li>
-          <li>layer는 exactly one header value만 받고, blank, whitespace, non-printable/non-ASCII 또는 4 KiB 초과 value를 provider 호출 전에 fail-closed 합니다. raw key와 configured header name은 response, request extension, handler parameter, <code>Debug</code>, trace에 넣지 않습니다.</li>
-          <li><code>ApiKeyAuthenticator</code>는 bounded raw key를 받아 validated <code>Principal</code>만 반환합니다. missing/invalid/rejected key는 sanitized 401 with <code>WWW-Authenticate: ApiKey</code>, provider outage는 detail 없는 503으로 렌더링합니다.</li>
-          <li><code>StaticApiKeyAuthenticator</code>는 tests/local examples만을 위한 raw in-memory mapping입니다. production provider는 <code>KeyedApiKeyAuthenticator</code>/<code>ApiKeyFingerprintStore</code> 경계로 derived secret lookup을 받고, constant-time comparison where applicable, tenant mapping, revocation/rotation, audit and retention policy를 application deployment에서 소유합니다.</li>
-          <li>API-key authenticated principal은 existing scope/permission/tenant policy와 조합할 수 있지만, key string이나 header만으로 tenant authority 또는 authorization grant를 추론하지 않습니다.</li>
-          <li>unit header-map test와 real loopback HTTP/1.1 contract는 duplicate field가 parser를 거쳐도 401로 fail-closed하고 response가 어떤 raw key도 echo하지 않는지 확인합니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Consequences</h2>
-        <ul>
-          <li>service API는 bearer/OIDC/session과 같은 <code>Principal</code> 기반 authorization surface를 공유합니다.</li>
-          <li>ambiguous duplicate header, invalid wire value와 provider outage를 별도의 safe response로 관찰할 수 있습니다.</li>
-          <li>static mapping의 편의는 production credential store/security model을 대신하지 않으며, matching provider integration test와 rotation runbook 없이는 Supported가 될 수 없습니다.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>OpenAPI <code>apiKey</code> declaration이 authentication middleware를 자동 생성</td><td>document와 credential storage/rotation/authorization owner를 섞으므로 채택하지 않습니다.</td></tr>
-            <tr><td>query/cookie/header를 하나의 automatic extractor로 지원</td><td>URL exposure와 browser semantics를 normal path로 만들므로 채택하지 않습니다.</td></tr>
-            <tr><td>repeated header를 first/last value로 선택하거나 comma로 결합</td><td>intermediary behavior와 key identity가 모호해지므로 채택하지 않습니다.</td></tr>
-            <tr><td>static raw key map을 production default provider로 선언</td><td>comparison, hashing, rotation, revocation과 audit ownership을 감추므로 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
         <p>
-          concrete database/secret-manager provider, key ID/prefix policy, client-key/pepper rotation/revocation migration, tenant/permission mapping,
-          rate-limit fingerprint, audit retention, real provider outage and external OpenAPI route/runtime drift evidence는 separate integration ADR과 release gate에서 다룹니다.
+          Provide an explicit header-only API-key authentication layer that normalizes verified keys
+          into <code>Principal</code> and applies scope/authorization policy separately.
         </p>
       </section>
-
       <section>
-        <h2>References</h2>
-        <p><a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110: HTTP Semantics</a></p>
+        <h2>Consequences</h2>
+        <p>
+          Issuance, UX, transport policy beyond the header, storage, rotation, pepper management,
+          and operational response remain application-owned.
+        </p>
       </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="../authentication.html">인증과 권한</a>, <a href="../openapi.html">OpenAPI</a>, <a href="./0005-authentication-and-authorization.html">ADR 0005</a>, <a href="./0047-openapi-api-key-header-grammar.html">ADR 0047</a>, and <a href="./0049-keyed-api-key-fingerprint-store.html">ADR 0049</a>.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

@@ -11,6 +11,7 @@ description = "Tracing bootstrap and request telemetry helpers for Rustee"
 futures-util.workspace = true
 http.workspace = true
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-observability-core = { path = "../rustee-observability-core", version = "0.1.0" }
 tower.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

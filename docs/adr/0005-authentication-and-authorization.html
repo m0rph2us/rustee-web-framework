@@ -1,129 +1,55 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0005: 인증과 권한 경계</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0005: Authentication and Authorization Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">ADR</a><a href="../authentication.html">Authentication</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0005</div>
-        <h1>인증과 권한 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0005: Authentication and Authorization Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          인증은 framework adoption에서 빠지기 어려운 기능이지만 identity provider, login protocol, token format, session store,
-          tenant model은 서비스마다 다르다. 이를 core에 넣거나 raw JWT claim을 handler에 직접 노출하면 framework dependency와
-          security surface가 커지고, 인증과 권한의 구분이 사라질 수 있다. 반대로 공식 경로가 없으면 OIDC callback, JWT 검증,
-          CSRF, session rotation, 401/403 mapping이 서비스마다 달라진다.
+          Authentication transports vary, while authorization and tenant isolation need stable,
+          provider-neutral service contracts.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            인증과 권한은 Stage 8의 선택적 <code>rustee-auth</code> crate 세트로 제공한다. core는 authentication type이나
-            identity provider에 의존하지 않는다. 인증 결과는 provider-neutral <code>Principal</code>로 정규화하며,
-            authorization policy는 이를 사용해 별도로 판단한다.
-          </p>
-        </div>
-        <ul>
-          <li><code>rustee-auth</code>는 <code>Principal</code>, <code>AuthUser</code> extractor, <code>RequireAuth</code>, bearer layer, explicit header-only <code>ApiKeyLayer</code>, scope/direct-permission/server-configured role policy, tenant-match guard, configured host-map <code>TenantResolutionLayer</code>와 401/403/404/503 mapping을 제공한다.</li>
-          <li><code>rustee-auth-jwt</code>는 static HMAC/RSA/EC/EdDSA verification key와 단일 algorithm allowlist로 JWT bearer token을 검증한다. signature, <code>sub</code>, issuer, audience, expiry, not-before를 모두 요구하고 verified <code>roles</code>/<code>permissions</code> claim을 정규화한다.</li>
-          <li><code>rustee-auth-oidc</code>는 HTTPS remote JWKS bearer token 검증/key rotation과 OIDC discovery, Authorization Code + PKCE(S256), atomic one-time state, nonce-bound ID token, session bridge를 제공한다. 또한 configured HTTPS endpoint에만 opaque access token을 introspect하고 <code>active</code>, subject, issuer, audience, supplied time claim을 검증한다. verified <code>roles</code>/<code>permissions</code> claim을 정규화하며 cache는 raw token 대신 SHA-256 fingerprint를 key로 삼고 <code>exp</code>를 넘지 않는다. <code>rustee-auth-oidc-redis</code>는 versioned key/remaining TTL/Redis <code>GETDEL</code>로 durable transaction storage를 제공한다. one asymmetric algorithm, required <code>kid</code>, signature/issuer/audience/time claim, compatible JWK filtering, bounded refresh와 provider failure를 명시적으로 처리한다.</li>
-          <li><code>rustee-auth-session</code>은 opaque server-side session, secure cookie, session rotation/logout, CSRF와 state-store trait를 제공한다. <code>rustee-auth-session-redis</code>은 <code>rustee-redis</code> 위에서 namespace와 session TTL을 보존하는 production adapter를 제공한다.</li>
-          <li>static-key verifier와 remote-JWKS verifier는 같은 <code>BearerAuthenticator</code> 경계 뒤에서 <code>Principal</code>만 반환한다. API-key provider도 <code>ApiKeyAuthenticator</code> 경계 뒤에서 same principal만 반환한다. production API-key store에는 <code>KeyedApiKeyAuthenticator</code>가 HMAC-SHA-256 fingerprint만 전달하고 <code>rustee-auth-sqlx</code>는 optional PostgreSQL record/audit adapter를 제공한다. raw token/key와 verification key를 handler에 노출하지 않는다.</li>
-          <li>tenant는 검증된 identity 또는 trusted server-side mapping에서 만들며, client-provided header를 tenant authority로 신뢰하지 않는다. <code>TenantResolutionLayer</code>는 configured exact host map 또는 custom trusted resolver의 <code>TenantContext</code>를 principal tenant와 다시 비교한 뒤 route에 넣는다.</li>
-          <li>implicit flow와 Resource Owner Password Credentials grant는 공식 login 경로에서 제외한다.</li>
-        </ul>
+        <p>
+          Normalize verified identity into <code>Principal</code>; keep bearer, JWT, JWKS, OIDC,
+          opaque-token, session, and API-key adapters optional; apply explicit permission/role
+          policy and verified tenant resolution after authentication. Principal identity fields have
+          fixed byte bounds, each authorization value and set has a fixed bound, and serde
+          restoration revalidates the same contract. Principal and authorization-policy
+          <code>Debug</code> output retains only safe aggregate counts rather than identity, scope,
+          role, or permission values.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>OIDC, JWT, opaque token, cookie session을 바꾸더라도 handler는 안정된 <code>Principal</code>과 권한 API를 사용할 수 있다.</li>
-          <li>인증되지 않은 요청, 권한 없는 요청, identity infrastructure 장애를 401, 403, 503 등 서로 다른 failure로 다룰 수 있다.</li>
-          <li>core dependency와 public API가 특정 provider, password database, cryptographic crate에 묶이지 않는다.</li>
-          <li>session store failure policy와 cookie/CSRF configuration이 application configuration에 명시되어 운영 검토가 가능하다.</li>
-          <li>기본 API가 늘어나지만 policy engine, mTLS, DPoP, delegated authorization은 실제 요구 전까지 별도 extension으로 남는다.</li>
-        </ul>
+        <p>
+          Store outages fail closed. Oversized or malformed verified claims and persisted principal
+          data are rejected before request use. Application and deployment own issuer/key policy,
+          identity lifecycle, resource ownership, data-layer isolation, advanced authorization,
+          credentials, and provider qualification.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>대안</th>
-              <th>판단</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>identity provider와 user model을 core에 포함</td>
-              <td>provider 선택권과 core 안정성을 해치므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>handler가 raw JWT/cookie를 직접 처리</td>
-              <td>검증 누락과 authorization 혼동을 유발하므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>JWT claims만으로 자동 권한 부여</td>
-              <td>resource ownership, tenant 범위, domain policy를 표현하기 부족하므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>모든 app에 Redis session을 기본 강제</td>
-              <td>stateless API와 다른 state-store 요구가 있으므로 선택적 adapter로 둔다.</td>
-            </tr>
-            <tr>
-              <td>implicit flow 또는 password grant를 기본 login flow로 제공</td>
-              <td>현재 OAuth 보안 권고와 맞지 않아 채택하지 않는다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>Stage 4에서 request extension/extractor와 error mapping 계약을 구현한다.</li>
-          <li>Stage 6에서 Redis state-store failure policy를 구현했고, Stage 8에서 Redis session restoration Docker contract를 추가했다.</li>
-          <li>Stage 8에서 static-key JWT, JWKS verifier, OIDC Code + PKCE, opaque introspection, explicit header-only API-key authentication과 keyed fingerprint/PostgreSQL atomic-audit store boundary, direct permission/role policy/tenant-match guard와 configured host-map tenant resolution, Redis transaction-store security regression test를 유지한다. JWKS/opaque adapter의 real loopback transport-outage 503/redaction contract는 구현됐으며, API-key production store outage/recovery, pepper/KMS migration, repository isolation과 external IdP revocation lifecycle end-to-end security integration test를 구현한다.</li>
-          <li>Stage 10에서 advanced client authentication, policy engine, mTLS/DPoP 요구를 별도 ADR 및 release gate로 검토한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. See <a href="./0048-api-key-header-authentication-boundary.html">ADR 0048</a>. Supersede this ADR if Rustee moves authentication into core or changes its standards-based identity direction.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-25.</p></footer>
     </main>
   </body>
 </html>

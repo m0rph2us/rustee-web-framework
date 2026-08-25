@@ -13,9 +13,15 @@ use std::{
 };
 
 use rustee_events::{Event, EventClient, EventDeliveryOutcome, EventEnvelope, PublishError};
+use rustee_events_kafka::rdkafka::{
+    ClientConfig,
+    admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
+    client::DefaultClientContext,
+    error::RDKafkaErrorCode,
+};
 use rustee_events_kafka::{
     KafkaConfig, KafkaConsumerConfig, KafkaError, KafkaEventConsumer, KafkaFailurePublisher,
-    KafkaPublisher, KafkaRetryConfig,
+    KafkaLagSnapshotLimit, KafkaPublisher, KafkaRetryConfig,
 };
 use rustee_events_observability::EventMetrics;
 use serde::{Deserialize, Serialize};
@@ -43,10 +49,39 @@ fn consumer_config(topic: &str, group_id: &str) -> KafkaConsumerConfig {
     KafkaConsumerConfig::new(broker_url(), topic, group_id)
         .unwrap()
         .with_option("auto.offset.reset", "earliest")
+        .unwrap()
         .with_option("session.timeout.ms", "6000")
+        .unwrap()
+}
+
+async fn provision_topics(topics: &[&str]) {
+    let admin = ClientConfig::new()
+        .set("bootstrap.servers", broker_url())
+        .create::<AdminClient<DefaultClientContext>>()
+        .expect("Kafka admin client configuration failed");
+    let requests = topics
+        .iter()
+        .map(|topic| NewTopic::new(topic, 1, TopicReplication::Fixed(1)))
+        .collect::<Vec<_>>();
+    let results = admin
+        .create_topics(
+            &requests,
+            &AdminOptions::new()
+                .request_timeout(Some(Duration::from_secs(10)))
+                .operation_timeout(Some(Duration::from_secs(10))),
+        )
+        .await
+        .expect("Kafka topic provisioning request failed");
+    for result in results {
+        match result {
+            Ok(_) | Err((_, RDKafkaErrorCode::TopicAlreadyExists)) => {}
+            Err((topic, error)) => panic!("Kafka topic provisioning failed for {topic}: {error}"),
+        }
+    }
 }
 
 async fn ready_publisher(topic: &str) -> KafkaPublisher {
+    provision_topics(&[topic]).await;
     let publisher = KafkaPublisher::connect(
         &KafkaConfig::new(broker_url(), topic)
             .unwrap()
@@ -142,8 +177,10 @@ async fn wait_for_group_members(consumer: &KafkaEventConsumer, expected_members:
 
 async fn wait_for_zero_lag(consumer: &KafkaEventConsumer) {
     for _ in 0..60 {
-        if let Ok(snapshot) = consumer.lag_snapshot(Duration::from_secs(1))
-            && !snapshot.is_empty()
+        if let Ok(snapshot) = consumer.lag_snapshot_with_limit(
+            KafkaLagSnapshotLimit::new(NonZeroU16::new(8).unwrap()),
+            Duration::from_secs(1),
+        ) && !snapshot.is_empty()
             && snapshot.iter().all(|partition| partition.lag() == Some(0))
         {
             return;
@@ -454,7 +491,9 @@ async fn rebalance_redelivers_an_in_flight_record_when_its_original_commit_fails
     let first_metrics = EventMetrics::new();
     let first_consumer = Arc::new(
         KafkaEventConsumer::connect(
-            &consumer_config(&topic, &group_id).with_option("max.poll.interval.ms", "1000"),
+            &consumer_config(&topic, &group_id)
+                .with_option("max.poll.interval.ms", "1000")
+                .unwrap(),
         )
         .unwrap()
         .with_delivery_observer(Arc::new(first_metrics.clone())),
@@ -598,7 +637,9 @@ async fn failure_routing_retries_then_delivers_the_terminal_event_to_its_dead_le
         NonZeroU16::new(3).unwrap(),
     )
     .unwrap();
+    provision_topics(&[&retry_topic, &dead_letter_topic]).await;
     let failure_publisher = KafkaFailurePublisher::connect(&producer_config, retry).unwrap();
+    failure_publisher.readiness(Duration::from_secs(5)).unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let metrics = EventMetrics::new();

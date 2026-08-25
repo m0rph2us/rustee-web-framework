@@ -1,29 +1,29 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee 디자인 철학</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Design Philosophy</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./design-philosophy.html">Philosophy</a>
+          <a href="./architecture.html">Architecture</a>
+          <a href="./database.html">Database</a>
           <a href="./redis.html">Redis</a>
           <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
+          <a href="./authentication.html">Auth</a>
           <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
+          <a href="./events.html">Events</a>
           <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
+          <a href="./testing.html">Testing</a>
+          <a href="./operations.html">Operations</a>
+          <a href="./roadmap.html">Roadmap</a>
+          <a href="./ai-context.html">AI maintenance</a>
           <a href="./adr/index.html">ADR</a>
         </nav>
       </div>
@@ -32,182 +32,244 @@
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Design Philosophy</div>
-        <h1>작게 시작하고, 크게 자라도 무너지지 않게</h1>
+        <h1>Start Small, Grow Without Breaking</h1>
         <p class="lead">
-          Rustee는 초보 사용자가 빠르게 첫 라우트를 만들 수 있어야 하고, 숙련된 팀이 대규모 서비스로 키울 때도
-          core의 원칙을 버리지 않아야 합니다. 기능을 많이 넣는 것보다 확장 가능한 경계를 먼저 설계합니다.
+          A new user should be able to create a first route quickly, while an experienced team can
+          grow the same service without abandoning the core model. Rustee designs durable extension
+          boundaries before adding convenience features.
         </p>
       </section>
 
       <section>
-        <h2>핵심 신념</h2>
+        <h2>Core Beliefs</h2>
         <div class="grid">
           <article class="card">
-            <h3>작고 안정적인 core</h3>
+            <h3>Small, Stable Core</h3>
             <p>
-              core는 요청, 응답, 핸들러, extractor, 상태, 에러 변환 같은 프레임워크 계약만 담습니다.
-              편의 기능은 별도 crate나 feature로 확장합니다.
+              The core contains only framework contracts: requests, responses, handlers, extractors,
+              state, and error conversion. Convenience belongs in optional crates or features.
             </p>
           </article>
           <article class="card">
-            <h3>생태계와 연결되는 추상화</h3>
+            <h3>Ecosystem-Compatible Abstractions</h3>
             <p>
-              미들웨어와 서비스 모델은 Tower와 호환되도록 설계합니다. 자체 생태계만 강요하지 않고 Rust 웹 생태계의
-              이미 검증된 도구와 연결합니다.
+              Middleware and service composition remain compatible with Tower so applications can
+              use established Rust web ecosystem tools.
             </p>
           </article>
           <article class="card">
-            <h3>타입으로 드러나는 의도</h3>
+            <h3>Intent Visible in Types</h3>
             <p>
-              요청 데이터 추출, 응답 변환, 상태 접근, 에러 처리는 타입으로 표현합니다. 런타임에서 숨겨진 실패보다
-              컴파일 타임에 드러나는 실패를 선호합니다.
+              Request extraction, response conversion, state access, and error handling are
+              expressed in types. Compile-time failures are preferred over hidden runtime behavior.
             </p>
           </article>
           <article class="card">
-            <h3>점진적 노출</h3>
+            <h3>Progressive Exposure</h3>
             <p>
-              처음에는 <code>App::new().get(...)</code> 같은 단순한 API를 제공하고, 필요할 때만 낮은 수준의
-              Service, Layer, Body, Extension API로 내려갈 수 있게 합니다.
+              Start with APIs such as <code>App::new().get(...)</code>, then expose lower-level
+              Service, Layer, Body, and Extension APIs only when they are needed.
             </p>
           </article>
           <article class="card">
-            <h3>저장소 선택권</h3>
+            <h3>Storage Choice Stays with the Application</h3>
             <p>
-              데이터베이스는 서비스의 중요한 의존성이지만 웹 프레임워크의 core 계약은 아닙니다. Rustee는 관계형 풀과
-              문서 DB client를 타입 안전한 상태로 전달하고, SQL toolkit, ORM, document model 선택은 애플리케이션에 남깁니다.
+              Databases matter to services, but they are not core framework contracts. Rustee passes
+              typed relational pools and document-database clients while the application chooses its
+              SQL toolkit, ORM, and document model.
             </p>
           </article>
           <article class="card">
-            <h3>명시적인 외부 상태</h3>
+            <h3>Explicit External State</h3>
             <p>
-              Redis 같은 외부 상태 저장소는 cache, session, rate limit의 구현 수단이지 숨겨진 전역 상태가 아닙니다.
-              키 namespace, TTL, 장애 정책, 일관성 경계를 애플리케이션이 읽을 수 있는 구성으로 드러냅니다.
+              Redis is an implementation option for caching, sessions, and rate limits, never hidden
+              global state. Namespaces, TTLs, failure policy, and consistency boundaries stay
+              visible in configuration.
             </p>
           </article>
           <article class="card">
-            <h3>정체성과 권한의 분리</h3>
+            <h3>Identity Is Separate from Authorization</h3>
             <p>
-              인증은 요청의 주체를 확인하고, 권한 부여는 그 주체가 행동할 수 있는지 결정합니다. Rustee는 OIDC, JWT,
-              session 같은 전달 방식을 바꿔도 이 구분이 흐려지지 않는 <code>Principal</code> 중심 모델을 사용합니다.
+              Authentication establishes a request subject; authorization decides what that subject
+              may do. A <code>Principal</code>-centered model preserves this distinction across
+              OIDC, JWT, and sessions.
             </p>
           </article>
           <article class="card">
-            <h3>전달 의미를 숨기지 않는 비동기 작업</h3>
+            <h3>Honest Asynchronous Delivery</h3>
             <p>
-              background job은 성공 후 ack하고 실패하면 재시도 또는 DLQ로 이동합니다. Rustee는 at-least-once 전달과
-              중복 가능성을 숨기지 않으며, idempotency와 outbox를 서비스 설계의 일부로 만듭니다.
+              Jobs acknowledge after success and retry or move to a DLQ on failure. Rustee makes
+              at-least-once delivery and duplicates explicit, and treats idempotency and the outbox
+              as service design concerns.
             </p>
           </article>
           <article class="card">
-            <h3>Job과 event log의 분리</h3>
+            <h3>Jobs Are Not Event Logs</h3>
             <p>
-              RabbitMQ와 SQS의 작업 전달, Kafka의 partitioned event log는 같은 문제가 아닙니다. Rustee는 job의 ack/retry와
-              Kafka의 key/offset/replay를 각자의 API와 운영 계약으로 드러냅니다.
+              RabbitMQ and SQS job delivery are not Kafka's partitioned event log. Job
+              acknowledgment and retry remain separate from Kafka keys, offsets, and replay
+              semantics.
             </p>
           </article>
           <article class="card">
-            <h3>AI는 provider 호출보다 policy가 먼저</h3>
+            <h3>AI Policy Before Provider Calls</h3>
             <p>
-              모델 output, retrieved text, tool request는 신뢰할 수 없는 입력입니다. Rustee는 chat/RAG/tool을 조합하되
-              tenant 권한, human approval, budget, audit, redaction을 service policy로 먼저 확인합니다.
+              Model output, retrieved text, and tool requests are untrusted input. Chat, RAG, and
+              tools are composed only after tenant authorization, human approval, budget, audit, and
+              redaction policy.
             </p>
           </article>
           <article class="card">
-            <h3>테스트는 동작 계약</h3>
+            <h3>Tests Specify Observable Contracts</h3>
             <p>
-              Rustee는 빠른 unit test와 실제 HTTP/backend contract를 함께 사용합니다. line coverage가 아니라
-              cancellation, 실패, feature 조합까지 사용자가 관찰할 수 있는 동작을 고정합니다.
+              Fast unit tests and real HTTP and backend contracts work together. The goal is
+              observable behavior through cancellation, failure, and feature combinations, not just
+              line coverage.
             </p>
           </article>
           <article class="card">
-            <h3>운영 trust는 기본값에서 보수적으로</h3>
+            <h3>Conservative Operational Trust</h3>
             <p>
-              config와 secret은 드러나지 않아야 하고, proxy header는 명시적으로 신뢰한 hop에서만 받아야 합니다.
-              TLS, health, shutdown, observability는 integration보다 먼저 정하는 서비스 계약입니다.
+              Configuration and secrets must not leak. Proxy headers are accepted only from
+              explicitly trusted hops, and TLS, health, shutdown, and observability are service
+              contracts decided early.
             </p>
           </article>
         </div>
       </section>
 
       <section>
-        <h2>사용자 경험 원칙</h2>
+        <h2>User Experience Rules</h2>
         <ul>
-          <li>첫 예제는 10분 안에 실행되어야 합니다.</li>
-          <li>핸들러 시그니처는 읽으면 동작이 예상되어야 합니다.</li>
-          <li>에러 메시지는 Rust 초중급 사용자도 다음 행동을 알 수 있어야 합니다.</li>
-          <li>매크로는 선택적 편의 기능으로 두고, macro-free API도 항상 유지합니다.</li>
-          <li>기본값은 안전하고 운영 친화적이어야 하지만, 고급 사용자가 명시적으로 조정할 수 있어야 합니다.</li>
+          <li>The first example should run in ten minutes or less.</li>
+          <li>A handler signature should make its behavior predictable when read.</li>
+          <li>Error messages should tell an early-stage Rust user what to do next.</li>
+          <li>Macros are optional convenience; a macro-free API is always available.</li>
+          <li>
+            Defaults are safe and operations-friendly, while advanced users retain explicit control.
+          </li>
         </ul>
       </section>
 
       <section>
-        <h2>운영 철학</h2>
+        <h2>Operations Philosophy</h2>
         <p>
-          Rustee는 단순한 라우터가 아니라 운영 가능한 서비스의 기반이 되어야 합니다. 다만 core에 모든 운영 기능을
-          직접 넣지는 않습니다. request id, tracing, timeout, body limit, graceful shutdown, metrics, OpenTelemetry,
-          auth, rate limit 같은 기능은 명확한 계층에 놓고 조합 가능하게 만듭니다.
+          Rustee is more than a router: it is a foundation for operating a service. It does not
+          place every operational capability in the core. Request IDs, tracing, timeouts, body
+          limits, graceful shutdown, metrics, OpenTelemetry, authentication, and rate limits are
+          placed in clear, composable layers.
         </p>
         <div class="note">
           <p>
-            엔터프라이즈 수준이란 거대한 기본 패키지를 뜻하지 않습니다. Rustee에서 엔터프라이즈 수준은
-            <strong>관측 가능성, 보안, 구성 가능성, 확장성, 장기 유지보수성</strong>을 일관된 방식으로 지원한다는 뜻입니다.
+            Enterprise-ready does not mean a giant default package. In Rustee it means consistent
+            support for
+            <strong
+              >observability, security, configurability, extensibility, and long-term
+              maintainability</strong
+            >.
           </p>
         </div>
       </section>
 
       <section>
-        <h2>명시적 비목표</h2>
+        <h2>Explicit Non-Goals</h2>
         <ul>
-          <li>초기 버전에서 HTTP 파서나 async runtime을 직접 구현하지 않습니다.</li>
-          <li>core crate가 ORM, 데이터베이스 driver, migration 실행기, 템플릿 엔진, 인증 provider, 배포 도구를 직접 소유하지 않습니다.</li>
-          <li>모든 데이터베이스를 하나의 Rustee repository trait나 active-record API로 감싸지 않습니다.</li>
-          <li>MongoDB BSON document를 HTTP response 모델이나 범용 CRUD endpoint로 노출하지 않습니다.</li>
-          <li>core crate가 사용자 모델, password database, 특정 identity provider 또는 하드코딩된 RBAC 체계를 직접 소유하지 않습니다.</li>
-          <li>JWT claim이 존재한다는 사실만으로 권한 부여가 끝났다고 보거나, tenant 경계를 요청 header에서 신뢰하지 않습니다.</li>
-          <li>Redis를 자동 HTTP response cache나 일반적인 분산 락으로 추상화해 일관성과 장애 정책을 숨기지 않습니다.</li>
-          <li>모든 broker의 delivery semantics를 지우는 범용 <code>Queue&lt;T&gt;</code> API나 exactly-once 실행 보장을 주장하지 않습니다.</li>
-          <li>Kafka의 topic, partition, consumer group, offset, replay를 background job queue로 위장하지 않습니다.</li>
-          <li>model provider SDK, API key, prompt, vector database를 core crate에 넣거나 tool call을 승인 없이 자동 실행하지 않습니다.</li>
-          <li>prompt/completion을 default log나 trace에 저장하거나, prompt instruction만으로 RAG 데이터 권한을 통제하지 않습니다.</li>
-          <li>실제 transport와 backend contract를 mock-only test로 대체하거나, flaky test를 retry로 숨기지 않습니다.</li>
-          <li>모든 forwarded header를 자동 신뢰하거나, core에 특정 config format, secret manager, cloud deployment를 고정하지 않습니다.</li>
-          <li>프레임워크 사용자가 Tower, Hyper, Tokio 생태계에서 고립되게 만들지 않습니다.</li>
-          <li>편의를 위해 Rust의 타입 안정성을 흐리는 동적 마법을 기본값으로 삼지 않습니다.</li>
+          <li>Do not implement an HTTP parser or async runtime in the first release.</li>
+          <li>
+            Do not make the core own an ORM, database driver, migration runner, template engine,
+            identity provider, or deployment tool.
+          </li>
+          <li>Do not hide every database behind one repository trait or active-record API.</li>
+          <li>
+            Do not expose MongoDB BSON documents as the HTTP response model or generic CRUD
+            endpoints.
+          </li>
+          <li>
+            Do not make the core own user models, password databases, a specific identity provider,
+            or a fixed RBAC scheme.
+          </li>
+          <li>
+            Do not treat the presence of JWT claims as completed authorization or trust tenant
+            boundaries from request headers.
+          </li>
+          <li>
+            Do not disguise Redis as an automatic HTTP cache or general distributed lock that hides
+            consistency and failure policy.
+          </li>
+          <li>
+            Do not claim a universal <code>Queue&lt;T&gt;</code> API or exactly-once execution
+            across brokers.
+          </li>
+          <li>
+            Do not present Kafka topics, partitions, consumer groups, offsets, or replay as a
+            background-job queue.
+          </li>
+          <li>
+            Do not put model-provider SDKs, API keys, prompts, or vector databases in the core, and
+            never execute a tool call without approval.
+          </li>
+          <li>
+            Do not log prompts or completions by default or rely on prompt instructions for RAG data
+            authorization.
+          </li>
+          <li>
+            Do not substitute real transport and backend contracts with mock-only tests or hide
+            flaky tests behind retries.
+          </li>
+          <li>
+            Do not trust all forwarded headers automatically or lock the core to one configuration
+            format, secret manager, or cloud deployment.
+          </li>
+          <li>Do not isolate framework users from the Tower, Hyper, and Tokio ecosystems.</li>
+          <li>Do not make dynamic magic that weakens Rust's type safety the default path.</li>
         </ul>
       </section>
 
       <section>
-        <h2>성공 기준</h2>
+        <h2>Success Criteria</h2>
         <table>
           <thead>
             <tr>
-              <th>영역</th>
-              <th>기준</th>
+              <th>Area</th>
+              <th>Criterion</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>초기 진입</td>
-              <td>새 사용자가 문서의 hello-world 예제를 복사해 바로 실행할 수 있습니다.</td>
+              <td>First use</td>
+              <td>
+                A new user can copy the documented hello-world example and run it immediately.
+              </td>
             </tr>
             <tr>
-              <td>확장성</td>
-              <td>라우터, 미들웨어, extractor, response 변환을 core 변경 없이 확장할 수 있습니다.</td>
+              <td>Extensibility</td>
+              <td>
+                Routes, middleware, extractors, and response conversion can grow without changing
+                the core.
+              </td>
             </tr>
             <tr>
-              <td>운영성</td>
-              <td>실서비스에 필요한 shutdown, tracing, timeout, body limit, metrics 경로가 명확합니다.</td>
+              <td>Operations</td>
+              <td>
+                Shutdown, tracing, timeouts, body limits, and metrics paths are clear for production
+                services.
+              </td>
             </tr>
             <tr>
-              <td>유지보수</td>
-              <td>중요한 설계 결정과 변경 이유가 HTML 문서와 ADR에 남습니다.</td>
+              <td>Maintenance</td>
+              <td>
+                Important design decisions and their rationale remain in HTML documents and ADRs.
+              </td>
             </tr>
           </tbody>
         </table>
       </section>
 
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-02. Update this document when product philosophy or framework boundaries change.</p>
+        <p>
+          Last updated: 2026-08-08. Update this document when product philosophy or framework
+          boundaries change.
+        </p>
       </footer>
     </main>
   </body>

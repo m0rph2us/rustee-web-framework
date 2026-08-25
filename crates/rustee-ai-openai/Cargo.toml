@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "OpenAI Responses API adapter for Rustee AI"
 
+[features]
+# Exposes minimal parser entry points only to the workspace fuzz harness.
+fuzzing = []
+
 [dependencies]
 async-stream.workspace = true
 futures-util.workspace = true
@@ -14,6 +18,8 @@ reqwest = { workspace = true, features = ["multipart"] }
 rustee-ai = { path = "../rustee-ai", version = "0.1.0" }
 rustee-ai-batch = { path = "../rustee-ai-batch", version = "0.1.0" }
 rustee-ai-rag = { path = "../rustee-ai-rag", version = "0.1.0" }
+rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

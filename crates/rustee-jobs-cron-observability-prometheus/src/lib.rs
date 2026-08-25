@@ -4,8 +4,6 @@
 //! application owns a [`RecurringJobFireMetrics`] collector and explicitly mounts
 //! [`metrics_response`] wherever its deployment policy permits scraping.
 
-use std::fmt::Write;
-
 use http::{
     HeaderValue, StatusCode,
     header::{CACHE_CONTROL, CONTENT_TYPE},
@@ -14,9 +12,9 @@ use rustee_core::{Response, full_body, response};
 use rustee_jobs_cron_observability::{
     RecurringJobFireMetrics, RecurringJobFireMetricsSnapshot, metric_names,
 };
+use rustee_observability_core::prometheus::append_line;
 
-/// Prometheus text exposition content type for version 0.0.4.
-pub const CONTENT_TYPE_PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
+pub use rustee_observability_core::prometheus::PROMETHEUS_TEXT_CONTENT_TYPE as CONTENT_TYPE_PROMETHEUS;
 
 /// Encodes a point-in-time recurring-scheduler metrics snapshot in Prometheus text format.
 #[must_use]
@@ -159,10 +157,6 @@ pub fn metrics_response(metrics: &RecurringJobFireMetrics) -> Response {
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
-}
-
-fn append_line(output: &mut String, line: &str) {
-    writeln!(output, "{line}").expect("writing to an owned String must not fail");
 }
 
 #[cfg(test)]

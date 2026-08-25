@@ -1,103 +1,43 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0012 Tenant Persistence Isolation</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0012: Tenant Persistence Isolation</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0012</div>
-        <h1>tenant persistence isolation</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-02.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0012: Tenant Persistence Isolation</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          route-level tenant authorization만으로는 repository가 predicate를 빠뜨렸을 때 다른 tenant row를 읽거나 쓸 위험을 막지 못한다.
-          그러나 Rustee는 SQL, document database, ORM을 하나의 repository trait로 평준화하지 않기로 이미 결정했다. persistence 경계는
-          provider의 실제 보안 기능을 활용하면서도 handler의 transaction lifetime을 숨기지 않아야 한다.
+          Route authorization does not ensure that persistence reads and writes remain inside a
+          verified tenant boundary.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            trusted <code>TenantContext</code>를 provider-neutral <code>rustee-tenant</code> crate로 분리한다.
-            <code>rustee-auth</code>는 이 type을 기존 경로로 re-export하고, PostgreSQL service는
-            <code>rustee-sqlx::begin_tenant_transaction</code>으로 transaction-local <code>rustee.tenant_id</code> setting을 설정한다.
-          </p>
-        </div>
-        <ul>
-          <li>application migration은 tenant-protected PostgreSQL table마다 <code>ENABLE ROW LEVEL SECURITY</code>, 필요한 경우 <code>FORCE ROW LEVEL SECURITY</code>, <code>current_setting('rustee.tenant_id', true)</code>를 비교하는 <code>USING</code>/<code>WITH CHECK</code> policy를 정의한다.</li>
-          <li>application runtime role은 superuser나 <code>BYPASSRLS</code> role이 아니어야 하며, tenant-facing query는 helper가 만든 transaction 안에서 실행한다.</li>
-          <li>helper는 transaction을 자동 commit, rollback, retry하지 않는다. use case가 lifetime과 error policy를 계속 소유한다.</li>
-          <li>Rustee는 RLS migration, tenant column, policy naming, global admin query, cross-tenant reporting을 자동 생성하지 않는다.</li>
-          <li>MongoDB, Redis, event store, ORM은 PostgreSQL RLS와 동등하다고 가정하지 않는다. 각 provider의 credential, database/collection layout, filter 또는 policy 모델은 별도 integration release gate에서 증명한다.</li>
-        </ul>
+        <p>
+          Use provider-neutral <code>TenantContext</code> created from verified identity or trusted
+          routing. Its non-blank, NUL-free value is bounded to 1 KiB before it reaches a persistence
+          adapter. PostgreSQL helpers set a transaction-local tenant setting for application-owned
+          RLS; MongoDB helpers apply trusted tenant filters and document checks.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>authentication과 persistence가 같은 typed tenant scope를 사용하되, core가 database driver에 의존하지 않는다.</li>
-          <li>PostgreSQL RLS policy가 application query의 실수를 한 번 더 방어하므로 read와 write 모두 database contract로 검증할 수 있다.</li>
-          <li>사용자는 RLS schema, runtime role, migration review를 운영 책임으로 관리해야 한다.</li>
-          <li>다른 storage provider는 편의 facade를 서둘러 추가하지 않고 별도 위협 모델과 실제 backend test를 요구한다.</li>
-        </ul>
+        <p>
+          Applications still own repository coverage, database policy, raw-driver access, indexes,
+          and tenant A/B contract tests. Client headers and body fields never create tenant
+          authority.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>handler middleware가 모든 query에 tenant predicate 자동 삽입</td><td>raw SQL, ORM, aggregation, background work를 완전하게 가로챌 수 없고 누락을 숨기므로 채택하지 않는다.</td></tr>
-            <tr><td>database-neutral tenant repository trait</td><td>SQL RLS와 document database의 capability를 평준화하고 기존 database boundary를 깨므로 채택하지 않는다.</td></tr>
-            <tr><td>connection-global PostgreSQL setting</td><td>pool reuse에서 다른 tenant로 누출될 수 있으므로 transaction-local <code>set_config(..., true)</code>를 사용한다.</td></tr>
-            <tr><td>모든 MongoDB collection을 같은 helper로 감싸기</td><td>aggregation, sharding, credential model의 요구가 확정되지 않아 독립 provider contract 전에는 채택하지 않는다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>PostgreSQL 16 container contract에서 RLS-protected cross-tenant read가 빈 결과이고 write가 거부되는지 계속 확인한다.</li>
-          <li>external IdP revocation lifecycle과 MongoDB tenant isolation model을 실제 backend release gate로 추가한다.</li>
-          <li>global administrator, reporting, support access가 필요하면 explicit bypass/audit policy를 별도 ADR로 정한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-02. Supersede this ADR if Rustee adopts a different trusted tenant context or persistence isolation model.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-25.</p></footer>
     </main>
   </body>
 </html>

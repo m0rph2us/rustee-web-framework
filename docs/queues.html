@@ -1,489 +1,232 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee Queue와 Background Job</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Queues and Background Jobs</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./testing.html">Testing</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Queue and Background Jobs</div>
-        <h1>비동기 작업은 전달 보장을 숨기지 않고 실행합니다</h1>
+        <div class="eyebrow">Queues and Background Jobs</div>
+        <h1>Run Asynchronous Work Without Hiding Delivery Semantics</h1>
         <p class="lead">
-          Rustee의 queue 지원은 HTTP request에서 작업을 enqueue하고 별도 worker process에서 처리하는 durable job system입니다.
-          기본 보장은 at-least-once delivery이며, 성공 처리 후 ack, 실패 재시도, dead-letter queue, idempotent handler를 명시합니다.
+          Rustee models jobs as typed, at-least-once deliveries. Providers acknowledge only after a
+          successful handler, retry failures according to explicit policy, and route terminal
+          failures to a DLQ.
         </p>
       </section>
-
       <section>
-        <h2>결정 요약</h2>
-        <div class="decision">
-          <p>
-            Stage 9A에서 <code>rustee-jobs</code>를 typed job client와 worker runtime으로 제공하고, 첫 durable provider는
-            NATS JetStream 기반 <code>rustee-jobs-nats</code>로 구현합니다. 현재 NATS adapter는 acknowledged publish, job ID를 쓴 stream deduplication header, readiness, pre-provisioned durable pull worker, bounded concurrent drain, explicit ack/delayed NAK, acknowledged DLQ relay를 구현합니다. Stage 10의 Redis Streams adapter <code>rustee-jobs-redis</code>는 consumer group, durable delayed retry, ownership-checked ack/DLQ, pending reclaim과 Redis 7 CI contract를 구현했습니다. RabbitMQ 4.3 adapter <code>rustee-jobs-rabbitmq</code>는 quorum queue publisher confirm, manual ack/reject, native delayed-retry compatibility, direct DLQ와 CI contract를 구현했고, Amazon SQS adapter <code>rustee-jobs-sqs</code>는 25초 기본 요청 deadline, long polling, visibility lease heartbeat, direct DLQ/delete, Standard/FIFO route와 stopped LocalStack recovery를 포함한 CI contract를 구현했습니다.
-            <code>rustee-core</code>에는 broker dependency를 넣지 않습니다.
-          </p>
-        </div>
-        <p>
-          현재 <code>rustee-jobs</code>는 versioned JSON envelope, job ID, idempotency key, bounded W3C <code>JobTraceContext</code>, typed publish/dispatch contract,
-          bounded retry/Dead Letter decision, worker concurrency/drain configuration과 broker가 관찰한 delivery attempt의 handler context 주입을 구현합니다. 선택적 <code>rustee-jobs-opentelemetry</code>는 current span을 envelope carrier에 넣고 valid carrier를 job handler span의 parent로 연결하며, <code>rustee-jobs-observability</code>는 NATS/Redis Streams/RabbitMQ/SQS worker의 bounded delivery metric collector를 제공하고 <code>rustee-jobs-observability-prometheus</code>는 explicit <code>no-store</code> text response를 제공합니다. 실제 broker command를 일반화한 public <code>Queue&lt;T&gt;</code> API는 만들지 않습니다.
-          대신 application이 필요로 하는 공통 job lifecycle만 노출하고, provider-specific configuration과 delivery capability는
-          각각의 adapter에 남깁니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Worker observability</h2>
-        <p>
-          모든 durable worker는 선택적 <code>with_delivery_observer</code> builder로 같은 lifecycle contract를 사용합니다.
-          시작과 최종 정산을 분리해 <code>acknowledged</code>, <code>retried</code>, <code>dead_lettered</code>,
-          <code>unsettled</code> outcome 및 처리 시간을 기록합니다. 정산 실패나 drain timeout으로 task가 취소되면
-          source delivery를 성공으로 보지 않고 <code>unsettled</code>로 끝납니다.
-        </p>
-        <pre><code>let metrics = JobMetrics::new();
-let worker = SqsWorker::new(sqs_client, config)
-    .with_delivery_observer(Arc::new(metrics.clone()));
-
-worker.run_registry_until(registry, RetryPolicy::default(), WorkerConfig::default(), shutdown).await?;
-let snapshot = metrics.snapshot();
-let response = rustee_jobs_observability_prometheus::metrics_response(&amp;metrics);</code></pre>
+        <h2>Core Contract</h2>
         <ul>
-          <li><code>rustee-jobs-observability::JobMetrics</code>는 exporter-neutral collector입니다. <code>rustee-jobs-observability-prometheus</code>는 provider label을 escaped text 0.0.4로 인코드하는 optional <code>metrics_response</code> helper이며 registry, listener 또는 automatic route를 만들지 않습니다. Prometheus, OTLP 또는 application logger로 내보내는 정책은 application이 정합니다. 상세 결정은 <a href="./adr/0032-job-delivery-prometheus-exporter.html">ADR 0032</a>를 따릅니다.</li>
-          <li>metrics에는 bounded provider identifier, settlement outcome, global duration histogram만 사용합니다. job ID, job type, idempotency key, payload, queue URL/name, receipt handle, trace carrier와 handler error text는 넣지 않습니다.</li>
-          <li><code>rustee-jobs-opentelemetry::TraceContextHandler</code> span은 job ID, type, version, attempt를 correlation용 trace attribute로 기록합니다. exporter sampling과 retention은 application이 소유합니다.</li>
-          <li>observer는 synchronous/non-blocking contract이며 panic은 worker settlement path와 격리됩니다. observer implementation은 bounded exporter queue 또는 local aggregation을 사용해야 합니다.</li>
+          <li>
+            <code>rustee-jobs</code> provides typed envelopes with a 1 MiB framework byte limit and
+            255-byte application idempotency keys,
+            stable job names limited to 255 bytes with no whitespace or NUL bytes,
+            immutable-after-startup registries, strict current-version decode, explicit old-version
+            upcasters, validated retry budgets and ordered non-zero delays, fail-closed direct
+            retry decisions for invalid policies, provider-observed delivery attempts, and
+            content-free envelope, upcast, and provider diagnostics with
+            trusted sources for application handling.
+          </li>
+          <li>
+            Every job handler must be idempotent. A job ID or application idempotency key must
+            protect database or external effects from duplicate delivery.
+          </li>
+          <li>
+            Malformed envelopes and unknown job registrations bypass ordinary retry and enter a
+            durable DLQ path. Registered handler failures use the configured retry policy.
+          </li>
+          <li>
+            Jobs are not Kafka events. The queue API preserves acknowledgement, retry, and DLQ
+            semantics; topic, partition, offset, and replay belong to
+            <a href="./events.html">event streams</a>.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Redis Streams worker 경로</h2>
-        <p>
-          <code>RedisStreamsPublisher</code>와 <code>RedisStreamsWorker</code>는 reconnecting
-          <code>ConnectionManager</code>를 받습니다. source stream, consumer group, DLQ stream, ACL, retention은
-          deployment가 먼저 만들고 worker는 readiness에서 source/DLQ와 group 존재만 검사합니다. group을 만들거나
-          last-delivered ID를 바꾸지 않습니다.
-        </p>
-        <p>
-          publisher와 worker는 기본 5초의 설정 가능한 operation deadline으로 readiness, <code>XADD</code>,
-          <code>XREADGROUP</code>, pending reclaim, ownership-checked settlement와 retry promotion을 제한합니다.
-          worker deadline은 idle blocking read보다 길어야 합니다. reconnect policy는 injected
-          <code>ConnectionManager</code>와 application이 소유하며, Rustee는 deadline 만료를 endpoint 없는
-          provider error로 정규화합니다.
-        </p>
-        <pre><code>let publisher = RedisStreamsPublisher::new(redis.clone(), "jobs.email")?;
-let worker_config = RedisStreamsWorkerConfig::new(
-    "jobs.email",
-    "email-workers",
-    "email-worker-a",
-    "jobs.email.dlq",
-)?
-.with_reclaim_idle(Duration::from_secs(90))?;
-let worker = RedisStreamsWorker::new(redis, worker_config);
-
-worker
-    .run_registry_until(
-        registry,
-        WorkerConfig::default(),
-        RetryPolicy::default(),
-        shutdown_signal(),
-    )
-    .await?;</code></pre>
-        <ul>
-          <li>publisher는 envelope bytes와 base attempt를 <code>XADD</code>하고 Redis가 append를 승인한 뒤에만 성공을 반환합니다. publish deduplication은 제공하지 않으므로 outbox 재전달과 external side effect는 job ID/idempotency key로 처리합니다.</li>
-          <li>worker는 <code>XREADGROUP</code>으로 새 entry를 읽습니다. handler success는 현재 consumer가 PEL owner인 경우에만 <code>XACK</code>합니다.</li>
-          <li>handler failure는 Redis server clock 기준으로 provider-private retry zset/hash에 payload와 next attempt를 기록한 뒤 source를 같은 Lua operation에서 ack합니다. due retry는 다시 source stream에 원자적으로 append되므로 process restart 뒤에도 delay가 남습니다.</li>
-          <li>max delivery, malformed envelope, unknown registry job은 DLQ <code>XADD</code>를 source <code>XACK</code>과 한 operation으로 묶습니다. DLQ entry에는 payload, actual cumulative attempt, source entry ID가 남습니다.</li>
-          <li>terminated worker가 남긴 PEL entry만 <code>XAUTOCLAIM</code>으로 회수하고 <code>XPENDING</code> delivery count를 base attempt와 합산합니다. source entry가 retention/trim으로 사라졌다면 worker는 데이터 유실을 숨기지 않고 실패합니다.</li>
-        </ul>
-        <div class="warning">
-          <p>
-            현재 Redis worker는 processing 중 PEL heartbeat를 연장하지 않습니다. <code>reclaim_idle</code>은 deployment가 허용하는 최대 handler 실행 시간보다 길어야 하며, 더 긴 작업은 handler timeout/분할 또는 heartbeat가 있는 후속 provider capability가 필요합니다. source stream을 pending entry보다 짧게 trim하면 안 됩니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>RabbitMQ 4.3 worker 경로</h2>
-        <p>
-          <code>RabbitMqPublisher</code>는 dedicated confirm channel에서 persistent publish와 mandatory route를 사용하고
-          broker <code>Ack</code>가 올 때만 enqueue 성공으로 처리합니다. <code>RabbitMqWorker</code>는 source quorum queue의
-          manual ack consumer channel과 DLQ confirm channel을 분리합니다. 성공은 source ack, poison/exhausted delivery는 DLQ
-          publish confirm 뒤 source ack입니다.
-        </p>
-        <p>
-          <code>RabbitMqConnectionConfig</code>는 기본 5초의 bounded connect deadline을 사용하며
-          <code>with_connect_timeout</code>으로 deployment deadline을 명시할 수 있습니다. broker가 unavailable이면
-          <code>RabbitMqError::Connect</code>로만 실패하고 endpoint나 credential을 노출하지 않습니다. adapter는 자동 reconnect나
-          backoff loop를 시작하지 않으므로 restart, backoff, readiness 전환은 application supervisor의 책임입니다.
-        </p>
-        <p>
-          retry는 publish/ack 교환이 아니라 source delivery를 <code>basic.reject(requeue=true)</code>로 반환합니다. deployment가
-          만든 RabbitMQ 4.3 <code>delayed-retry-type=failed</code> policy가 이를 durable delayed state로 보관하며
-          <code>x-acquired-count</code>를 다음 handler attempt로 사용합니다. <code>RabbitMqNativeRetryConfig</code>은 deployment policy와
-          <code>RetryPolicy</code>의 exact compatibility를 startup에 확인합니다.
-        </p>
-        <p>
-          source quorum queue의 <code>delivery-limit</code>은 explicit <code>dead-letter-exchange</code>와
-          <code>dead-letter-routing-key</code>를 함께 가져야 합니다. 두 값은 poison/exhausted delivery의 confirmed direct-DLQ route와
-          같은 destination을 가리켜야 하며, exchange만 지정해 original routing key로 unroutable dead-letter를 만들면 안 됩니다.
-          AMQP passive readiness는 이 effective policy를 읽지 못하므로 deployment artifact 또는 별도 management-plane audit에서 검증합니다.
-        </p>
-        <p>
-          optional <code>rustee-jobs-rabbitmq-management</code>의 <code>RabbitMqTopologyAuditor</code>는 worker AMQP connection과 별도의
-          read-only Management HTTP API account로 source queue snapshot을 읽습니다. CI는 provisioned quorum queue의 실제 Management API
-          snapshot으로 quorum/durable/non-auto-delete와 effective delayed retry min/max/type, delivery limit, DLX exchange/routing key를 worker
-          config와 비교합니다. auditor는 topology를 생성하거나 수정하지 않습니다. management URL과 credential은 debug output에서 제외합니다.
-          adapter는 loopback test endpoint 외의 plain HTTP URL을 거부하므로, deployment는 HTTPS endpoint와 monitor-only ACL을 사용합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Amazon SQS worker 경로</h2>
-        <p>
-          <code>SqsPublisher</code>와 <code>SqsWorker</code>는 application이 구성한 AWS SDK client를 받습니다.
-          credential, region, endpoint와 SDK transport retry는 application이 소유하고 adapter는 queue URL을 credential로 취급하지 않습니다.
-          source/DLQ, queue mode, redrive policy, IAM, encryption, retention은 deployment가 먼저 만들며 worker readiness는 이를 읽기 전용으로 검증합니다.
-        </p>
-        <pre><code>let source = SqsQueueTarget::new(source_queue_url, SqsQueueKind::Standard)?;
-let dlq = SqsQueueTarget::new(dead_letter_queue_url, SqsQueueKind::Standard)?;
-let config = SqsWorkerConfig::new(source, dlq, 5)?
-    .with_visibility_timeout(Duration::from_secs(120))?
-    .with_heartbeat_interval(Duration::from_secs(30))?;
-let worker = SqsWorker::new(sqs_client, config);
-
-worker
-    .run_registry_until(
-        registry,
-        RetryPolicy::default(),
-        WorkerConfig::default(),
-        shutdown_signal(),
-    )
-    .await?;</code></pre>
-        <ul>
-          <li>publisher는 SQS <code>SendMessage</code> 성공 response 뒤에만 enqueue 성공을 반환합니다. FIFO route는 명시한 message group과 job ID 기반 deduplication ID를 함께 보냅니다. FIFO deduplication window도 exactly-once side effect 보장이 아닙니다.</li>
-          <li>worker는 최대 20초 long polling으로 receive하고 <code>ApproximateReceiveCount</code>를 typed handler attempt로 주입합니다. Standard queue의 count와 delivery는 at-least-once/approximate이므로 idempotency key가 여전히 필요합니다.</li>
-          <li>handler가 실행되는 동안 heartbeat가 <code>ChangeMessageVisibility</code>로 lease를 갱신합니다. handler 성공은 <code>DeleteMessage</code>, handler failure는 core retry backoff와 같은 whole-second visibility 값으로 retry합니다. sub-second 또는 12시간 초과 retry는 startup에서 거부합니다.</li>
-          <li>malformed envelope, unknown registry job, retry budget 고갈은 explicit DLQ <code>SendMessage</code> 성공 뒤 source receipt를 delete합니다. 이 delete가 실패하면 direct DLQ duplicate가 가능하므로 DLQ consumer도 idempotent해야 합니다.</li>
-          <li>source redrive policy는 같은 DLQ ARN과 configured <code>maxReceiveCount</code>를 가져야 합니다. 이는 process crash나 lease loss로 adapter가 source receipt를 settle하지 못했을 때의 broker recovery path이며 adapter가 queue policy를 변경하지는 않습니다.</li>
-        </ul>
-        <div class="warning">
-          <p>
-            SQS visibility timeout은 message가 처음 receive된 뒤 최대 12시간까지만 연장할 수 있습니다. <code>SqsWorkerConfig</code>은 handler timeout을 이 한계보다 짧게 강제하며 heartbeat 실패 시 source receipt를 delete하지 않습니다. 긴 작업은 작은 idempotent job으로 분할하거나 durable step workflow를 사용합니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>NATS worker 경로</h2>
-        <p>
-          <code>JetStreamWorker</code>는 application startup에 stream이나 consumer를 만들지 않습니다. 이미 provision된
-          durable pull consumer와 <code>JetStream</code> context를 받아 실행하며, consumer가 <code>AckPolicy::Explicit</code>이
-          아니거나 durable하지 않으면 시작을 거부합니다. worker concurrency보다 작은 <code>MaxAckPending</code> 또는 retry policy보다
-          작은 <code>MaxDeliver</code>도 실행 전에 거부합니다.
-        </p>
-        <pre><code>let worker = JetStreamWorker::new(context, consumer, "jobs.email.dlq")?;
-
-worker
-    .run_until::&lt;SendWelcomeEmail, _, _&gt;(
-        send_welcome_email,
-        WorkerConfig::default(),
-        RetryPolicy::default(),
-        shutdown_signal(),
-    )
-    .await?;</code></pre>
-        <ul>
-          <li>성공 handler는 source delivery를 ack합니다.</li>
-          <li>실패 handler는 JetStream이 보고한 delivery attempt로 retry policy를 계산하고, 예산이 있으면 delayed NAK를 보냅니다.</li>
-          <li>예산 소진 또는 잘못된 envelope는 DLQ subject에 publish하고 JetStream publish acknowledgement를 받은 뒤에만 source를 ack합니다. DLQ에는 job ID deduplication header와 실제 attempt header를 남깁니다.</li>
-          <li>shutdown 신호 뒤에는 새 delivery를 꺼내지 않고 active handler만 <code>drain_timeout</code>까지 기다립니다. 그 뒤 취소된 handler와 아직 ack되지 않은 delivery는 at-least-once 규칙에 따라 redelivery됩니다.</li>
-        </ul>
-        <div class="warning">
-          <p>
-            consumer의 <code>AckWait</code>은 handler의 최대 실행 시간보다 길어야 합니다. 현재 worker는 긴 handler를 위해
-            JetStream progress acknowledgement를 자동 연장하지 않으므로, 이 값이 짧으면 처리 중 redelivery가 발생할 수 있습니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>전달 보장과 처리 규칙</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>규칙</th>
-              <th>Rustee 정책</th>
-              <th>애플리케이션 책임</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>전달 보장</td>
-              <td>기본은 at-least-once입니다. exactly-once 실행을 약속하지 않습니다.</td>
-              <td>중복 실행을 견디는 idempotent handler와 idempotency key를 구현합니다.</td>
-            </tr>
-            <tr>
-              <td>ack</td>
-              <td>handler가 성공한 뒤에만 ack합니다.</td>
-              <td>외부 side effect가 성공으로 확정된 뒤 handler를 반환합니다.</td>
-            </tr>
-            <tr>
-              <td>retry</td>
-              <td>retryable, permanent, discard 결과를 구분하고 max attempts, backoff, jitter를 설정합니다.</td>
-              <td>재시도 가능한 오류와 이미 처리된 job을 분류합니다.</td>
-            </tr>
-            <tr>
-              <td>DLQ</td>
-              <td>max attempts 초과 또는 permanent failure를 dead-letter 경로로 보냅니다.</td>
-              <td>원인 수정, 조사, 안전한 replay 또는 discard 절차를 운영합니다.</td>
-            </tr>
-            <tr>
-              <td>worker 종료</td>
-              <td>새 fetch를 멈추고 grace period 동안 실행 중 job을 drain한 뒤, 남은 unacked job을 release합니다.</td>
-              <td>handler timeout과 긴 작업 heartbeat를 service 특성에 맞게 설정합니다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Job 계약</h2>
-        <p>모든 job은 serialization 가능한 payload와 versioned type name을 가져야 합니다. Rust closure나 in-memory pointer를 enqueue하지 않습니다.</p>
-        <pre><code>use rustee_jobs::{Job, JobClient, JobEnvelope, JobRegistry, RetryPolicy, WorkerConfig};
-
-#[derive(Serialize, Deserialize)]
-struct SendWelcomeEmail {
-    user_id: UserId,
-}
-
-impl Job for SendWelcomeEmail {
-    const NAME: &amp;'static str = "email.welcome";
-    const VERSION: u16 = 1;
-}
-
-let envelope = JobEnvelope::new(SendWelcomeEmail { user_id })
-    .with_idempotency_key(format!("welcome-email:{user_id}"))?;
-JobClient::new(publisher).enqueue(&amp;envelope).await?;
-
-let mut registry = JobRegistry::new();
-registry.register::&lt;SendWelcomeEmail, _&gt;(send_welcome_email)?;
-
-worker
-    .run_registry_until(
-        registry,
-        WorkerConfig::default(),
-        RetryPolicy::default(),
-        shutdown_signal(),
-    )
-    .await?;</code></pre>
-        <p>
-          이는 현재 Stage 9A의 public API 형태입니다. envelope에는 job ID, type, version, payload, idempotency key, enqueue time,
-          attempt를 기록합니다. strict decode가 기본이며 older version은 명시적 <code>JobUpcaster</code>를 등록한 handler만 처리합니다.
-          credential, raw token, 불필요한 개인정보는 payload와 observability attribute에 넣지 않습니다.
-        </p>
-        <p><a href="./examples.html">공식 예제</a>의 <code>jobs-example</code>은 같은 public envelope를 application-owned local publisher에 기록한 뒤 registry가 typed handler로 dispatch하는 대표 흐름을 in-process로 고정합니다. local publisher는 지속성, ack, retry 또는 DLQ를 제공하지 않으므로 운영에서는 NATS, Redis Streams, RabbitMQ, SQS 또는 PostgreSQL outbox adapter와 해당 provider contract를 선택해야 합니다.</p>
-      </section>
-
-      <section>
-        <h2>Provider 전략</h2>
+        <h2>Provider Boundaries</h2>
         <table>
           <thead>
             <tr>
               <th>Provider</th>
-              <th>지원 단계</th>
-              <th>운영 의미</th>
+              <th>Implemented contract</th>
+              <th>Important boundary</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>NATS JetStream</td>
-              <td>Stage 9A 첫 공식 durable provider: <code>rustee-jobs-nats</code></td>
-              <td>durable pull consumer, explicit ack, <code>AckWait</code>/backoff, <code>MaxDeliver</code>, flow control을 사용합니다.</td>
+              <td>
+                Pre-network server-address validation, positive bounded connection/API deadlines,
+                acknowledged publish, durable pull worker, explicit ack/NAK retry, DLQ relay, and
+                bounded drain
+              </td>
+              <td>
+                Supervisor reconnect/backoff, cluster topology, and external side-effect idempotency
+                remain application-owned
+              </td>
             </tr>
             <tr>
               <td>Redis Streams</td>
-              <td>Stage 10 구현/Redis 7 CI gate: <code>rustee-jobs-redis</code></td>
-              <td>consumer group, ownership-checked <code>XACK</code>, durable delayed retry, DLQ, pending reclaim을 사용합니다. Redis Pub/Sub이나 List는 durable job 경로가 아닙니다.</td>
+              <td>
+                Consumer group/DLQ provisioning contract, ownership-checked ack, positive
+                whole-millisecond Redis-clock delayed retry, and pending reclaim
+              </td>
+              <td>Cluster/Sentinel, retention, heartbeat, and replay are separate release gates</td>
             </tr>
             <tr>
-              <td>RabbitMQ</td>
-              <td>Stage 10 구현/RabbitMQ 4.3 CI gate: <code>rustee-jobs-rabbitmq</code></td>
-              <td>quorum queue, publisher confirm, manual ack/reject, bounded prefetch, direct DLQ를 사용합니다. retry는 RabbitMQ 4.3 native delayed-retry policy로만 처리하며 queue/exchange/DLX/policy는 배포 단계에서 만듭니다.</td>
+              <td>RabbitMQ 4.3</td>
+              <td>
+                Pre-network AMQP(S) URL validation, quorum queues, caller-bounded topology
+                readiness, publisher confirms, manual ack/reject, positive whole-millisecond native
+                delayed-retry compatibility, direct DLQ, and bounded JSON-only read-only management
+                topology audit
+              </td>
+              <td>
+                Topology, TLS/ACL, broad outage/duplicate qualification, and management access are
+                deployment concerns
+              </td>
             </tr>
             <tr>
               <td>Amazon SQS</td>
-              <td>Stage 10 구현/LocalStack CI gate: <code>rustee-jobs-sqs</code></td>
-              <td>long polling, visibility lease heartbeat, 처리 후 <code>DeleteMessage</code>, direct/redrive DLQ를 사용합니다. Standard와 FIFO 모두 business side effect는 at-least-once로 다룹니다.</td>
-            </tr>
-            <tr>
-              <td>Apache Kafka</td>
-              <td>job provider가 아님: <a href="./events.html"><code>rustee-events-kafka</code></a>, optional <code>rustee-events-kafka-sqlx</code></td>
-              <td>topic, partition key, consumer group, offset commit, retention/replay가 핵심인 event stream입니다. PostgreSQL delayed retry adapter는 source offset commit 전 retry intent를 stage하고 due row를 relay하지만, Kafka를 durable job lifecycle로 평준화하지 않습니다.</td>
+              <td>
+                Path-only credential-free queue URL admission, long polling, lease-window-validated
+                visibility heartbeat, successful delete, direct/redrive DLQ, and Standard/FIFO
+                routes
+              </td>
+              <td>
+                IAM/KMS, receive-count variation, real AWS evidence, and operator replay remain
+                external gates
+              </td>
             </tr>
           </tbody>
         </table>
         <p>
-          NATS stream/consumer, Redis stream/group/DLQ 같은 broker infrastructure는 production server startup에서 자동 생성하지 않습니다.
-          배포 provisioning 단계에서 versioned configuration으로 만들고, application은 readiness check로 필요한 consumer에 접근 가능한지 확인합니다.
+          Provider contracts are tested individually. No adapter promises exactly-once execution,
+          hides broker configuration, or turns delivery attempts into a universal queue semantic.
         </p>
-        <p>
-          RabbitMQ exchange/queue/DLX와 SQS queue/redrive policy/IAM도 같은 방식으로 provisioning합니다. Kafka topic/partition/retention은
-          <a href="./events.html">event stream 문서</a>의 별도 운영 경계에 따릅니다.
-        </p>
-        <div class="warning">
-          <p>
-            <code>rustee-jobs-rabbitmq</code>는 RabbitMQ 4.3 이상 quorum queue와 native
-            <code>delayed-retry-type=failed</code> policy를 요구합니다. archived
-            <code>x-delayed-message</code> plugin이나 per-message TTL/DLX 대기열을 retry 구현으로 사용하지 않습니다.
-            native backoff는 linear이므로 <code>RabbitMqNativeRetryConfig</code>과 core <code>RetryPolicy</code>의 initial/max 값이 같고
-            <code>max_backoff &lt;= 3 * initial_backoff</code>일 때만 worker가 시작됩니다. 이 조건 밖의 exponential retry는 NATS, Redis Streams 또는 PostgreSQL schedule 경로를 선택합니다.
-          </p>
-        </div>
       </section>
-
       <section>
-        <h2>Outbox와 지연 작업</h2>
-        <div class="warning">
-          <p>
-            database transaction을 commit한 뒤 broker publish가 실패하면 DB 변경은 남고 job은 유실될 수 있습니다. 반대로 먼저 publish하면
-            아직 commit되지 않은 데이터를 참조하는 job이 생길 수 있습니다. Rustee는 이 dual-write를 자동 transaction처럼 만들지 않습니다.
-          </p>
-        </div>
+        <h2>Outbox, Delays, and Scheduling</h2>
+        <p>
+          <code>rustee-outbox-sqlx</code> stages a job in the same PostgreSQL transaction as the
+          business change. A destination-specific relay leases rows with
+          <code>FOR UPDATE SKIP LOCKED</code> and confirms only after the broker acknowledges the
+          publish. Database and broker confirmation are not atomic, so duplicates remain possible.
+        </p>
         <ul>
-          <li>PostgreSQL은 <code>rustee-outbox-sqlx</code>로 event/job envelope을 같은 transaction에 stage합니다. migration은 deployment-owned이고, <code>JobOutboxRelay</code>는 destination별 <code>FOR UPDATE SKIP LOCKED</code> lease를 broker publish acknowledgement 뒤에만 confirm합니다. application은 one-pass <code>relay_once</code> 또는 explicit <code>run_until(RelayLoopConfig, shutdown)</code>을 선택합니다. 후자는 empty pass만 bounded idle delay로 poll하고 shutdown 뒤 새 lease를 잡지 않으며, completed pass의 bounded <code>RelayLoopReport</code>를 반환합니다. each pass는 <code>OutboxRelayObserver</code> lifecycle을 emit하며 optional <code>OutboxRelayMetrics</code>가 live count와 duration을 집계합니다.</li>
-          <li>outbox relay도 at-least-once입니다. broker success 뒤 DB confirmation이 실패하거나 lease를 잃으면 같은 job ID가 다시 publish될 수 있습니다. <code>PostgresInbox</code>는 consumer scope와 job ID receipt를 same-transaction database side effect에 기록하지만 external side effect는 provider idempotency key가 필요합니다.</li>
-          <li>one-time delayed job은 <code>JobSchedule::after</code>와 <code>PostgresOutbox::stage_job_after</code>로, one-time delayed event는 <code>EventSchedule::after</code>와 <code>stage_event_after</code>로 business write와 같은 PostgreSQL transaction에 stage합니다. existing application-owned <code>JobOutboxRelay</code>/<code>EventOutboxRelay</code> loop가 database <code>available_at</code> 이후에만 publish하므로 process restart에도 delay가 남습니다. 0 delay는 immediate stage를 쓰고, one-time schedule은 366일 이하입니다. event schedule은 Kafka retry header, source offset commit 또는 DLQ routing을 자동화하지 않습니다. <code>OutboxPriority</code>(0-255)는 opt-in PostgreSQL local relay ordering이며, same kind/destination에서 higher value를 먼저 claim하고 equal priority는 durable FIFO order를 유지합니다. 이는 broker priority, fairness, global rate limit이 아니므로 continuous high priority traffic의 starvation policy는 application이 정합니다. 상세 결정은 <a href="./adr/0028-durable-outbox-priority-boundary.html">ADR 0028</a>을 따릅니다.</li>
-          <li><code>rustee-jobs-cron-sqlx</code>는 typed job payload, cron expression과 durable IANA <code>RecurringJobTimeZone</code>을 PostgreSQL에 등록합니다. <code>RecurringJob::new</code>는 <code>UTC</code> default이고 <code>with_time_zone</code>으로 business zone을 명시합니다. application-owned supervisor가 <code>fire_due(RecurringJobFireLimit)</code>를 호출하면 due row를 <code>FOR UPDATE SKIP LOCKED</code>로 잠그고, fresh job ID와 UTC occurrence idempotency key를 가진 envelope을 outbox에 stage한 뒤 next run을 <strong>같은 transaction</strong>에서 갱신합니다. shutdown 또는 transaction failure는 둘 다 rollback하므로 memory timer나 broker와의 dual write가 생기지 않습니다. forward DST gap은 skip하고 backward overlap은 earlier UTC occurrence만 한 번 stage합니다. late run은 모든 missed tick을 replay하지 않고 schedule당 한 번만 stage한 뒤 database clock 다음 occurrence로 이동합니다. <code>RecurringJobRateLimit</code>은 shared key의 PostgreSQL-clock fixed window를 같은 transaction에서 consume합니다. capacity가 없으면 outbox row를 만들지 않고 next window boundary로 defer하며, 같은 key의 capacity/window drift는 registration conflict입니다. time-zone drift도 definition conflict입니다. 이는 Redis HTTP rate-limit store와 별도 경계입니다. <code>RecurringJobFireObserver</code>와 optional <code>rustee-jobs-cron-observability</code>는 fixed terminal outcome, aggregate claimed/staged/rate-limited count와 global duration만 관측하며, Prometheus helper는 explicit <code>no-store</code> response만 만듭니다. <code>0003_rustee_recurring_job_time_zone.sql</code>은 base migration 뒤 적용하고 governor deployment는 optional <code>0002</code> 뒤 적용하며 existing row는 UTC로 보존합니다. bundled tzdb 갱신은 affected schedule inventory와 DST contract를 재검증하는 deployment gate입니다. holiday calendar, broker priority, tenant fairness, daily quota와 external-provider exactly-once quota는 이 crate 범위 밖입니다. 상세 결정은 <a href="./adr/0029-postgres-recurring-job-scheduler.html">ADR 0029</a>, <a href="./adr/0030-postgres-scheduler-rate-governor.html">ADR 0030</a>, <a href="./adr/0031-postgres-scheduler-observability.html">ADR 0031</a>과 <a href="./adr/0033-recurring-job-time-zone-calendar.html">ADR 0033</a>을 따릅니다.</li>
-          <li><code>JobRegistry</code>는 startup에 registered typed handler를 stable job name으로 고정합니다. duplicate/invalid name은 시작을 거부하고, provider-observed attempt와 optional <code>JobTraceContext</code>를 typed <code>JobContext</code>에 주입합니다. default <code>register</code>는 strict current-version decode를 쓰고, older job payload가 필요한 handler만 <code>register_with_upcaster</code>와 explicit <code>JobUpcaster</code>를 사용합니다. newer producer version은 거부합니다. <code>JetStreamWorker::run_registry_until</code>과 <code>RedisStreamsWorker::run_registry_until</code>은 unknown/malformed envelope을 retry 없이 durable DLQ route로 처리하고 registered handler failure만 retry policy로 처리합니다.</li>
-          <li>MongoDB와 PostgreSQL 이외 SQL backend의 outbox helper는 각 transaction 모델을 실제 backend contract로 검증한 뒤 별도 integration crate로 추가합니다.</li>
+          <li>
+            <code>JobSchedule::after</code> and <code>stage_job_after</code> use the PostgreSQL
+            clock for one-time delays of at least one millisecond. Due rows survive process restarts
+            without an in-memory timer.
+          </li>
+          <li>
+            Outbox retry settlement treats an explicit zero delay as immediate eligibility; any
+            non-zero delay must be at least one millisecond before PostgreSQL stores it.
+          </li>
+          <li>
+            <code>OutboxPriority</code> from 0 to 255 is local relay ordering only. It is not broker
+            priority, fairness, or a global rate limit.
+          </li>
+          <li>
+            <code>rustee-jobs-cron-sqlx</code> registers typed recurring jobs with an explicit IANA
+            time zone. DST gaps are skipped and repeated local time fires once at the earlier UTC
+            occurrence. Each durable row revalidates the shared stable-job-name contract and its
+            bounded JSON template before it materializes one fresh outbox job.
+          </li>
+          <li>
+            Its application-owned supervisor claims due schedules, stages a fresh job outbox row,
+            and advances the next occurrence in one transaction. Late schedules stage at most once
+            instead of replaying every missed tick.
+          </li>
+          <li>
+            An optional PostgreSQL-clock fixed-window governor uses a whole-millisecond window of at
+            least one millisecond and may defer a schedule to the next boundary before it stages an
+            outbox row. Application-owned schedule and shared-governor keys, plus durable schedule
+            row identifiers, are redacted from framework diagnostics; storage code accesses them
+            only through the explicit scheduler contract. An application can still choose to record
+            a row identifier explicitly through <code>Display</code>. Holiday
+            calendars, tenant fairness, external quotas, and catch-up policy remain
+            application-owned.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>Outbox relay metric export</h2>
-        <p>
-          <code>rustee-outbox-observability-prometheus</code>는 application-owned <code>OutboxRelayMetrics</code> snapshot을
-          Prometheus text 0.0.4와 <code>Cache-Control: no-store</code>로 인코드합니다. <code>metrics_response(&amp;metrics)</code>는
-          convenience HTTP response일 뿐 global registry, listener 또는 automatic <code>/metrics</code> route를 만들지 않습니다.
-          application은 protected 또는 network-isolated scrape route에 명시적으로 mount합니다.
-        </p>
-        <p>
-          exporter는 <code>rustee_outbox_relay_passes_total</code>, in-flight gauge, fixed event/job kind와
-          succeeded/failed/abandoned outcome, claimed/published/retry_scheduled/lease_lost row counter, global duration histogram만 냅니다.
-          destination, message ID, payload, broker endpoint, tenant, credential와 raw error는 label이나 metric value가 아닙니다.
-          alert owner는 sustained failure/abandon, retry-scheduled growth, claimed-published gap 또는 lease loss를 deployment의 broker/DLQ signal과
-          함께 판단하며 framework가 universal threshold나 automatic replay를 정하지 않습니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>Worker 운영 규칙</h2>
+        <h2>Observability and Worker Operation</h2>
         <ul>
-          <li>worker는 HTTP server와 독립된 process로 실행할 수 있어야 합니다. 같은 binary라면 명시적인 worker mode를 사용합니다.</li>
-          <li>queue마다 local concurrency와 prefetch를 제한해 downstream database/API가 과부하되지 않게 합니다.</li>
-          <li>observer event는 provider, 안전하게 읽은 attempt, settlement outcome, duration을 전달합니다. <code>JobMetrics</code>는 provider/outcome과 global duration만 집계하고, job ID/type은 trace/log correlation에만 씁니다. queue route, payload, receipt handle, idempotency key, trace carrier와 raw broker/handler error는 기본 metric에 넣지 않습니다.</li>
-          <li>readiness는 broker 연결만이 아니라 configured stream/consumer와 worker registration 상태까지 확인합니다.</li>
-          <li>DLQ backlog, retry rate, oldest pending age, processing latency를 운영 지표로 노출합니다. outbox relay는 <code>rustee-outbox-observability::OutboxRelayMetrics</code>로 event/job kind와 succeeded/failed/abandoned outcome, claimed/published/retry_scheduled/lease_lost, in-flight/global duration을 live export하고 final <code>RelayLoopReport</code>로 drain 결과를 확인합니다. destination/message ID/payload/broker endpoint/raw error는 label로 쓰지 않습니다. Redis Streams에는 retry zset/hash cardinality와 <code>XAUTOCLAIM</code> missing-entry failure도 추가합니다.</li>
-          <li>RabbitMQ는 publisher confirm, consumer ack/reject, <code>x-acquired-count</code>, native delayed message count와 delivery limit/DLQ 상태를, SQS는 visibility timeout, receive count, redrive DLQ age를 추가로 관측합니다.</li>
+          <li>
+            <code>rustee-jobs-observability::JobMetrics</code> and the optional Prometheus helper
+            collect bounded provider, settlement outcome, and global duration data. They retain at
+            most fifteen direct provider labels plus <code>other</code>, and create no registry,
+            listener, or route automatically.
+          </li>
+          <li>
+            Never use job IDs, job types, payloads, queue routes, receipt handles, idempotency keys,
+            trace carriers, or raw handler errors as metric labels. Trace correlation and export
+            retention are application policy.
+          </li>
+          <li>
+            Workers can run separately from the HTTP server. Concurrency and prefetch must protect
+            downstream databases and APIs. Shutdown stops intake even when every worker slot is
+            occupied, then drains or aborts active work within the configured timeout. After a drain
+            timeout, every provider reaps its aborted handler tasks before it returns. An aborted
+            SQS delivery also stops and aborts its visibility heartbeat, so a cancelled handler
+            cannot retain its lease in the background.
+          </li>
+          <li>
+            Readiness checks broker access, configured stream or queue state, and worker
+            registration; it does not prove downstream effects are healthy.
+          </li>
+          <li>
+            Monitor DLQ backlog, retry rate, oldest pending age, processing latency, and
+            provider-specific settlement signals. Outbox relays expose bounded pass outcomes and
+            final drain reports.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>DLQ 조사와 replay runbook</h2>
-        <p>
-          Rustee는 DLQ 메시지를 자동으로 원래 queue에 복사하는 replay API를 제공하지 않습니다. broker deduplication ID를
-          재사용해 replay가 사라지거나, 이미 성공한 external side effect가 다시 실행되는 일을 막기 위해서입니다. replay는
-          application-owned approval 절차이며 새 delivery로만 발행합니다.
-        </p>
+        <h2>DLQ Investigation and Replay</h2>
         <ol>
-          <li>worker를 멈추기 전에 대상 DLQ entry를 snapshot하고 provider, observed attempt, source/DLQ route, 발견 시각, envelope checksum과 incident ticket을 기록합니다. payload와 receipt handle은 일반 log나 metric에 복사하지 않습니다.</li>
-          <li>unknown/malformed job이면 source payload를 변경하지 않고 격리합니다. 등록 handler, schema/upcaster, deployment configuration을 수정해 typed decode가 가능해진 뒤에만 재검토합니다.</li>
-          <li>handler가 시작했을 수 있는 delivery는 application idempotency ledger 또는 external provider receipt로 side effect 완료 여부를 먼저 확인합니다. idempotency key가 없거나 완료 상태를 판정할 수 없으면 자동 replay하지 않고 보상 또는 명시적 operator approval을 사용합니다.</li>
-          <li>approved replay는 typed payload를 현재 version으로 decode 또는 explicit upcast한 뒤 새 <code>JobEnvelope</code>와 새 <code>JobId</code>로 만듭니다. original idempotency key는 유지해 application/external deduplication이 계속 작동하게 하고, provider attempt는 1부터 다시 시작합니다. 이전 trace carrier와 broker delivery handle은 재사용하지 않습니다.</li>
-          <li>application의 <code>JobClient</code>와 해당 provider publisher로 source route에 confirmed enqueue합니다. raw DLQ body를 broker API로 직접 copy하거나 DLQ consumer가 자기 자신을 자동 replay하게 만들지 않습니다.</li>
-          <li>새 job ID, original DLQ record, approval identity를 application audit store에 연결하고 <code>acknowledged</code>/<code>retried</code>/<code>dead_lettered</code> outcome, source/DLQ backlog, external idempotency receipt를 확인합니다. 결과가 확정된 뒤에만 DLQ retention/discard policy를 적용합니다.</li>
-        </ol>
-        <table>
-          <thead>
-            <tr><th>Provider</th><th>DLQ에서 조사할 보존 정보</th><th>승인된 replay 경로</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>NATS JetStream</td><td>original envelope bytes, <code>Rustee-Delivery-Attempt</code> header와 가능한 job ID message ID</td><td>typed decode 후 <code>JetStreamPublisher</code>로 source subject에 acknowledged publish</td></tr>
-            <tr><td>Redis Streams</td><td><code>payload</code>, cumulative <code>attempt</code>, <code>source_entry_id</code></td><td>typed decode 후 <code>RedisStreamsPublisher</code>로 source stream에 <code>XADD</code></td></tr>
-            <tr><td>RabbitMQ</td><td>original envelope body와 direct-DLQ message ID</td><td>typed decode 후 <code>RabbitMqPublisher</code>의 confirm route로 source exchange/routing key에 publish</td></tr>
-            <tr><td>Amazon SQS</td><td>direct-DLQ message body와 operational receive/age metadata</td><td>typed decode 후 <code>SqsPublisher</code>로 source queue에 send; FIFO는 새 job ID deduplication ID를 사용</td></tr>
-          </tbody>
-        </table>
-        <div class="warning">
-          <p>
-            DLQ는 durable investigation queue이지 immutable audit ledger가 아닙니다. retention, encryption/KMS, access control,
-            PII redaction, approval identity와 completed side-effect receipt는 application과 deployment audit store가 관리합니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>의도적으로 제공하지 않는 것</h2>
-        <ul>
-          <li>성공 side effect가 단 한 번만 일어난다는 exactly-once 실행 보장</li>
-          <li>provider 별 ordering, visibility timeout, partitioning을 숨기는 공통 raw queue API</li>
-          <li>HTTP request를 background task로 몰래 전환하는 middleware</li>
-          <li>unbounded retry, 자동 DLQ replay, 운영자의 승인 없는 poison-message discard</li>
-          <li>job payload에 HTTP request/response, database connection, authentication credential를 직렬화하는 편의 API</li>
-          <li>Kafka의 topic, partition, offset, consumer group, replay를 job queue로 가장하는 API</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>구현 순서</h2>
-        <ol>
-          <li>Stage 3에서 graceful shutdown, tracing, metrics, readiness contract를 구현합니다.</li>
-          <li>Stage 9A에서 <code>rustee-jobs</code>의 envelope, typed registry, worker concurrency, retry/DLQ, drain, outbox relay와 delayed scheduler를 구현합니다. envelope, bounded W3C carrier와 <code>rustee-jobs-opentelemetry</code> handler-parent wrapper, <code>rustee-jobs-observability</code> bounded delivery collector, typed publish/dispatch, strict current-version decode와 explicit old-version <code>JobUpcaster</code>, retry decision, worker configuration과 provider delivery-attempt 주입, immutable-after-startup typed registry, PostgreSQL outbox/inbox와 one-time durable delayed job stage는 구현됐고 external side-effect idempotency guidance가 남아 있습니다.</li>
-          <li>Stage 9A에서 <code>rustee-jobs-nats</code>로 durable consumer, explicit ack, backoff, max delivery를 integration test로 검증합니다. <code>NatsConfig</code>는 기본 5초의 one-shot connection deadline과 sanitized connect failure만 제공하며 reconnect/backoff supervisor는 application이 소유합니다. acknowledged publish, bounded durable consumer runtime, drain, ack/retry, DLQ relay, registry worker와 <code>nats:2.10-alpine</code> CI contract suite는 구현됐습니다. CI가 typed success ack, retry-to-DLQ, unknown registry job의 DLQ, graceful drain, stopped broker의 500ms bounded/redacted connect failure와 restart 뒤 full contract recovery를 실행하며 local 실행은 Docker daemon을 필요로 합니다.</li>
-          <li>Stage 10에서 <code>rustee-jobs-redis</code>로 기본 5초(설정 가능) operation deadline, pre-provisioned consumer group/DLQ, ownership-checked ack, Redis-clock durable delayed retry, pending reclaim을 구현했습니다. worker deadline은 blocking read보다 길어야 하며 Redis 7 CI는 success ack, retry-to-DLQ, reclaim attempt, unknown registry DLQ와 intentional <code>CLIENT PAUSE</code> 중 500ms endpoint-free readiness failure를 실행합니다. handler heartbeat, Redis Cluster/Sentinel과 replay runbook은 별도 release gate로 남깁니다.</li>
-          <li>Stage 10에서 <code>rustee-jobs-rabbitmq</code>로 RabbitMQ 4.3 quorum queue, publisher confirm, manual ack/reject, native delayed retry compatibility, prefetch, direct DLQ를 구현했습니다. CI는 unique topology에서 success ack, native delayed retry 뒤 DLQ, unknown registry job DLQ와 independent worker connection abort 뒤 attempt-2 redelivery를 실행합니다. <code>rustee-jobs-rabbitmq-management</code>은 read-only Management HTTP snapshot의 queue/policy/DLX drift audit, encoded vhost/queue path, credential redaction과 non-loopback HTTP rejection contract를 제공합니다. broader broker outage/duplicate matrix와 production management TLS/ACL qualification은 계속 확장합니다.</li>
-          <li>Stage 10에서 <code>rustee-jobs-sqs</code>로 25초 기본 요청 deadline(설정 가능), long polling, visibility extension, 처리 후 delete, direct/redrive DLQ, FIFO message group/deduplication 경계를 LocalStack CI로 검증합니다. worker deadline은 idle receive를 자르지 않도록 long poll보다 길어야 하며, CI는 stopped LocalStack에서 500ms deadline의 endpoint-free failure와 재시작 뒤 full recovery를 확인합니다. IAM/KMS outage, Standard duplicate/receive-count variation과 redrive replay runbook은 별도 release gate로 확장합니다. Kafka event stream은 <a href="./events.html">별도 구현 순서</a>로 관리합니다.</li>
+          <li>
+            Snapshot provider, observed attempt, source/DLQ route, discovery time, envelope
+            checksum, and incident record. Keep payloads and receipt handles out of ordinary logs
+            and metrics.
+          </li>
+          <li>
+            For malformed or unknown jobs, repair the registry, schema, upcaster, or deployment
+            configuration before considering replay.
+          </li>
+          <li>
+            For a handler that may have run, determine the idempotency-ledger or external-provider
+            outcome first. Do not replay an unknown external effect automatically.
+          </li>
+          <li>
+            An approved replay decodes or explicitly upcasts to the current type, creates a new job
+            envelope and job ID, and preserves the original application idempotency key where
+            appropriate.
+          </li>
+          <li>
+            Record the approver, scope, reason, stop condition, and reconciliation result. DLQ
+            retention and deletion require an explicit policy.
+          </li>
         </ol>
       </section>
-
-      <section>
-        <h2>외부 문서</h2>
-        <ul>
-          <li><a href="https://docs.nats.io/using-nats/developer/develop_jetstream/consumers">NATS JetStream Consumers</a></li>
-          <li><a href="https://docs.rs/async-nats/latest/async_nats/">async-nats Rust client</a></li>
-          <li><a href="https://redis.io/docs/latest/develop/data-types/streams/">Redis Streams consumer groups</a></li>
-          <li><a href="https://www.rabbitmq.com/docs/next/confirms">RabbitMQ consumer acknowledgements and publisher confirms</a></li>
-          <li><a href="https://www.rabbitmq.com/docs/4.2/quorum-queues">RabbitMQ quorum queues</a></li>
-          <li><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html">Amazon SQS visibility timeout</a></li>
-          <li><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-queue-types.html">Amazon SQS Standard and FIFO queues</a></li>
-        </ul>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when job contract, delivery guarantee, retry, DLQ, outbox, worker, or broker provider policy changes.</p>
+        <p>
+          Last updated: 2026-08-25. Update this document when job contracts, providers, or replay
+          procedures change.
+        </p>
       </footer>
     </main>
   </body>

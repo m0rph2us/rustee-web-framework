@@ -12,6 +12,7 @@ bytes.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 rustee-core = { path = "../rustee-core", version = "0.1.0" }
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 rustee-router = { path = "../rustee-router", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true

@@ -1,3 +1,5 @@
+//! Deterministic stdio MCP fixture used by the platform integration test.
+
 use std::io::{self, BufRead, BufWriter, Write};
 
 const PROTOCOL_VERSION: &str = "2025-11-25";

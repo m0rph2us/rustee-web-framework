@@ -1,3 +1,5 @@
+//! Compile-checked OpenAI-backed Rustee AI pipeline example.
+
 use std::{env, net::SocketAddr};
 
 use rustee::{App, Error, Json, Result, State};

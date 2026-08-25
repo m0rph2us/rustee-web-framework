@@ -1,80 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0027 Edge Delivery Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0027: Edge Delivery Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../architecture.html">구조</a>
-          <a href="../operations.html">운영</a>
-          <a href="../edge-delivery.html">Edge policy</a>
-          <a href="../release-plan.html">출하 계획</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0027</div>
-        <h1>Edge delivery와 cache-control의 소유 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0027: Edge Delivery Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          Rustee는 cleartext HTTP/1.1 origin, explicit trusted proxy restoration, static validators와 opt-in compression을 제공합니다.
-          그러나 public TLS, CDN cache key, compression, purge, certificate lifecycle과 origin shielding은 vendor-specific operational state입니다.
-          이를 framework feature로 보이면 application cache policy와 edge configuration의 책임이 섞이고, shared cache를 통한 tenant data leak 또는 stale error masking 위험이 커집니다.
+          Public TLS, CDN cache, purge, compression, and origin routing are infrastructure behavior,
+          not origin transport behavior.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            Rustee는 edge vendor abstraction, purge API, certificate manager를 만들지 않습니다. application/deployment가 named edge vendor와 versioned config를 소유하며,
-            origin에는 edge direct peer CIDR만 trusted proxy로 설정합니다. cacheability는 origin route가 explicit <code>Cache-Control</code>/<code>Vary</code>로 의도하고,
-            edge cache key, compression owner, purge scope, TLS/IAM, telemetry retention은 deployment qualification으로 증명합니다.
-          </p>
-        </div>
-        <p>구체적 policy와 release evidence는 <a href="../edge-delivery.html">edge delivery policy</a>에 기록합니다.</p>
+        <p>
+          Keep Rustee at the origin and define edge delivery as explicit deployment policy with
+          restricted proxy trust, cache variation, purge, drain, rollback, and qualification
+          evidence.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>F1은 vendor-neutral origin framework로 유지하며, chosen edge topology의 Supported 선언은 별도 evidence가 있어야 합니다.</li>
-          <li>dynamic compression은 origin과 edge 중 하나만 소유하고, <code>Vary: Accept-Encoding</code> representation 분리를 integration test로 확인합니다.</li>
-          <li>authenticated, tenant-scoped, health, error response는 explicit cache policy 없이는 shared cache에 두지 않습니다.</li>
-          <li>purge와 certificate rotation은 application release/operator procedure의 audit 대상이며 Rustee service future가 호출하지 않습니다.</li>
-          <li>origin shutdown은 edge traffic drain과 함께 검증해야 하며, local Nginx test만으로 public CDN behavior를 선언하지 않습니다.</li>
-        </ul>
+        <p>
+          Rustee does not implement a CDN adapter or claim public edge support from local tests.
+          Deployment owners qualify provider topology and incidents.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>framework universal CDN client</td><td>provider별 cache, credential, purge, audit semantics를 숨기므로 채택하지 않습니다.</td></tr>
-            <tr><td>origin이 모든 response를 public cacheable로 지정</td><td>authenticated data와 operational response를 shared cache로 노출할 수 있으므로 채택하지 않습니다.</td></tr>
-            <tr><td>local proxy contract를 vendor CDN support 선언으로 사용</td><td>certificate, edge routing, purge, cache key, IAM을 증명하지 못하므로 채택하지 않습니다.</td></tr>
-            <tr><td>first release부터 direct TLS/HTTP/2 origin을 추가</td><td>transport compatibility와 lifecycle 범위가 커지므로 별도 ADR까지 채택하지 않습니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee starts owning edge transport, certificates, or vendor cache operations.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

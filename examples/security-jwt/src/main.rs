@@ -1,3 +1,5 @@
+//! Compile-checked JWT-protected Rustee HTTP API example.
+
 use std::{convert::Infallible, env, net::SocketAddr};
 
 use jsonwebtoken::Algorithm;

@@ -9,6 +9,7 @@ description = "Typed durable job envelope and provider-neutral lifecycle contrac
 
 [dependencies]
 futures-util.workspace = true
+rustee-json = { path = "../rustee-json", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

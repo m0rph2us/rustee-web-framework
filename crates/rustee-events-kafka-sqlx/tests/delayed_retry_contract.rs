@@ -11,8 +11,8 @@ use rustee_events_kafka::{
 };
 use rustee_events_kafka_sqlx::{
     KAFKA_DELAYED_RETRY_MIGRATION_SQL, KafkaDelayedRetryBacklog, KafkaDelayedRetryDelay,
-    KafkaDelayedRetryReadinessConfig, KafkaDelayedRetryRelayConfig, PostgresKafkaDelayedRetryRelay,
-    PostgresKafkaDelayedRetryRouter,
+    KafkaDelayedRetryReadinessConfig, KafkaDelayedRetryRelayBatchSize,
+    KafkaDelayedRetryRelayConfig, PostgresKafkaDelayedRetryRelay, PostgresKafkaDelayedRetryRouter,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -45,7 +45,9 @@ fn consumer_config(topic: &str, group_id: &str) -> KafkaConsumerConfig {
     KafkaConsumerConfig::new(broker_url(), topic, group_id)
         .unwrap()
         .with_option("auto.offset.reset", "earliest")
+        .unwrap()
         .with_option("session.timeout.ms", "6000")
+        .unwrap()
 }
 
 async fn pool() -> PgPool {
@@ -229,10 +231,11 @@ async fn failure_is_staged_before_commit_and_relayed_only_after_its_database_del
         .await
         .unwrap();
     assert_backlog(relay.backlog().await.unwrap(), 1, 0, 0);
-    assert_eq!(relay.relay_once(8).await.unwrap(), 0);
+    let batch_size = KafkaDelayedRetryRelayBatchSize::new(8).unwrap();
+    assert_eq!(relay.relay_once(batch_size).await.unwrap(), 0);
 
     sleep(Duration::from_millis(800)).await;
-    assert_eq!(relay.relay_once(8).await.unwrap(), 1);
+    assert_eq!(relay.relay_once(batch_size).await.unwrap(), 1);
     observe_retry_delivery(&retry_topic, &format!("{group_id}-retry-observer")).await;
     let relay_status: (bool, i32, bool) = sqlx::query_as(
         "SELECT published_at IS NOT NULL, relay_attempt, lease_token IS NULL FROM rustee_kafka_delayed_retries",

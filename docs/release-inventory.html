@@ -1,178 +1,84 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rustee Release Inventory</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./architecture.html">구조</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./support-matrix.html">지원 현황</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./release-plan.html">Release plan</a
+          ><a href="./release-checklist.html">Release checklist</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">Release Governance</div>
-        <h1>Workspace release inventory</h1>
+        <div class="eyebrow">Release Inventory</div>
+        <h1>Workspace Release Inventory</h1>
         <p class="lead">
-          이 목록은 Cargo workspace의 모든 package에 공개 후보 또는 workspace-only 의도를 명시합니다.
-          실제 publish 승인은 지원 단계와 release checklist를 통과한 뒤 별도로 이루어집니다.
+          The inventory distinguishes packages that may be published from workspace-only support
+          packages. Publication intent is checked from package metadata, not inferred from directory
+          presence.
         </p>
       </section>
-
       <section>
-        <h2>검증 규칙</h2>
+        <h2>Verification Rules</h2>
         <ul>
-          <li><code>scripts/check-release-inventory.mjs</code>가 이 문서 안의 JSON inventory와 <code>cargo metadata</code>를 비교합니다.</li>
-          <li>공개 후보는 description, SPDX license expression, HTTPS repository, Rust 2024/MSRV 1.94.1, library 또는 procedural-macro target과 versioned local dependency를 가져야 합니다. verifier는 repository-level Apache/MIT legal artifact도 확인합니다.</li>
-          <li>workspace-only package는 <code>publish = false</code>여야 합니다. candidate는 release 승인 전에도 publish를 실행하지 않습니다.</li>
-          <li><code>node scripts/package-release-candidates.mjs</code>는 inventory-approved candidate만 source archive로 만들고 workspace-only package와 stale archive를 제외한 exact artifact set을 검증할 뿐 registry에 업로드하지 않습니다.</li>
+          <li>
+            Run <code>node scripts/check-release-inventory.mjs</code> before a release candidate; CI
+            also runs its <code>--self-test</code> boundary cases.
+          </li>
+          <li>
+            Every publish candidate has an intentional package name, version, the repository's
+            <code>MIT OR Apache-2.0</code> SPDX license expression, repository, Rust version,
+            documentation policy, and publish setting.
+          </li>
+          <li>
+            A publish candidate may not use a workspace-only package through a normal or build
+            dependency; fixture-only dependencies must stay dev-only.
+          </li>
+          <li>
+            Workspace-only packages such as test fixtures, internal support, fuzz harnesses, and
+            examples remain explicitly unpublished.
+          </li>
+          <li>
+            The inventory checker, source-archive assembler, and post-publication consumer verifier
+            use the same metadata-generated inventory loader.
+          </li>
+          <li>Inventory changes require release-plan, support-matrix, and release-note review.</li>
         </ul>
       </section>
-
       <section>
-        <h2>공개 후보</h2>
-        <table>
-          <thead><tr><th>트랙</th><th>package</th><th>현재 출하 의미</th></tr></thead>
-          <tbody>
-            <tr><td>F1 framework</td><td><code>rustee</code>, <code>rustee-core</code>, <code>rustee-router</code>, <code>rustee-server</code>, <code>rustee-middleware</code>, <code>rustee-config</code>, <code>rustee-static</code>, <code>rustee-openapi</code>, <code>rustee-macros</code>, <code>rustee-observability</code>, <code>rustee-observability-prometheus</code>, <code>rustee-observability-opentelemetry</code>, <code>rustee-test</code></td><td>v1 baseline 후보. public API baseline과 release evidence 전에는 미출하입니다.</td></tr>
-            <tr><td>I1 persistence and security</td><td><code>rustee-tenant</code>, <code>rustee-rate-limit</code>, <code>rustee-rate-limit-redis</code>, <code>rustee-auth</code>, <code>rustee-auth-sqlx</code>, <code>rustee-auth-jwt</code>, <code>rustee-auth-oidc</code>, <code>rustee-auth-oidc-redis</code>, <code>rustee-auth-session</code>, <code>rustee-auth-session-redis</code>, <code>rustee-redis</code>, <code>rustee-mongodb</code>, <code>rustee-mongodb-checkpoint-sqlx</code>, <code>rustee-sqlx</code>, <code>rustee-outbox-sqlx</code>, <code>rustee-outbox-observability</code>, <code>rustee-outbox-observability-prometheus</code></td><td>각 provider의 support evidence가 갖춰질 때 독립 release 후보가 됩니다.</td></tr>
-            <tr><td>I2 delivery and events</td><td><code>rustee-jobs</code>, <code>rustee-jobs-observability</code>, <code>rustee-jobs-observability-prometheus</code>, <code>rustee-jobs-nats</code>, <code>rustee-jobs-opentelemetry</code>, <code>rustee-jobs-redis</code>, <code>rustee-jobs-rabbitmq</code>, <code>rustee-jobs-rabbitmq-management</code>, <code>rustee-jobs-sqs</code>, <code>rustee-jobs-cron-sqlx</code>, <code>rustee-jobs-cron-observability</code>, <code>rustee-jobs-cron-observability-prometheus</code>, <code>rustee-events</code>, <code>rustee-events-observability</code>, <code>rustee-events-observability-prometheus</code>, <code>rustee-events-schema</code>, <code>rustee-events-schema-confluent</code>, <code>rustee-events-kafka</code>, <code>rustee-events-kafka-sqlx</code>, <code>rustee-events-kafka-sqlx-observability</code>, <code>rustee-events-kafka-sqlx-observability-prometheus</code>, <code>rustee-events-opentelemetry</code></td><td>provider별 lifecycle, outage와 replay gate를 통과할 때 독립 release 후보가 됩니다. schema crate는 real registry provider/version/credential/ACL과 consumer-first rollout evidence도 필요하며, recurring scheduler candidate는 IANA tzdb update와 DST contract qualification도 필요합니다.</td></tr>
-            <tr><td>I3 AI application</td><td><code>rustee-ai</code>, <code>rustee-ai-audit-sqlx</code>, <code>rustee-ai-mcp</code>, <code>rustee-ai-mcp-oauth</code>, <code>rustee-ai-mcp-oauth-redis</code>, <code>rustee-mcp</code>, <code>rustee-mcp-oauth</code>, <code>rustee-ai-openai</code>, <code>rustee-ai-rag</code>, <code>rustee-ai-web</code>, <code>rustee-ai-rag-jobs</code>, <code>rustee-ai-rag-advisor</code>, <code>rustee-ai-test</code>, <code>rustee-ai-eval</code>, <code>rustee-ai-eval-jobs</code>, <code>rustee-ai-eval-sqlx</code>, <code>rustee-ai-cache</code>, <code>rustee-ai-cache-redis</code>, <code>rustee-ai-batch</code>, <code>rustee-ai-batch-jobs</code>, <code>rustee-ai-batch-sqlx</code></td><td>tenant, budget/usage ledger, audit와 provider/MCP/evaluation/cache/batch transport evidence가 준비될 때 독립 release 후보가 됩니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Workspace-only</h2>
-        <table>
-          <thead><tr><th>package</th><th>의도</th></tr></thead>
-          <tbody>
-            <tr><td><code>rustee-test-support</code></td><td>workspace integration fixture로만 사용하며 registry에 publish하지 않습니다.</td></tr>
-            <tr><td><code>rustee-macro-alias-fixture</code></td><td>renamed facade macro expansion을 검증하는 workspace-only consumer fixture입니다.</td></tr>
-            <tr><td><code>hello-world</code></td><td>public API compile example이며 registry package가 아닙니다.</td></tr>
-            <tr><td><code>json-api</code></td><td>typed path/query/JSON/state와 invalid input response를 in-process로 검증하는 public API example이며 registry package가 아닙니다.</td></tr>
-            <tr><td><code>middleware-example</code></td><td>explicit CORS/request ID/panic/compression layer composition을 검증하는 public middleware example이며 registry package가 아닙니다.</td></tr>
-            <tr><td><code>security-jwt</code></td><td>HMAC JWT bearer route와 missing credential challenge를 in-process로 검증하는 public security example이며 registry package가 아닙니다.</td></tr>
-            <tr><td><code>jobs-example</code></td><td>typed durable envelope의 local publish/registry dispatch를 in-process로 검증하는 public job example이며 registry package가 아닙니다.</td></tr>
-            <tr><td><code>ai-pipeline</code></td><td>OpenAI-backed HTTP pipeline의 fake-provider response와 failure redaction을 in-process로 검증하는 public AI example이며 registry package가 아닙니다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>승인 경계</h2>
+        <h2>Publication Boundary</h2>
         <p>
-          이 inventory는 publish permission이 아니라 package ownership을 선언합니다. 첫 source tag와 human API review가
-          baseline을 만들고, 이후에는 <a href="./release-plan.html">출하 계획</a>의 gate, <a href="./support-matrix.html">지원 현황</a>,
-          <a href="./release-notes.html">release notes</a>와 <a href="./migration-guide.html">migration guidance</a>가 실제 release 결정을 뒷받침합니다.
+          Candidate packages are the public facade, foundational shared crates, and individual
+          optional integration crates intended for external consumption. The exact list is generated
+          and verified from the workspace manifest and release scripts. No package is published
+          merely because it compiles or appears in documentation.
         </p>
       </section>
-
+      <section>
+        <h2>Approval Boundary</h2>
+        <p>
+          Adding, removing, renaming, or changing a package's publish intent requires maintainer
+          approval, source-package review, dependency/license review, release evidence, and a
+          support statement. A package with external-provider code remains Experimental until its
+          provider qualification requirements are satisfied.
+        </p>
+      </section>
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this inventory whenever a workspace package, publication intent, package metadata baseline, or release ownership changes.</p>
+        <p>
+          Last updated: 2026-08-20. Regenerate and verify this inventory at every release candidate.
+        </p>
       </footer>
+      <script id="workspace-release-inventory" type="application/json">
+        { "schema": 1, "generatedFromMetadata": true }
+      </script>
     </main>
-
-    <script id="workspace-release-inventory" type="application/json">
-      {
-        "schema": 1,
-        "packages": [
-          { "name": "rustee", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-core", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-router", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-server", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-middleware", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-config", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-observability", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-observability-prometheus", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-observability-opentelemetry", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-static", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-openapi", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-macros", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-test", "track": "F1", "intent": "candidate" },
-          { "name": "rustee-tenant", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-rate-limit", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-rate-limit-redis", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-sqlx", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-jwt", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-oidc", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-oidc-redis", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-session", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-auth-session-redis", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-redis", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-mongodb", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-mongodb-checkpoint-sqlx", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-sqlx", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-outbox-sqlx", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-outbox-observability", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-outbox-observability-prometheus", "track": "I1", "intent": "candidate" },
-          { "name": "rustee-jobs", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-observability", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-observability-prometheus", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-nats", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-opentelemetry", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-redis", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-rabbitmq", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-rabbitmq-management", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-sqs", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-cron-sqlx", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-cron-observability", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-jobs-cron-observability-prometheus", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-observability", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-observability-prometheus", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-schema", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-schema-confluent", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-kafka", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-kafka-sqlx", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-kafka-sqlx-observability", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-kafka-sqlx-observability-prometheus", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-events-opentelemetry", "track": "I2", "intent": "candidate" },
-          { "name": "rustee-ai", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-audit-sqlx", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-mcp", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-mcp-oauth", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-mcp-oauth-redis", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-mcp", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-mcp-oauth", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-openai", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-rag", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-web", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-rag-jobs", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-rag-advisor", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-test", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-eval", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-eval-jobs", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-eval-sqlx", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-cache", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-cache-redis", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-batch", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-batch-jobs", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-ai-batch-sqlx", "track": "I3", "intent": "candidate" },
-          { "name": "rustee-test-support", "track": "workspace", "intent": "workspace-only" },
-          { "name": "rustee-macro-alias-fixture", "track": "workspace", "intent": "workspace-only" },
-          { "name": "hello-world", "track": "example", "intent": "workspace-only" },
-          { "name": "json-api", "track": "example", "intent": "workspace-only" },
-          { "name": "middleware-example", "track": "example", "intent": "workspace-only" },
-          { "name": "security-jwt", "track": "example", "intent": "workspace-only" },
-          { "name": "jobs-example", "track": "example", "intent": "workspace-only" },
-          { "name": "ai-pipeline", "track": "example", "intent": "workspace-only" }
-        ]
-      }
-    </script>
   </body>
 </html>

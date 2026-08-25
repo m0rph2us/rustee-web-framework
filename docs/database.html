@@ -1,352 +1,237 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee 데이터베이스 지원</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Database Support</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./design-philosophy.html">철학</a>
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./redis.html">Redis</a>
-          <a href="./mongodb.html">MongoDB</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./operations.html">운영</a>
-          <a href="./roadmap.html">로드맵</a>
-          <a href="./ai-context.html">AI 유지관리</a>
-          <a href="./adr/index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./architecture.html">Architecture</a
+          ><a href="./testing.html">Testing</a><a href="./adr/index.html">ADR</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Database Support</div>
-        <h1>선택은 열어 두고, 운영 경로는 분명하게</h1>
+        <h1>Keep the Choice Open, Make Operations Explicit</h1>
         <p class="lead">
-          Rustee는 데이터베이스를 필수 core 기능으로 만들지 않습니다. 대신 연결 풀을 안전하게 주입하고,
-          SQLx를 첫 공식 통합 경로로 제공하며, ORM과 migration 도구는 팀의 요구에 맞게 선택할 수 있게 합니다.
+          Database access is not a mandatory core feature. Rustee safely injects connection pools,
+          uses SQLx as its first official relational integration path, and leaves ORM and
+          migration-tool choices to the application.
         </p>
       </section>
-
       <section>
-        <h2>한눈에 보는 지원 모델</h2>
+        <h2>Support Model</h2>
         <table>
           <thead>
             <tr>
-              <th>영역</th>
-              <th>Rustee의 역할</th>
-              <th>애플리케이션의 역할</th>
+              <th>Area</th>
+              <th>Rustee owns</th>
+              <th>Application owns</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>연결과 풀</td>
-              <td><code>State&lt;AppState&gt;</code> 주입 패턴, 선택적 SQLx helper</td>
-              <td>driver 선택, URL/secret 공급, pool 크기와 timeout 설정</td>
+              <td>Connections and pools</td>
+              <td><code>State&lt;AppState&gt;</code> injection and optional SQLx helpers</td>
+              <td>Driver choice, URLs and secrets, pool sizing, and timeouts</td>
             </tr>
             <tr>
-              <td>쿼리와 모델</td>
-              <td>HTTP handler와 오류 변환 경계</td>
-              <td>SQLx, SeaORM, Diesel 또는 자체 repository 선택</td>
+              <td>Queries and models</td>
+              <td>HTTP handler and error-conversion boundary</td>
+              <td>SQLx, SeaORM, Diesel, or a repository design</td>
             </tr>
             <tr>
-              <td>트랜잭션</td>
-              <td>명시적 transaction과 PostgreSQL tenant RLS helper</td>
-              <td>use case 단위로 시작, commit, rollback 경계와 RLS schema/runtime role 결정</td>
+              <td>Transactions</td>
+              <td>Explicit transaction helpers and PostgreSQL tenant-RLS integration</td>
+              <td>Use-case boundaries, commit/rollback policy, and RLS schema/runtime roles</td>
             </tr>
             <tr>
-              <td>API-key identity store</td>
-              <td>선택적 <code>rustee-auth-sqlx</code> fingerprint record, bounded readiness, active/unexpired source overlap metadata clone, rotation/revocation와 successful-auth audit</td>
-              <td>deployment migration, pepper/KMS delivery, principal JSON access/revision, retention, database outage/recovery와 backup policy</td>
+              <td>API-key persistence</td>
+              <td>
+                Optional PostgreSQL fingerprint records, readiness, rotation, revocation, and
+                success audit
+              </td>
+              <td>Migrations, peppers/KMS, retention, backup, and recovery policy</td>
             </tr>
             <tr>
-              <td>transactional outbox</td>
-              <td>선택적 <code>rustee-outbox-sqlx</code>의 PostgreSQL stage/lease/relay, one-time delay와 <code>rustee-jobs-cron-sqlx</code>의 IANA time-zone recurring-job materialization</td>
-              <td>deployment migration, destination별 relay loop, consumer idempotency와 운영 지표</td>
+              <td>Transactional outbox</td>
+              <td>
+                PostgreSQL staging, leasing, relay helpers, delays, and recurring-job
+                materialization
+              </td>
+              <td>Migrations, relay supervision, destination policy, and consumer idempotency</td>
             </tr>
             <tr>
-              <td>migration</td>
-              <td>공식 배포 및 readiness 패턴 문서화</td>
-              <td>migration 도구 선택과 CI/CD 실행 책임</td>
+              <td>Migrations</td>
+              <td>Deployment and readiness guidance</td>
+              <td>Tool selection and CI/CD execution</td>
             </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>첫 공식 경로: SQLx</h2>
+        <h2>Official Path: SQLx</h2>
         <p>
-          Rustee는 async Tokio 기반과 잘 맞고 SQL을 숨기지 않는 SQLx를 첫 공식 integration 대상으로 삼습니다.
-          SQLx는 PostgreSQL, MySQL/MariaDB, SQLite 풀과 타입 기반 row 변환을 제공하며, 선택하면 compile-time query
-          검증도 사용할 수 있습니다. Rustee는 Stage 5에서 선택적 <code>rustee-sqlx</code> crate를 제공합니다. 현재 공식 지원선은 PostgreSQL이며 SQLite는 opt-in candidate입니다. MySQL/MariaDB feature는 upstream RSA 의존성의 무패치 security advisory가 해소될 때까지 제공하지 않습니다. <code>rustee-auth-sqlx</code>는 이 pool 위에서 keyed API-key fingerprint record와 successful-auth audit을 제공하는 optional identity adapter입니다. PostgreSQL 16 CI contract는 bounded pool connect, readiness query, simple query와 pool close, tenant-scoped transaction과 row-level security의 read/write 격리, API-key active/revoked/expiry/rotation/audit, retained-pepper dual-read와 source-metadata replacement fingerprint clone transaction을 확인합니다. CI는 database 중단 중 generic initial-pool과 API-key store 500ms readiness의 credential/endpoint-free failure를 확인하고 restart 뒤 SQLx, API-key store, outbox, AI audit/usage ledger, checkpoint suite를 다시 실행합니다.
+          <code>rustee-sqlx</code> is an optional integration, not a dependency of
+          <code>rustee-core</code>. It preserves SQLx pool and driver error types for trusted
+          handling while initial connection display and debug diagnostics expose only a safe
+          category. PostgreSQL is the current official support line. SQLite is an opt-in candidate
+          behind the <code>sqlite</code> feature with explicit pool connection and readiness
+          helpers, exercised against an in-memory database in CI; it does not include PostgreSQL
+          tenant-RLS or outbox behavior. MySQL/MariaDB is not exposed while an upstream RSA
+          dependency has an unresolved unpatched security advisory.
         </p>
-        <div class="decision">
-          <p>
-            <code>rustee-sqlx</code>는 <code>rustee-core</code>의 의존성이 아닙니다. backend는 PostgreSQL과 SQLite
-            feature로 분리하고, SQLx의 pool과 error 타입을 불필요하게 감싸거나 대체하지 않습니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>다른 toolkit과 ORM</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>선택지</th>
-              <th>권장 상황</th>
-              <th>Rustee와의 결합</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>SQLx</td>
-              <td>SQL 제어권, async 처리, 단순하고 투명한 의존성을 원하는 서비스</td>
-              <td>첫 공식 integration. pool을 <code>AppState</code>에 넣어 사용합니다.</td>
-            </tr>
-            <tr>
-              <td>SeaORM</td>
-              <td>entity, relation, CRUD 중심의 async ORM 생산성이 중요한 서비스</td>
-              <td><code>DatabaseConnection</code>을 상태로 주입하는 공식 recipe를 제공합니다. core 변경은 없습니다.</td>
-            </tr>
-            <tr>
-              <td>Diesel / diesel-async</td>
-              <td>강한 schema/query DSL 검증 또는 기존 Diesel 자산을 활용하는 서비스</td>
-              <td>async pool/connection을 상태로 주입합니다. sync Diesel 연결을 async handler에서 직접 실행하는 API는 제공하지 않습니다.</td>
-            </tr>
-            <tr>
-              <td>MongoDB Rust driver</td>
-              <td>문서 모델, aggregation, replica set, change stream이 도메인 요구에 맞는 서비스</td>
-              <td>별도 <a href="./mongodb.html">MongoDB integration</a>에서 driver <code>Client</code>를 상태로 주입합니다.</td>
-            </tr>
-          </tbody>
-        </table>
+        <pre><code>[dependencies]
+rustee-sqlx = { version = "0.1", features = ["sqlite"] }</code></pre>
         <p>
-          특정 ORM을 편하게 쓰게 하는 adapter는 사용 사례가 축적된 뒤 별도 crate로 추가합니다. 처음부터 Rustee 전용
-          repository trait를 만들면 ORM의 표현력과 데이터베이스 고유 기능을 잃기 쉽습니다.
+          PostgreSQL 16 contract tests cover bounded pool connection, readiness with an
+          application-supplied positive deadline, simple queries, pool close, tenant-scoped
+          read/write isolation, API-key rotation and audit behavior, and recovery after an outage.
+          Application code still owns pool settings, credentials, schema, and deployment topology.
+          When using <code>PoolConfig</code>, set positive connection and timeout values and keep
+          the minimum connection count at or below the maximum; invalid values fail before a
+          connection is attempted.
         </p>
-      </section>
-
-      <section>
-        <h2>권장 애플리케이션 구조</h2>
         <pre><code>use rustee::{App, Json, Path, State};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 
 #[derive(Clone)]
-struct AppState {
-    db: PgPool,
-}
-
-#[tokio::main]
-async fn main() -&gt; rustee::Result&lt;()&gt; {
-    let db = PgPoolOptions::new()
-        .max_connections(20)
-        .connect(&amp;std::env::var("DATABASE_URL")?)
-        .await?;
-
-    let app = App::new()
-        .get("/users/:id", get_user)
-        .with_state(AppState { db });
-
-    rustee::serve("127.0.0.1:3000", app).await
-}
+struct AppState { db: PgPool }
 
 async fn get_user(
     State(state): State&lt;AppState&gt;,
     Path(id): Path&lt;i64&gt;,
 ) -&gt; Result&lt;Json&lt;User&gt;, AppError&gt; {
-    let user = find_user(&amp;state.db, id).await?;
-    Ok(Json(user))
+    Ok(Json(find_user(&amp;state.db, id).await?))
 }</code></pre>
         <p>
-          위 API는 Rustee가 Stage 4와 Stage 5를 완료했을 때의 목표 형태입니다. handler는 HTTP 경계를 맡고,
-          쿼리와 트랜잭션은 service 또는 repository 함수에 둡니다. <code>AppState</code>에는 pool, 설정, 외부 client를
-          함께 둘 수 있지만, 요청별 mutable 상태를 넣지 않습니다.
+          Handlers own the HTTP boundary. Queries and transactions belong in explicit service or
+          repository functions. Shared application state may include pools, configuration, and
+          external clients, but not request-scoped mutable state.
         </p>
       </section>
-
       <section>
-        <h2>트랜잭션 정책</h2>
+        <h2>ORM Coexistence</h2>
         <ul>
-          <li>트랜잭션은 use case 시작점에서 명시적으로 열고, 필요한 repository 함수에 mutable 참조로 전달합니다.</li>
-          <li>Rustee는 모든 요청을 자동으로 transaction으로 감싸지 않습니다. 읽기 전용 요청, streaming, 외부 API 호출과 충돌하기 쉽기 때문입니다.</li>
-          <li><code>Transaction</code> extractor는 초기 API에 넣지 않습니다. lifetime과 commit 시점이 숨겨지지 않는 명시적 API를 먼저 검증합니다.</li>
-          <li>PostgreSQL tenant 격리는 <code>begin_tenant_transaction</code>과 application-owned RLS policy로 제공합니다. read/write 분리와 transaction retry는 별도 enterprise integration에서 확장합니다.</li>
+          <li>
+            <strong>SQLx:</strong> preferred when a service needs direct SQL control and transparent
+            async dependencies.
+          </li>
+          <li>
+            <strong>SeaORM:</strong> inject <code>DatabaseConnection</code> into state when entity,
+            relation, and CRUD productivity are the priority.
+          </li>
+          <li>
+            <strong>Diesel or diesel-async:</strong> inject an async pool or connection; do not run
+            synchronous Diesel connections directly in async handlers.
+          </li>
+          <li>
+            <strong>MongoDB:</strong> use the separate
+            <a href="./mongodb.html">MongoDB integration</a> and inject the official driver's
+            <code>Client</code>.
+          </li>
+        </ul>
+        <p>
+          Rustee will add ORM-specific adapters only after repeated use cases justify them. A
+          framework-owned repository trait would hide database-specific capability and reduce ORM
+          expressiveness.
+        </p>
+      </section>
+      <section>
+        <h2>Transaction and Tenant Rules</h2>
+        <ul>
+          <li>
+            Open a transaction explicitly at the use-case boundary and pass it to the repository
+            functions that require it.
+          </li>
+          <li>
+            Rustee never wraps every request in a transaction; read-only requests, streaming, and
+            external calls do not share one safe default.
+          </li>
+          <li>
+            A <code>Transaction</code> extractor is intentionally absent until lifetime and commit
+            semantics can remain explicit.
+          </li>
+          <li>
+            <code>begin_tenant_transaction</code> places verified, NUL-free
+            <code>TenantContext</code> in a transaction-local PostgreSQL setting. Application-owned
+            RLS policies enforce the actual read/write boundary.
+          </li>
+          <li>
+            Read/write splitting and transaction retry require separate enterprise contracts rather
+            than implicit behavior.
+          </li>
         </ul>
       </section>
-
       <section>
-        <h2>PostgreSQL transactional outbox</h2>
+        <h2>PostgreSQL Transactional Outbox</h2>
         <p>
-          <code>rustee-outbox-sqlx</code>는 event와 durable job을 business row와 <strong>같은</strong> PostgreSQL
-          transaction에 stage하는 선택적 adapter입니다. 제공된 <code>0001_rustee_outbox.sql</code> migration과 forward-only
-          priority upgrade <code>0003_rustee_outbox_priority.sql</code>은 application의 배포 migration에 넣습니다. HTTP startup에서 schema를 만들지 않습니다. relay task, readiness, metric export, log와
-          supervisor는 application이 소유하며, 필요할 때만 explicit <code>run_until</code> helper에 shutdown future를 전달합니다.
+          <code>rustee-outbox-sqlx</code> optionally stages an event or durable job in the same
+          PostgreSQL transaction as business state. Deployment runs the supplied forward-only
+          migrations; HTTP startup never creates schemas. An application-owned relay leases due rows
+          and confirms them only after broker acknowledgement. Immediate and delayed staging, inbox
+          receipt registration, storage, and relay errors expose content-free categories by default
+          while retaining trusted database or publisher sources for application handling. Staged and
+          leased-message debug output redacts identifiers, destinations, routing metadata, payloads,
+          and lease capabilities.
         </p>
-        <pre><code>use rustee_events::EventEnvelope;
-use rustee_outbox_sqlx::{OutboxDestination, OutboxMessage, PostgresOutbox};
-
-let destination = OutboxDestination::new("orders.events")?;
-let envelope = EventEnvelope::new(order_paid, order.account_id.to_string())?;
-let message = OutboxMessage::event(destination.clone(), &amp;envelope)?;
-
-let mut transaction = pool.begin().await?;
-save_order_state(&amp;mut transaction, &amp;order).await?;
-PostgresOutbox.stage(&amp;mut transaction, &amp;message).await?;
-transaction.commit().await?;
-
-// A separately scheduled EventOutboxRelay publishes only `orders.events` rows.
-// It confirms the row only after Kafka reports broker acknowledgement.</code></pre>
         <ul>
-          <li>row는 <code>kind + destination + source message ID</code> unique constraint로 중복 stage를 억제합니다. request retry에서 같은 event/job ID를 재사용하는 정책은 application이 결정합니다.</li>
-          <li><code>JobSchedule::after</code>/<code>stage_job_after</code>와 <code>EventSchedule::after</code>/<code>stage_event_after</code>는 각각 durable job/event를 PostgreSQL clock 기준으로 0보다 크고 366일 이하의 <code>available_at</code>에 stage합니다. existing <code>JobOutboxRelay</code>/<code>EventOutboxRelay</code> loop는 due row만 lease하므로 별도 memory scheduler가 필요하지 않습니다. duplicate stage는 기존 availability를 바꾸지 않습니다. event delay는 provider-specific retry header나 source offset commit을 포함하지 않습니다.</li>
-          <li><code>rustee-events-kafka-sqlx</code>의 separate <code>0001_rustee_kafka_delayed_retries.sql</code> migration은 Kafka source topic/partition/offset, next retry attempt, stored retry topic, sanitized failure kind, key/payload, database-clock availability와 relay lease/confirmation을 보관합니다. source tuple plus retry attempt unique constraint가 consumer commit 재시도 중 같은 delayed retry intent를 하나로 유지합니다. <code>PostgresKafkaDelayedRetryRouter</code>가 insert를 성공한 뒤에만 source offset commit이 진행되며, <code>PostgresKafkaDelayedRetryRelay</code>는 due row만 <code>SKIP LOCKED</code>로 claim해 Kafka broker acknowledgement 후 <code>published_at</code>을 기록합니다. <code>readiness(KafkaDelayedRetryReadinessConfig)</code>은 retry table select와 retry/DLQ topic metadata를 concurrent bounded check로 확인하고, <code>run_until(KafkaDelayedRetryRelayLoopConfig, shutdown)</code>은 one-pass relay를 application supervisor에서 반복하며 empty pass만 bounded하게 wait합니다. Kafka acknowledgement와 database confirmation은 atomic하지 않아 duplicate publish가 가능하며 event consumer idempotency는 필수입니다.</li>
-          <li><code>OutboxPriority</code>는 stage 전 0-255 relay preference를 저장합니다. default 0은 ordinary row의 existing FIFO behavior를 유지하며, one kind/destination의 eligible row는 higher priority, then <code>created_at</code>, then row ID로 claim과 relay return order를 정합니다. priority는 broker delivery order, fairness, tenant policy나 global rate limit을 보장하지 않습니다.</li>
-          <li><code>rustee-jobs-cron-sqlx</code>는 <code>0001_rustee_recurring_jobs.sql</code> migration으로 typed job payload, cron expression과 next run을 저장합니다. <code>0002_rustee_recurring_job_rate_governor.sql</code>은 opt-in shared-key fixed-window columns와 one-row current-window state를 forward-only로 추가하고, <code>0003_rustee_recurring_job_time_zone.sql</code>은 existing row를 <code>UTC</code>로 유지하며 durable IANA <code>time_zone</code>을 추가합니다. <code>RecurringJob::new</code>는 UTC default이고 <code>with_time_zone(RecurringJobTimeZone)</code>으로 business zone을 명시합니다. forward DST gap은 skip하고 backward overlap은 earlier UTC occurrence만 fire합니다. <code>PostgresRecurringJobs::register</code>는 application-owned key의 exact duplicate만 accept하고 time-zone drift를 포함한 definition drift를 거부하며, shared governor key의 capacity/window drift도 explicit conflict로 거부합니다. supervisor가 <code>fire_due</code>를 호출하면 due row lock, fresh job outbox stage와 next occurrence update를 같은 transaction에서 처리합니다. governor capacity가 없으면 outbox 없이 next window boundary로 defer합니다. optional <code>RecurringJobFireObserver</code>는 cancellation-safe이며 separate collector/exporter는 fixed outcome, aggregate count와 global duration만 노출합니다. holiday calendar, catch-up replay, tenant fairness, daily quota와 external-provider quota는 application이 정합니다.</li>
-          <li>relay는 destination과 kind별로 <code>FOR UPDATE SKIP LOCKED</code> lease를 잡고, broker 성공 뒤에만 publish confirmation을 기록합니다. process crash, lease loss 또는 confirmation failure 뒤에는 같은 message ID가 다시 publish될 수 있습니다.</li>
-          <li><code>EventOutboxRelay</code>와 <code>JobOutboxRelay</code>의 <code>relay_once</code>는 한 번의 bounded pass만 실행합니다. explicit <code>run_until(RelayLoopConfig, shutdown)</code>은 empty pass 뒤에만 bounded idle delay를 기다리고, shutdown을 새 pass 전 또는 idle wait 중에 반영합니다. 이미 lease한 pass는 끝낸 뒤 멈추며, process task를 강제로 abort하면 lease expiry 뒤 duplicate publish가 가능하므로 graceful shutdown을 사용합니다.</li>
-          <li><code>run_until</code>은 completed pass의 <code>RelayLoopReport</code>(pass, claimed, published, retry_scheduled, lease_lost)를 반환합니다. 각 <code>relay_once</code> pass는 cancellation-safe <code>OutboxRelayObserver</code> lifecycle을 emit하고, optional <code>rustee-outbox-observability::OutboxRelayMetrics</code>는 event/job kind, succeeded/failed/abandoned outcome, bounded row count와 global duration만 집계합니다. destination, message ID, payload, broker endpoint, raw error는 metric label에 넣지 않습니다. publisher/database 오류는 retry release 뒤 그대로 반환되므로 supervisor backoff와 incident policy는 숨겨지지 않습니다.</li>
-          <li>payload는 non-empty, 최대 1 MiB이며 destination, message ID/type, ordering key도 bounded합니다. 대형 payload는 object storage reference 등 application-owned pattern으로 분리합니다.</li>
-          <li>이 adapter는 PostgreSQL outbox table을 tenant-facing data model로 만들지 않습니다. tenant RLS는 business table에 적용하고, relay service의 cross-tenant access, event key와 tenant authorization의 관계는 application이 명시적으로 설계합니다.</li>
-          <li><code>PostgresInbox::register</code>는 <code>InboxConsumer</code> scope와 event/job ID receipt를 같은 database side-effect transaction에 기록합니다. commit된 duplicate는 side effect를 건너뛰고, rollback된 receipt는 다음 delivery가 다시 처리합니다.</li>
-          <li>broker transaction과 DB transaction을 하나로 합치거나 exactly-once business effect를 주장하지 않습니다. external HTTP/email side effect는 provider idempotency key 또는 별도 workflow가 필요하고 consumer scope/tenant policy는 application이 결정합니다.</li>
+          <li>
+            Unique <code>kind + destination + source message ID</code> constraints suppress repeated
+            staging. The application selects source IDs for request retries.
+          </li>
+          <li>
+            One-time jobs and events can be staged with an <code>available_at</code> time based on
+            the PostgreSQL clock. Relays claim only due rows.
+          </li>
+          <li>
+            Outbox priority is a local relay preference, not a broker ordering, fairness,
+            tenant-policy, or global-rate-limit guarantee.
+          </li>
+          <li>
+            <code>PostgresInbox</code> records a consumer receipt with a database side effect. Its
+            durable inbox ledger is maintained separately from outbox staging and relay behavior
+            while the root API remains stable. It protects database effects from committed
+            duplicates, not arbitrary external effects.
+          </li>
+          <li>
+            Database and broker confirmation are not atomic. Crashes and confirmation failures can
+            republish a message, so consumers must be idempotent.
+          </li>
+          <li>
+            Relay loops, readiness routes, metrics routes, supervision, backoff, alerts, and payload
+            storage policy remain application-owned.
+          </li>
         </ul>
-        <pre><code>use rustee_outbox_sqlx::{
-    InboxConsumer, InboxDecision, InboxMessageId, PostgresInbox,
-};
-
-let mut transaction = pool.begin().await?;
-match PostgresInbox.register(
-    &amp;mut transaction,
-    &amp;InboxConsumer::new("billing-projection.v1")?,
-    &amp;InboxMessageId::event(event_context.id()),
-).await? {
-    InboxDecision::FirstDelivery =&gt; apply_projection(&amp;mut transaction).await?,
-    InboxDecision::Duplicate =&gt; {}
-}
-transaction.commit().await?;</code></pre>
-        <pre><code>use std::time::Duration;
-use rustee_jobs::JobEnvelope;
-use rustee_outbox_sqlx::{
-    JobSchedule, OutboxDestination, OutboxMessage, OutboxPriority, PostgresOutbox,
-};
-
-let destination = OutboxDestination::new("billing.jobs")?;
-let message = OutboxMessage::job(destination, &amp;JobEnvelope::new(send_reminder))?
-    .with_priority(OutboxPriority::new(200));
-let schedule = JobSchedule::after(Duration::from_secs(60 * 60))?;
-
-let mut transaction = pool.begin().await?;
-save_reminder_request(&amp;mut transaction).await?;
-PostgresOutbox.stage_job_after(&amp;mut transaction, &amp;message, schedule).await?;
-transaction.commit().await?;
-
-// The application-owned JobOutboxRelay loop leases this row after its database due time.</code></pre>
-        <pre><code>use std::sync::Arc;
-use rustee_outbox_observability::OutboxRelayMetrics;
-use rustee_outbox_sqlx::{JobOutboxRelay, RelayConfig, RelayLoopConfig};
-
-let relay_metrics = OutboxRelayMetrics::new();
-let relay = JobOutboxRelay::new(pool, job_publisher, destination, RelayConfig::default())
-    .with_relay_observer(Arc::new(relay_metrics.clone()));
-let report = relay
-    .run_until(RelayLoopConfig::default(), shutdown_future)
-    .await?;
-
-// shutdown_future resolves during deployment drain. Export the live bounded metrics snapshot
-// and the final RelayLoopReport counts.
-// Task spawning, readiness, restart/backoff and alerting remain application-owned.</code></pre>
       </section>
-
       <section>
-        <h2>PostgreSQL tenant RLS</h2>
-        <p>
-          <code>rustee-tenant::TenantContext</code>는 verified identity 또는 trusted server-side resolver만 만든 scope입니다.
-          <code>begin_tenant_transaction</code>은 이 값을 PostgreSQL의 transaction-local <code>rustee.tenant_id</code> setting으로 넣습니다.
-          query가 범위를 잊어도 database policy가 read와 write를 막게 하려면 application migration이 RLS와 runtime role을 함께 정의해야 합니다.
-        </p>
-        <pre><code>use rustee_sqlx::{begin_tenant_transaction, PgPool, TenantContext};
-
-async fn list_projects(pool: &amp;PgPool, tenant: &amp;TenantContext) -&gt; Result&lt;Vec&lt;Project&gt;, sqlx::Error&gt; {
-    let mut transaction = begin_tenant_transaction(pool, tenant).await?;
-    let projects = sqlx::query_as!(Project, "SELECT id, name FROM project ORDER BY name")
-        .fetch_all(&amp;mut *transaction)
-        .await?;
-    transaction.commit().await?;
-    Ok(projects)
-}</code></pre>
-        <pre><code>ALTER TABLE project ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project FORCE ROW LEVEL SECURITY;
-CREATE POLICY project_tenant_scope ON project
-  FOR ALL TO app_runtime
-  USING (tenant_id = current_setting('rustee.tenant_id', true))
-  WITH CHECK (tenant_id = current_setting('rustee.tenant_id', true));</code></pre>
+        <h2>Migration and Release Boundary</h2>
         <div class="warning">
           <p>
-            superuser, <code>BYPASSRLS</code> role, policy owner configuration, direct raw transaction 또는 migration job은 이 경계를 우회할 수 있습니다. application은 tenant-facing query를 RLS가 적용되는 non-superuser runtime role로 실행하고, 모든 protected table에 같은 migration policy를 적용해야 합니다. Rustee는 schema migration을 자동 생성하거나 MongoDB에 PostgreSQL RLS와 동등한 보장을 주장하지 않습니다.
+            Schema changes, indexes, RLS policy, migrations, credentials, backups, and database
+            outage recovery are deployment responsibilities. Rustee documents and tests the
+            integration contract but does not execute production migrations at startup.
           </p>
         </div>
-      </section>
-
-      <section>
-        <h2>Migration과 운영</h2>
-        <div class="warning">
-          <p>
-            production 서버 시작 시 migration을 자동 실행하지 않습니다. 여러 인스턴스가 동시에 시작하거나
-            장시간 lock이 필요한 변경이 배포 가용성을 해칠 수 있습니다.
-          </p>
-        </div>
-        <ol>
-          <li>migration은 SQLx CLI, SeaORM migration, Diesel migration 등 선택한 도구로 작성합니다.</li>
-          <li><code>rustee-outbox-sqlx</code>를 쓰면 crate의 <code>0001_rustee_outbox.sql</code>, <code>0002_rustee_inbox.sql</code>과 priority upgrade <code>0003_rustee_outbox_priority.sql</code>을 application migration set에 순서대로 포함하고, relay/consumer runtime보다 먼저 배포합니다. recurring job도 쓰면 뒤이어 <code>rustee-jobs-cron-sqlx</code>의 <code>0001_rustee_recurring_jobs.sql</code>을 적용합니다. scheduler governor를 쓰거나 scheduler crate를 governor-capable version으로 올리면 그 다음 <code>0002_rustee_recurring_job_rate_governor.sql</code>을 적용한 뒤 runtime을 배포합니다. Kafka delayed failure routing을 쓰면 <code>rustee-events-kafka-sqlx</code>의 <code>0001_rustee_kafka_delayed_retries.sql</code>을 consumer runtime보다 먼저 적용하고 application supervisor에 relay loop와 graceful shutdown을 명시합니다. 이미 적용한 migration을 수정하지 않고 모두 forward-only migration으로 추가합니다.</li>
-          <li>CI에서 새 migration과 query metadata를 검증합니다. SQLx compile-time query를 쓰면 <code>cargo sqlx prepare --check --workspace</code>를 사용합니다.</li>
-          <li>배포 pipeline의 단일 migration job이 schema를 먼저 전진시킵니다.</li>
-          <li>새 서버 인스턴스는 pool 연결과 짧은 query를 포함한 readiness check를 통과한 뒤 트래픽을 받습니다.</li>
-        </ol>
         <p>
-          하위 호환 schema 변경, backfill, 대용량 index 생성 같은 배포 규칙은 Stage 5의 운영 가이드에 포함합니다.
+          Use <a href="./testing.html">testing guidance</a>, the
+          <a href="./support-matrix.html">support matrix</a>, and the
+          <a href="./qualification-register.html">qualification register</a> before calling a
+          provider or topology release-qualified.
         </p>
       </section>
-
-      <section>
-        <h2>다음 구현 순서</h2>
-        <ol>
-          <li>Stage 1-4에서 <code>State</code>, error 변환, extractor와 통합 테스트 경계를 안정화합니다.</li>
-          <li>Stage 5와 Stage 9에서 PostgreSQL + SQLx와 <code>rustee-outbox-sqlx</code>를 구현했고, PostgreSQL 16 container에서 connection/readiness/basic query, tenant RLS read/write isolation, outbox transaction visibility/deduplication/retry lease, delayed-job invisibility/due release와 inbox rollback/commit duplicate-suppression contract를 실행합니다. stopped database에서 500ms initial pool failure가 credential/endpoint-free인지, restart 뒤 SQLx/outbox/AI audit/usage ledger/checkpoint suite가 회복되는지도 CI가 확인합니다.</li>
-          <li>동일한 상태 주입 방식으로 SQLite feature와 SeaORM/Diesel recipes를 검증합니다. MySQL/MariaDB는 upstream security advisory가 패치된 driver line, 실제 backend contract, 새 ADR이 함께 준비될 때만 다시 candidate로 검토합니다.</li>
-          <li>Stage 10에서 MongoDB tenant isolation model, read/write split, retry 정책을 실제 workload와 함께 별도 release gate로 확장합니다.</li>
-        </ol>
-      </section>
-
-      <section>
-        <h2>Redis와의 구분</h2>
-        <p>
-          Redis는 이 문서의 관계형 database integration과 별도 경계로 관리합니다. Redis를 cache, session, rate limit,
-          message 전달에 쓸 때의 client, TTL, 장애 정책은 <a href="./redis.html">Redis와 상태 저장소</a>를 기준으로 합니다.
-        </p>
-      </section>
-
-      <section>
-        <h2>MongoDB와의 구분</h2>
-        <p>
-          MongoDB는 SQLx가 대상으로 삼는 관계형 database가 아니라 BSON 문서와 collection을 중심으로 한 별도 integration입니다.
-          driver client, document model, transaction, change stream, durable checkpoint와 tenant BSON boundary 정책은 <a href="./mongodb.html">MongoDB 문서 저장소</a>를 기준으로 합니다.
-        </p>
-      </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this document when database integration, transaction, migration, outbox relay, or pool policy changes.</p>
+        <p>
+          Last updated: 2026-08-19. Update this document when the supported database contract
+          changes.
+        </p>
       </footer>
     </main>
   </body>

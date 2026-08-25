@@ -4,17 +4,15 @@
 //! application owns an [`OutboxRelayMetrics`] collector and explicitly mounts [`metrics_response`]
 //! wherever its deployment policy permits scraping.
 
-use std::fmt::Write;
-
 use http::{
     HeaderValue, StatusCode,
     header::{CACHE_CONTROL, CONTENT_TYPE},
 };
 use rustee_core::{Response, full_body, response};
+use rustee_observability_core::prometheus::append_line;
 use rustee_outbox_observability::{OutboxRelayMetrics, OutboxRelayMetricsSnapshot, metric_names};
 
-/// Prometheus text exposition content type for version 0.0.4.
-pub const CONTENT_TYPE_PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
+pub use rustee_observability_core::prometheus::PROMETHEUS_TEXT_CONTENT_TYPE as CONTENT_TYPE_PROMETHEUS;
 
 /// Encodes a point-in-time outbox relay metrics snapshot in Prometheus text exposition format.
 #[must_use]
@@ -160,10 +158,6 @@ pub fn metrics_response(metrics: &OutboxRelayMetrics) -> Response {
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
-}
-
-fn append_line(output: &mut String, line: &str) {
-    writeln!(output, "{line}").expect("writing to an owned String must not fail");
 }
 
 #[cfg(test)]

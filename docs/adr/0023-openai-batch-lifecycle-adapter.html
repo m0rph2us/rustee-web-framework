@@ -1,22 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0023: OpenAI Batch Lifecycle Adapter</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header"><div class="site-header-inner"><a class="brand" href="../index.html">Rustee</a><nav class="nav" aria-label="문서"><a href="../design-philosophy.html">철학</a><a href="../architecture.html">구조</a><a href="../database.html">데이터베이스</a><a href="../redis.html">Redis</a><a href="../mongodb.html">MongoDB</a><a href="../authentication.html">인증</a><a href="../queues.html">Queue</a><a href="../events.html">Event</a><a href="../ai.html">AI</a><a href="../testing.html">Test</a><a href="../operations.html">운영</a><a href="../roadmap.html">로드맵</a><a href="../ai-context.html">AI 유지관리</a><a href="./index.html">ADR</a></nav></div></header>
     <main class="page">
-      <section class="hero"><div class="eyebrow">ADR 0023</div><h1>OpenAI Batch lifecycle adapter</h1><p class="lead">Status: Accepted. Date: 2026-08-03.</p></section>
-      <section><h2>Context</h2><p><code>rustee-ai-batch</code> deliberately owns only content-free reference reservation and receipt recording. The <code>OpenAI</code> Batch API adds provider-specific input-file IDs, endpoint selection, status, cancellation, output/error file IDs, and a 24-hour completion window. Treating the raw JSONL payload or returned result file as a generic framework value would widen durable-data retention and make duplicate submission recovery unsafe.</p></section>
-      <section><h2>Decision</h2><div class="decision"><p><code>rustee-ai-openai</code> implements explicit bounded input-row/file upload, create, retrieve, cancel, file download, and structural output-row parsing, while keeping application result handling outside the adapter.</p></div><ul><li><code>OpenAiBatchInputRow</code>/<code>OpenAiBatchJsonlBuilder</code> construct the generic <code>custom_id</code>/<code>POST</code>/endpoint/body JSONL envelope. They require unique safe IDs, one endpoint, object body, and bounded row/file count. <code>OpenAiBatchInputRow::from_chat_request</code> is the opt-in typed <code>/v1/responses</code> path and reuses the existing Rustee <code>ChatRequest</code> text/function/tool-result mapping. <code>from_embedding_inputs</code> is the opt-in typed <code>/v1/embeddings</code> path and preserves a non-empty ordered <code>EmbeddingInput</code> list. Provider-only fields still require an explicit application-owned body.</li><li><code>OpenAiBatchInputJsonl</code> is a non-serializable, non-cloneable, redacted short-lived byte value. <code>upload_batch_input()</code> uploads it with Files purpose <code>batch</code> and returns only a validated file ID; it creates no durable job, cache entry, batch request, or result record.</li><li><code>OpenAiBatchRequest</code> accepts only a bounded provider input-file ID and a supported <code>/v1/responses</code> or <code>/v1/embeddings</code> endpoint. <code>OpenAiBatchProvider</code> implements the generic one-time submission trait by creating <code>/v1/batches</code> requests with completion window <code>24h</code> and the stable Rustee run key as provider metadata. The core ledger still owns duplicate receipt reuse and pending ambiguity.</li><li>Retrieve and cancel expose a normalized status, request counts, and optional output/error file IDs. <code>download_batch_file()</code> is a separate caller-selected operation. Its bounded JSONL iterator validates safe <code>custom_id</code>, response status/request ID, or failure code; provider error messages are not retained. A caller that explicitly consumes a response body may use <code>into_chat_response()</code> for the validated <code>/v1/responses</code> shape or <code>into_embeddings(expected_count)</code> for a validated ordered <code>/v1/embeddings</code> response. Domain validation, partial-result routing, and all side effects remain application-owned.</li><li>Batch JSON and file references are fail-closed: recognized lifecycle state, bounded identifiers, required counts, the invariant <code>completed + failed &lt;= total</code>, Batch-purpose upload response, configured file-size limit, JSONL row bound, and mutually exclusive response/error shape are required before data is retained.</li></ul></section>
-      <section><h2>Consequences</h2><ul><li>Applications own authorized JSONL construction, row shape, prompt handling, file retention/erase, and model-specific limits. The adapter transmits only one explicitly supplied bounded in-memory value and does not serialize or log it.</li><li>Applications explicitly choose whether to download or delete a selected input/output/error file, then select whether to consume raw response bodies, validate domain meaning, route partial results, evaluate them, reconcile usage/billing, and retain or erase provider artifacts. Delete requires an exact provider acknowledgement and never schedules a retry.</li><li>Local TCP and parser contract tests cover multipart upload request shape, create/retrieve/cancel/delete paths, content-free submission, safe decoding, explicit bounded download, structural JSONL iteration, row-limit/malformed-row failure, and redacted debug output. Live credentials, provider quota, outage, and version evidence remain opt-in release gates.</li></ul></section>
-      <section><h2>Alternatives</h2><table><thead><tr><th>대안</th><th>판단</th></tr></thead><tbody><tr><td>framework가 raw JSONL row를 만들고 durable payload에 보관</td><td>prompt retention, application authorization, file ownership과 model-specific row construction을 침범하므로 채택하지 않는다.</td></tr><tr><td>polling 결과를 자동 다운로드하고 response cache/evaluation에 주입</td><td>partial-result, tenant authorization, retention, cost, replay 의미를 숨기므로 채택하지 않는다.</td></tr><tr><td>provider 상태를 generic batch core trait에 강제</td><td>다른 provider의 lifecycle, cancellation, billing 모델을 잘못 평준화하므로 adapter API로 둔다.</td></tr></tbody></table></section>
-      <section><h2>Output Expiration</h2><p><code>OpenAiBatchOutputExpiration</code> optionally sends the provider-supported <code>output_expires_after</code> policy with an explicit one-hour through 30-day whole-second duration. It covers only generated output/error files, is anchored by the provider at batch creation, and does not delete input files, settle billing, or replace application retention and reconciliation decisions.</p></section>
-      <section><h2>Follow-up</h2><ul><li>Streaming file transfer, production artifact retention/erase, model-specific input-body validation, response semantics beyond the explicit Responses/Embeddings conversions, and application partial-result routing require separate contracts.</li><li>Production durable ledger/catalog, worker retry/DLQ, billing reconciliation, live provider/outage qualification, and model/provider compatibility matrix remain release gates.</li></ul></section>
-      <footer class="doc-footer"><p>Last updated: 2026-08-03. Update this ADR whenever OpenAI Batch input, metadata, status decoding, cancellation, output-file handling, retention, billing, or reconciliation ownership changes.</p></footer>
+      <section class="hero">
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0023: OpenAI Batch Lifecycle Adapter</h1>
+        <p class="meta">Status: Accepted</p>
+      </section>
+      <section>
+        <h2>Context</h2>
+        <p>
+          OpenAI Batch uses files and lifecycle operations that need bounded transport, typed
+          conversion, and redaction without embedding provider business policy.
+        </p>
+      </section>
+      <section>
+        <h2>Decision</h2>
+        <p>
+          Provide bounded upload, download, delete, create, retrieve, cancel, structural JSONL
+          parsing, typed Responses/Embeddings conversion, and category-only diagnostics for
+          source-carrying public conversion errors in an optional adapter.
+        </p>
+      </section>
+      <section>
+        <h2>Consequences</h2>
+        <p>
+          Provider fields, model selection, live credentials, lifecycle polling, data policy,
+          billing, output meaning, and spend approval remain application responsibilities.
+        </p>
+      </section>
+      <footer class="doc-footer"><p>Last updated: 2026-08-25.</p></footer>
     </main>
   </body>
 </html>

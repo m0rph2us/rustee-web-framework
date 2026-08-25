@@ -2,8 +2,8 @@
 
 use futures_util::TryStreamExt;
 use rustee_mongodb::{
-    ChangeStreamNext, MongoConfig, MongoTenantScope, TenantContext, begin_transaction,
-    begin_transaction_with_options, connect, database,
+    ChangeStreamNext, MongoConfig, MongoReadinessError, MongoTenantScope, TenantContext,
+    begin_transaction, begin_transaction_with_options, connect, database,
     mongodb::{
         bson::{Document, doc},
         options::TransactionOptions,
@@ -12,7 +12,7 @@ use rustee_mongodb::{
 };
 use tokio::{
     sync::oneshot,
-    time::{Duration, Instant, sleep, timeout},
+    time::{Duration, Instant, timeout},
 };
 use uuid::Uuid;
 
@@ -174,7 +174,6 @@ async fn change_stream_exposes_a_checkpoint_and_stops_at_shutdown() {
         })
         .await
     });
-    sleep(Duration::from_millis(50)).await;
     shutdown_tx.send(()).unwrap();
     let stopped = timeout(Duration::from_secs(1), worker)
         .await
@@ -396,14 +395,20 @@ async fn tenant_scope_filters_lookup_and_union_foreign_collections() {
 
 #[tokio::test]
 #[ignore = "requires CI to stop a MongoDB replica set during the contract"]
-async fn readiness_fails_within_the_server_selection_deadline_during_an_outage() {
+async fn readiness_fails_within_the_server_selection_deadline_and_redacts_the_endpoint() {
     let config = MongoConfig::new(mongo_uri(), "rustee_contract")
         .unwrap()
         .with_app_name("rustee-mongodb-outage-contract")
-        .with_server_selection_timeout(Duration::from_millis(100));
+        .with_server_selection_timeout(Duration::from_millis(100))
+        .unwrap();
     let client = connect(&config).await.unwrap();
     let started_at = Instant::now();
-    assert!(readiness(&client, &config).await.is_err());
+    let error = readiness(&client, &config).await.unwrap_err();
+
+    assert!(matches!(error, MongoReadinessError::Driver(_)));
     assert!(started_at.elapsed() < Duration::from_secs(2));
+    let rendered = format!("{error:?} {error}");
+    assert!(!rendered.contains("127.0.0.1"));
+    assert!(!rendered.contains("27017"));
     shutdown(client).await;
 }

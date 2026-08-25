@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readdir, readFile, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { readdir, rm } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
+import { readWorkspaceReleaseInventory } from "./workspace-release-inventory.mjs";
 
 const packageOptions = process.argv.slice(2);
 const unsupportedOptions = packageOptions.filter((option) => option !== "--offline" && option !== "--allow-dirty");
@@ -18,19 +19,7 @@ const metadata = JSON.parse(
 );
 const workspaceRoot = metadata.workspace_root;
 const inventoryPath = join(workspaceRoot, "docs", "release-inventory.html");
-const document = await readFile(inventoryPath, "utf8");
-const match = document.match(
-  /<script id="workspace-release-inventory" type="application\/json">\s*([\s\S]*?)\s*<\/script>/,
-);
-
-if (!match) {
-  throw new Error(`${inventoryPath}: workspace release inventory JSON was not found`);
-}
-
-const inventory = JSON.parse(match[1]);
-if (inventory.schema !== 1 || !Array.isArray(inventory.packages)) {
-  throw new Error(`${inventoryPath}: unsupported workspace release inventory schema`);
-}
+const inventory = await readWorkspaceReleaseInventory(inventoryPath, metadata.packages);
 
 const packageByName = new Map(metadata.packages.map((pkg) => [pkg.name, pkg]));
 const candidates = inventory.packages.filter((entry) => entry.intent === "candidate");
@@ -63,21 +52,52 @@ if (
   throw new Error(`refusing to clear unexpected package directory: ${packageDirectory}`);
 }
 
+function localWorkspaceDependencyClosure(pkg, dependencies = new Map()) {
+  for (const dependency of pkg.dependencies) {
+    if (!dependency.path || !packageByName.has(dependency.name)) {
+      continue;
+    }
+    if (dependencies.has(dependency.name)) {
+      continue;
+    }
+
+    const dependencyPackage = packageByName.get(dependency.name);
+    dependencies.set(dependency.name, dependencyPackage);
+    localWorkspaceDependencyClosure(dependencyPackage, dependencies);
+  }
+  return dependencies;
+}
+
 // Remove stale archives so the result describes exactly this inventory, not a prior workspace run.
 await rm(packageDirectory, { recursive: true, force: true });
 
-execFileSync(
-  "cargo",
-  [
-    "package",
-    "--workspace",
-    "--no-verify",
-    "--locked",
-    ...workspaceOnly.flatMap((entry) => ["--exclude", entry.name]),
-    ...packageOptions,
-  ],
-  { cwd: workspaceRoot, stdio: "inherit" },
-);
+for (const entry of candidates) {
+  const pkg = packageByName.get(entry.name);
+  const localDependencies = localWorkspaceDependencyClosure(pkg);
+  const patchOptions = [...localDependencies]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([name, dependency]) => [
+      "--config",
+      `patch.crates-io.${name}.path=${JSON.stringify(dirname(dependency.manifest_path))}`,
+    ]);
+
+  // Cargo prepares dev-dependencies too. These command-only patches resolve every local
+  // dependency without changing the versioned dependencies written into the source archive.
+  // Keep Cargo's verification enabled so every reassembled archive is compiled before release.
+  execFileSync(
+    "cargo",
+    [
+      "package",
+      "--package",
+      pkg.name,
+      "--quiet",
+      "--locked",
+      ...patchOptions,
+      ...packageOptions,
+    ],
+    { cwd: workspaceRoot, stdio: "inherit" },
+  );
+}
 
 const actualArchives = new Set((await readdir(packageDirectory)).filter((name) => name.endsWith(".crate")));
 const missing = [...expectedArchives].filter((name) => !actualArchives.has(name));

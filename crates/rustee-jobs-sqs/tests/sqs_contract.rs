@@ -353,9 +353,11 @@ fn worker_config(topology: Topology) -> SqsWorkerConfig {
         .unwrap()
         .with_long_poll(Duration::from_secs(1))
         .unwrap()
-        .with_visibility_timeout(Duration::from_secs(2))
+        .with_request_timeout(Duration::from_secs(2))
         .unwrap()
-        .with_heartbeat_interval(Duration::from_millis(500))
+        .with_heartbeat_interval(Duration::from_secs(1))
+        .unwrap()
+        .with_visibility_timeout(Duration::from_secs(4))
         .unwrap()
 }
 

@@ -7,9 +7,10 @@ use rustee_mongodb::{
     mongodb::{bson, change_stream::event::ResumeToken},
 };
 use rustee_mongodb_checkpoint_sqlx::{
-    CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL, ChangeStreamLeaseAcquire, ChangeStreamLeaseDuration,
-    ChangeStreamLeaseOwner, PostgresChangeStreamCheckpointError,
-    PostgresChangeStreamCheckpointStore,
+    CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL,
+    CHANGE_STREAM_CHECKPOINT_RESUME_TOKEN_BOUND_MIGRATION_SQL, ChangeStreamLeaseAcquire,
+    ChangeStreamLeaseDuration, ChangeStreamLeaseOwner, MAX_CHANGE_STREAM_RESUME_TOKEN_BYTES,
+    PostgresChangeStreamCheckpointError, PostgresChangeStreamCheckpointStore,
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::time::sleep;
@@ -34,6 +35,10 @@ fn resume_token(value: &str) -> ResumeToken {
 
 async fn ensure_schema(pool: &PgPool) {
     sqlx::raw_sql(CHANGE_STREAM_CHECKPOINT_MIGRATION_SQL)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(CHANGE_STREAM_CHECKPOINT_RESUME_TOKEN_BOUND_MIGRATION_SQL)
         .execute(pool)
         .await
         .unwrap();
@@ -68,18 +73,26 @@ async fn checkpoints_are_durable_per_consumer_and_reject_corrupt_bytes() {
     .await
     .unwrap();
     assert!(matches!(
-        store.load(consumer).await.unwrap_err(),
+        store.load(consumer.clone()).await.unwrap_err(),
         PostgresChangeStreamCheckpointError::InvalidCheckpoint
     ));
+
+    let oversized = sqlx::query(
+        "UPDATE rustee_mongodb_change_stream_checkpoint SET resume_token = $1 WHERE consumer = $2",
+    )
+    .bind(vec![0_u8; MAX_CHANGE_STREAM_RESUME_TOKEN_BYTES + 1])
+    .bind(consumer.as_str())
+    .execute(&pool)
+    .await;
+    assert!(oversized.is_err());
 }
 
 #[tokio::test]
 #[ignore = "requires CI to stop its PostgreSQL container before this contract"]
 async fn checkpoint_store_readiness_fails_within_the_deadline_during_an_outage() {
-    assert!(
-        std::env::var_os("RUSTEE_CHECKPOINT_EXPECT_OUTAGE").is_some(),
-        "CI must explicitly opt into the stopped-PostgreSQL contract"
-    );
+    if std::env::var("RUSTEE_CHECKPOINT_EXPECT_OUTAGE").as_deref() != Ok("1") {
+        return;
+    }
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .acquire_timeout(Duration::from_millis(200))

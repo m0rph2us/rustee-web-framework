@@ -1,123 +1,124 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rustee 지원 현황 매트릭스</title>
-    <link rel="stylesheet" href="./assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustee Support Matrix</title>
+    <link rel="stylesheet" href="./assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="./index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="./architecture.html">구조</a>
-          <a href="./database.html">데이터베이스</a>
-          <a href="./authentication.html">인증</a>
-          <a href="./queues.html">Queue</a>
-          <a href="./events.html">Event</a>
-          <a href="./ai.html">AI</a>
-          <a href="./testing.html">Test</a>
-          <a href="./roadmap.html">기능 로드맵</a>
-          <a href="./release-plan.html">출하 계획</a>
-          <a href="./support-matrix.html">지원 현황</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">Documentation</a><a href="./release-plan.html">Release plan</a
+          ><a href="./qualification-register.html">Qualification</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
         <div class="eyebrow">Support Matrix</div>
-        <h1>현재 구현과 지원 약속을 구분합니다</h1>
+        <h1>Separate Framework Contracts from Adopter Deployment Evidence</h1>
         <p class="lead">
-          이 표는 crate가 존재한다는 사실을 production support로 해석하지 않도록 하는 release inventory입니다.
-          단계의 정의는 <a href="./release-plan.html">출하 계획과 지원 정책</a>을 따르며, 여기에는 실제 검증 증거와 다음 승격 조건만 기록합니다.
+          This matrix describes the reusable Rustee framework. An adopter earns an
+          Enterprise-qualified deployment claim only after it supplies evidence for its selected
+          provider and topology.
         </p>
       </section>
-
       <section>
-        <h2>현재 선언</h2>
-        <div class="warning">
-          <p>
-            2026-08-04 현재 첫 intentional source baseline commit은 존재하지만 source tag와 published public API baseline은 없습니다. 그러므로 어떤 crate도
-            <strong>Supported</strong> 또는 <strong>Enterprise-qualified</strong>로 선언하지 않습니다. 이 매트릭스의
-            Contract-verified는 특정 backend 또는 protocol contract가 존재한다는 뜻이지, 일반적인 production topology를 보증한다는 뜻이 아닙니다.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2>Framework baseline</h2>
-        <table>
-          <thead>
-            <tr><th>범위</th><th>crate</th><th>상태</th><th>현재 증거</th><th>다음 승격 조건</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>HTTP framework</td><td><code>rustee</code>, <code>rustee-core</code>, <code>rustee-router</code>, <code>rustee-server</code>, <code>rustee-middleware</code>, <code>rustee-config</code>, <code>rustee-static</code>, <code>rustee-openapi</code>, <code>rustee-macros</code>, <code>rustee-test</code></td><td>F1 candidate</td><td>real TCP HTTP/1.1, route/extractor, shutdown, proxy-header, static/range/compression contract, config parse/schema error redaction, bounded in-process TestApp JSON/header/response/assertion and opt-in session-style cookie-jar contract, opt-in <code>routes!</code>/<code>FromHeader</code> runtime and misuse compile contracts, explicit OpenAPI 3.1 route/path-parameter/schema/security component/requirement plus API-key header grammar, static Authorization Code/Client Credentials and <code>mutualTLS</code> metadata with global/operation override JSON-response contract, Linux Nginx <code>Forwarded</code> overwrite, gzip/identity <code>Vary</code> cache separation, active request drain, MSRV/stable CI</td><td>public API baseline, first release evidence와 vendor CDN purge/TLS/cache-control deployment evidence; browser cookie semantics, SSE, attribute route macro, automatic schema derive, implicit/password flow, runtime OAuth security와 direct TLS/client-certificate semantics require separate scope. Header-only runtime API-key authentication은 I1 security track에서 production provider evidence를 별도로 요구합니다.</td></tr>
-            <tr><td>Observability</td><td><code>rustee-observability</code>, <code>rustee-observability-prometheus</code>, <code>rustee-observability-opentelemetry</code></td><td>F1 candidate</td><td>bounded metrics, redacted request spans, W3C propagation, pinned OTLP collector receipt와 Nginx trusted-context/cache separation contract</td><td>production exporter/TLS/auth/sampling policy와 vendor CDN deployment evidence</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Persistence, security, delivery</h2>
-        <table>
-          <thead>
-            <tr><th>통합</th><th>crate</th><th>상태</th><th>현재 증거</th><th>Supported 승격 전 공백</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>PostgreSQL persistence</td><td><code>rustee-sqlx</code>, <code>rustee-outbox-sqlx</code>, <code>rustee-jobs-cron-sqlx</code>, <code>rustee-jobs-cron-observability</code>, <code>rustee-jobs-cron-observability-prometheus</code>, <code>rustee-outbox-observability</code>, <code>rustee-outbox-observability-prometheus</code></td><td>Contract-verified</td><td>PostgreSQL 16 pool/readiness/query/RLS, 500ms stopped-database initial-pool deadline/redaction, restart requalification, transactional outbox/inbox, one-time delayed job, 0-255 local outbox priority lease ordering, IANA recurring schedule의 <code>SKIP LOCKED</code>/atomic outbox stage/next-run update, UTC default/time-zone drift conflict/DST gap skip/overlap-earlier-once unit contract, shared-key fixed-window one-stage/one-defer/no-outbox defer와 registration policy-conflict contract, cancellation-safe scheduler observer와 bounded scheduler Prometheus text/no-store exposition, relay observer와 bounded relay Prometheus text/no-store exposition contract</td><td>alert owner/threshold, priority starvation policy, tzdb update/release qualification, holiday calendar, tenant fairness/daily quota와 external side-effect idempotency, migration/restore procedure와 broader provider outage evidence</td></tr>
-            <tr><td>Redis state</td><td><code>rustee-redis</code>, <code>rustee-rate-limit</code>, <code>rustee-rate-limit-redis</code>, session/OIDC Redis stores</td><td>Contract-verified</td><td>Redis 7 cache, atomic rate limit, TTL/GETDEL session and OIDC transaction contract, stopped-server bounded/redacted initial-connect failure and restart requalification</td><td>Cluster/Sentinel failover, restore/retention topology와 operator procedure</td></tr>
-            <tr><td>MongoDB</td><td><code>rustee-mongodb</code>, <code>rustee-mongodb-checkpoint-sqlx</code></td><td>Experimental</td><td>MongoDB 8 replica-set client/readiness/isolated collection I/O, explicit transaction commit/abort, change-stream checkpoint/shutdown, trusted-context BSON tenant read/update/delete/first-match aggregation boundary and tenant-field mutation rejection, PostgreSQL opaque-token durable load/upsert/corruption-rejection, database-clock writer-lease contention/renewal/expiry/stale-write rejection, new-client resume-to-next-event, stopped-replica and stopped-checkpoint-store bounded readiness failure and restart recovery contract</td><td>broader recovery and raw driver, aggregation $lookup/$unionWith, change-stream tenant access review; application still owns lease owner identity and renewal scheduler</td></tr>
-            <tr><td>API-key/JWT/OIDC/session</td><td><code>rustee-auth</code>, <code>rustee-auth-sqlx</code>, <code>rustee-auth-jwt</code>, <code>rustee-auth-oidc</code>, session crates</td><td>Experimental</td><td>explicit header-only API-key layer with duplicate/malformed rejection, sanitized provider outage and HMAC-SHA-256 keyed fingerprint-store boundary; bounded active plus two-retired-pepper dual-read that stops on provider failure; optional PostgreSQL active/revoked/expired record, database-clock active/unexpired source clone and no-overlap rotation, atomic success audit including a retained-pepper record, stopped-store bounded/redacted readiness failure and restart-requalified contract; cryptographic verifier, loopback JWKS/introspection outage, PKCE/state/nonce, Redis stores, session/CSRF and PostgreSQL tenant RLS contract</td><td>migration/restore exercise, client-key and pepper/KMS replacement fingerprint migration, external IdP revocation lifecycle, key/credential rotation and non-PostgreSQL tenant-policy integration evidence</td></tr>
-            <tr><td>NATS JetStream jobs</td><td><code>rustee-jobs</code>, <code>rustee-jobs-nats</code>, <code>rustee-jobs-observability</code>, <code>rustee-jobs-observability-prometheus</code>, trace crates</td><td>Contract-verified</td><td>durable publish/ack, retry/DLQ, registry failure, graceful drain, bounded provider/outcome Prometheus no-store exposition, stopped-broker bounded/redacted initial connect failure and restart recovery against JetStream</td><td>broader duplicate matrix, deployment version matrix and reconciliation procedure</td></tr>
-            <tr><td>Redis Streams jobs</td><td><code>rustee-jobs-redis</code></td><td>Contract-verified</td><td>5s configurable operation deadline, Redis 7 consumer-group ack, delayed retry, reclaim, DLQ and paused-server deadline/redaction contract</td><td>retention/replay, failover and reclaim-idle operation guidance</td></tr>
-            <tr><td>RabbitMQ jobs</td><td><code>rustee-jobs-rabbitmq</code>, <code>rustee-jobs-rabbitmq-management</code></td><td>Contract-verified</td><td>RabbitMQ 4.3 quorum confirm/manual ack/native delay/DLQ, connection-loss redelivery, stopped-broker bounded/redacted connect failure with restart recovery, and actual Management API topology snapshot audit; non-loopback Management access requires HTTPS</td><td>broader duplicate matrix, production Management TLS/ACL and deployment qualification</td></tr>
-            <tr><td>Amazon SQS jobs</td><td><code>rustee-jobs-sqs</code></td><td>Experimental</td><td>25s configurable operation deadline, LocalStack Standard/FIFO publish, visibility retry, direct/redrive DLQ, heartbeat and stopped-backend recovery contract</td><td>real AWS opt-in, IAM/KMS outage, Standard duplicate/receive-count variation and replay procedure</td></tr>
-            <tr><td>Kafka events</td><td><code>rustee-events</code>, event-delivery observability crates, <code>rustee-events-schema</code>, <code>rustee-events-schema-confluent</code>, <code>rustee-events-kafka</code>, <code>rustee-events-kafka-sqlx</code>, delayed-retry observability crates, event trace crate</td><td>Contract-verified</td><td>Apache Kafka bounded/redacted broker delivery deadline, stopped-broker/restart producer and consumer-metadata-readiness recovery, producer/commit/redelivery/drain/rebalance/lag/DLQ contract, post-source-commit acknowledged/retried/dead-lettered bounded delivery observer and no-store Prometheus contract, outbox/inbox integration, typed JSON Schema artifact/subject-version catalog/exact registry acknowledgement unit contract, Confluent-compatible local HTTP policy/lookup/register/relookup and redacted credential contract, and PostgreSQL database-clock delayed retry stage-before-source-commit, due lease relay, retry-table plus retry/DLQ metadata readiness, aggregate backlog, stored destination/header preservation, confirmation, bounded batch/idle-delay relay loop, cancellation-safe pass observer and fixed-label Prometheus no-store contract</td><td>real Confluent provider/version/credential/ACL/outage evidence and consumer-first rollout, deployment alert/backoff and migration/restore procedure, replay qualification and external side-effect idempotency</td></tr>
-          </tbody>
-        </table>
+        <h2>Current Declaration</h2>
         <p>
-          MongoDB의 official raw driver는 returned <code>Client</code>와 re-exported <code>mongodb</code> crate로 이미 접근할 수 있습니다.
-          <code>MongoTenantScope</code>는 direct foreign <code>$lookup</code>/<code>$unionWith</code>의 first-match tenant filter와
-          tenant B exclusion replica-set contract를 제공합니다. remaining gate는 raw-driver authorization, nested aggregation,
-          change-stream tenant review와 broader recovery입니다.
+          The documented core framework baseline has targeted automated verification. Optional
+          persistence, security, job, event, AI, MCP, and edge integrations have contract-specific
+          implementation, tests, and runbooks. Provider and topology evidence is intentionally owned
+          by each adopter rather than assumed by this repository.
         </p>
       </section>
-
       <section>
-        <h2>AI application</h2>
+        <h2>Matrix</h2>
         <table>
           <thead>
-            <tr><th>통합</th><th>crate</th><th>상태</th><th>현재 증거</th><th>Supported 승격 전 공백</th></tr>
+            <tr>
+              <th>Area</th>
+              <th>Framework readiness</th>
+              <th>Adopter qualification</th>
+            </tr>
           </thead>
           <tbody>
-            <tr><td>AI core and tool safety</td><td><code>rustee-ai</code>, <code>rustee-ai-test</code>, <code>rustee-ai-audit-sqlx</code></td><td>Experimental</td><td>deterministic provider, budget admission, provider-attempt reservation/completed usage settlement, approval/audit boundary, redacted telemetry and PostgreSQL ledger contract</td><td>atomic quota/pricing policy, provider lookup/refund, audit retention/retry and application authorization procedure</td></tr>
-            <tr><td>MCP remote tool and context client</td><td><code>rustee-ai-mcp</code></td><td>Experimental</td><td>local TCP HTTP JSON/SSE with opt-in bounded no-replay session reinitialize, valid event ID-only bounded <code>Last-Event-ID</code> GET resumption without POST replay, explicit standalone GET notification stream with bounded reconnect, bounded stdio subprocess initialize/discovery with explicit and opt-in automatic no-replay restart/backoff, deadline-driven connection discard, graceful/forced close, approval-gated execution, macOS/Windows every-PR workspace all-target compile plus Rust-fixture basic lifecycle, session safe close/invalidation, capability-gated typed resource/template/prompt list/read/get with no automatic model-context adoption, bounds and redaction contract</td><td>server-initiated request/sampling/elicitation, Windows advanced subprocess lifecycle, context subscription/completion, OAuth authorization, resource authorization/consent/redaction operation procedure and interoperability version matrix</td></tr>
-            <tr><td>MCP OAuth client</td><td><code>rustee-ai-mcp-oauth</code>, <code>rustee-ai-mcp-oauth-redis</code></td><td>Experimental</td><td>bounded protected-resource and authorization-server/OIDC fallback discovery, PKCE S256 validation, atomic state/verifier transaction, callback single-use, authorization-code and explicit refresh exchange with resource binding, explicit published-endpoint revocation then local deletion, redacted token set, AES-256-GCM Redis envelope bound to purpose/full key, active/retired decrypt key rotation, Redis TTL/GETDEL and container contract</td><td>tenant/user key policy and KMS/secret delivery, revoke/rotation/consent rollback runbook, cross-instance refresh coordination, authorization-server version matrix/live opt-in evidence and automatic scope step-up policy</td></tr>
-            <tr><td>MCP OAuth resource server</td><td><code>rustee-mcp-oauth</code></td><td>Experimental</td><td>validated canonical resource/metadata/issuer allowlist/scope configuration, public metadata GET, metadata challenge, 401 invalid-token and 403 insufficient-scope paths, normalized verified-principal issuer allowlist check/handoff and verifier-outage redaction in-process contract</td><td>external authorization-server/JWKS/introspection version and outage/key-rotation matrix, reverse-proxy canonical URL, issuer-to-verifier trust review, scope/tenant authorization procedure and opt-in live deployment evidence</td></tr>
-            <tr><td>MCP server</td><td><code>rustee-mcp</code></td><td>Experimental</td><td>in-process mounted Tower JSON server, fail-closed Origin allowlist, access-filtered tool discovery, approval and mandatory terminal audit, authenticated application-owned read-only resource/template/prompt provider, request/response/item bound, generic error/redaction contract; optional OAuth resource protection layer available separately</td><td>session/SSE GET/stdio, subscription/completion, dynamic inventory notification, CORS/deployment auth procedure and interoperability version matrix</td></tr>
-            <tr><td>AI evaluation</td><td><code>rustee-ai-eval</code></td><td>Experimental</td><td>bounded unique in-memory suite, generic trusted target/grader, sequential no-retry executor, content-free grade/model/usage report, deterministic provider redaction and failure-stops-later-case contract</td><td>durable authorized catalog/job reference, human/LLM grader trust and spend policy, comparative baseline/regression procedure, live provider matrix, cache/batch interoperability and retention/erase evidence</td></tr>
-            <tr><td>AI evaluation durable run</td><td><code>rustee-ai-eval</code>, <code>rustee-ai-eval-jobs</code>, <code>rustee-ai-eval-sqlx</code></td><td>Experimental</td><td>content-free scope/catalog/run-key reference, authorized catalog loader boundary, run-key-bound job, pending/completed reservation, duplicate completion reuse, failure-pending/no-second-provider-call unit contract and PostgreSQL exact-identity/pending/redaction contract</td><td>catalog authorization, report retention/erase, human/LLM grader trust and spend, comparative baseline/regression, live provider evidence and explicit fresh-run reconciliation procedure</td></tr>
-            <tr><td>AI response cache</td><td><code>rustee-ai-cache</code>, <code>rustee-ai-cache-redis</code></td><td>Experimental</td><td>application-generated tenant-scoped SHA-256 exact key, explicit TTL/read-failure policy, tool request/response exclusion, hit/write-failure status, exact invalidation, bounded in-memory fake and Redis namespace/size/TTL/delete opt-in contract</td><td>key-derivation and salt rotation procedure, Redis TLS/encryption/tenant erase, outage/restart and retention evidence, distributed stampede control, stale-answer UX and live provider cost accounting</td></tr>
-            <tr><td>AI provider batch submission</td><td><code>rustee-ai-batch</code>, <code>rustee-ai-batch-jobs</code>, <code>rustee-ai-batch-sqlx</code>, <code>rustee-ai-openai</code></td><td>Experimental</td><td>content-free tenant scope/catalog/run-key submission, atomic reserve/existing receipt/pending ambiguity, no-retry provider submit, output/error artifact reference with whole-artifact reserve/reconciled/pending ledger, authorized loader and application row-idempotent processor contract, reference-only durable jobs with exact key binding, PostgreSQL scope/reconciliation-key reservation/completion/pending query, safe generic OpenAI Batch JSONL builder plus typed <code>ChatRequest</code> Responses and ordered <code>EmbeddingInput</code> Embeddings row mapping, explicit <code>ChatResponse</code>/<code>Embedding</code> conversion, bounded upload/download/delete, create/retrieve/cancel safe snapshot, and structural output-row parser</td><td>catalog/artifact authorization, domain row idempotency schema and operator reconciliation, provider-only input validation, domain response semantics/side effect and partial-result routing, billing/reconciliation, queue retry/DLQ procedure, PostgreSQL outage/recovery, live provider/version/outage evidence and retention/delete schedule policy</td></tr>
-            <tr><td>OpenAI, web stream and RAG</td><td><code>rustee-ai-openai</code>, <code>rustee-ai-web</code>, RAG crates</td><td>Experimental</td><td>local Responses/SSE/Embeddings protocol, explicit bounded OpenAI Batch upload/download/delete/create/retrieve/cancel and output-row structure validation, stream adapter, ACL-revalidated retrieval and typed durable ingestion contract</td><td>live-provider opt-in with spend control, Batch artifact retention and semantic response contract, real document/vector source, provider trace and retention policy</td></tr>
+            <tr>
+              <td>Core HTTP, routing, server, middleware, configuration, observability, OpenAPI</td>
+              <td>Documented and automated</td>
+              <td>Record source and compatibility evidence for the selected release.</td>
+            </tr>
+            <tr>
+              <td>PostgreSQL, Redis, MongoDB, authentication</td>
+              <td>Optional adapters with targeted contracts</td>
+              <td>
+                Choose managed topology and identity provider; verify outage, recovery, ACLs, and
+                tenant policy.
+              </td>
+            </tr>
+            <tr>
+              <td>Jobs and outbox</td>
+              <td>Typed delivery contracts and provider adapters</td>
+              <td>
+                Choose provider/version/topology; verify duplicate and outage behavior with operator
+                runbooks.
+              </td>
+            </tr>
+            <tr>
+              <td>Kafka and schema registry</td>
+              <td>Event, retry/DLQ, delayed relay, schema, and observability contracts</td>
+              <td>
+                Verify registry credentials, ACLs, rollout/replay, and external effects for the
+                selected deployment.
+              </td>
+            </tr>
+            <tr>
+              <td>AI and MCP</td>
+              <td>Policy, provider, RAG, audit, eval, cache, batch, and MCP boundaries</td>
+              <td>
+                Verify live provider, data policy, billing, OAuth, approval/audit, and recovery for
+                the selected deployment.
+              </td>
+            </tr>
+            <tr>
+              <td>Edge delivery</td>
+              <td>Origin/proxy/cache boundary documentation</td>
+              <td>
+                Choose TLS/CDN/proxy topology and verify purge, drain, rollback, and outage
+                behavior.
+              </td>
+            </tr>
           </tbody>
         </table>
       </section>
-
       <section>
-        <h2>갱신 규칙</h2>
+        <h2>Update Rules</h2>
         <ul>
-          <li>새 crate는 이 표에 Experimental로 추가하고, public/publish intent와 non-goal을 같은 변경에 기록합니다.</li>
-          <li>Contract-verified 승격에는 실제 transport/backend command와 pinned provider version을 <a href="./testing.html">테스트 전략</a>에 연결합니다.</li>
-          <li>Supported 또는 Enterprise-qualified 승격에는 <a href="./adr/index.html">ADR</a>, version matrix, failure/upgrade/rollback evidence를 추가합니다.</li>
-          <li>코드, CI, provider version, release blocker가 바뀌면 이 표와 <a href="./implementation-review.html">구현 계획 재검토</a>를 같은 변경에서 갱신합니다.</li>
+          <li>
+            Update framework status when its documented contract, automation, or runbook changes.
+          </li>
+          <li>
+            Each adopter records provider version, topology, scope, date, owner, and expiry in its
+            qualification register.
+          </li>
+          <li>
+            Downgrade or annotate a deployment claim when its evidence expires, its supported
+            version changes, or a critical behavior is unverified.
+          </li>
+          <li>
+            Do not infer an adopter's support claim from compilation, a single test, or a local
+            container run.
+          </li>
         </ul>
       </section>
-
       <footer class="doc-footer">
-        <p>Last updated: 2026-08-04. Update this matrix whenever an adapter, provider version, verification contract, operational status, or release blocker changes.</p>
+        <p>
+          Last updated: 2026-08-09. Update this matrix whenever an implementation or support claim
+          changes.
+        </p>
       </footer>
     </main>
   </body>

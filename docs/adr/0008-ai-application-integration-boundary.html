@@ -1,133 +1,50 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ADR 0008 AI Application Integration Boundary</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADR 0008: AI Application Integration Boundary</title>
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
     <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
+        <nav class="nav" aria-label="Documentation">
+          <a href="./index.html">ADR</a><a href="../ai.html">AI</a>
         </nav>
       </div>
     </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0008</div>
-        <h1>AI Application 통합 경계</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-01.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0008: AI Application Integration Boundary</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          AI application은 단순한 HTTP client보다 넓은 문제를 가진다. chat/streaming, typed output, tool execution, retrieval,
-          conversation data, budget, prompt injection, tenant access control, observability가 하나의 사용자 workflow에서 함께 일어난다.
-          Spring AI는 ChatClient, advisor, tool, vector store 같은 조합 지점을 제공하지만, Rustee는 web framework로서 model provider나
-          side-effecting agent를 core에 넣지 않아야 한다.
+          AI applications need provider calls, retrieval, tools, streams, and evaluation while
+          treating model and retrieved content as untrusted input.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            AI application integration은 Stage 9C의 선택적 <code>rustee-ai</code>와 <code>rustee-ai-openai</code>로 시작한다.
-            <code>rustee-ai</code>는 provider-neutral message, structured output validation, stream event, typed tool,
-            embedding/retrieval boundary, final-request policy가 적용되는 <code>AiPipeline</code>, request/response/stream <code>AiAdvisor</code>, usage/error contract를 제공한다. 첫 provider adapter는
-            <code>reqwest</code>와 typed JSON/SSE codec 기반 OpenAI Responses API이며, vendor-specific capability는 명시적 adapter option으로 남긴다.
-          </p>
-        </div>
-        <ul>
-          <li><code>rustee-core</code>는 AI SDK, prompt, API credential, vector database를 의존하지 않는다.</li>
-          <li>advisor는 AI request/response/stream만 조합한다. <code>AiPipeline</code>은 한 호출에 하나의 explicit advisor를 받고, advisor가 만든 final request를 provider 직전에 다시 policy 검증한다. tenant policy, RAG, memory, redacted observability, budget의 순서는 application-owned composite advisor에 명시한다.</li>
-          <li>tool call은 untrusted model output이다. input validation, authorization, tenant scope, timeout, rate limit, audit, step/token budget을 거친다. <code>AiExecutionContext</code>는 verified principal/server-resolved tenant에서 application이 만들고 budget advisor와 approval policy가 같은 trusted scope를 보게 한다. <code>ToolExecutionContext</code>는 그 identity와 application-defined idempotency key를 typed handler 및 audit event에 공유한다.</li>
-          <li><code>BudgetAdvisor</code>는 provider 직전에 content-free <code>AiBudgetRequest</code>를 application-owned <code>AiBudgetPolicy</code>로 admission한다. durable provider attempt와 actual usage settlement는 후속 <a href="./0014-ai-provider-usage-reservation.html">ADR 0014</a>가 정한다. pricing, quota period, provider lookup/refund와 retention은 계속 application deployment가 소유한다.</li>
-          <li><code>rustee-ai-audit-sqlx</code>는 deployment-owned PostgreSQL migration을 제공한다. tenant + idempotency key ledger는 동일 approval/outcome 재기록을 멱등 처리하지만 actor/call/tool/risk 또는 first terminal outcome의 변경은 거부한다. pending query는 reconciliation input일 뿐 retry schedule, retention, external provider lookup 또는 handler 재실행을 자동화하지 않는다.</li>
-          <li><code>AiPipeline</code>와 <code>ToolRegistry</code>는 existing <code>tracing</code> subscriber에서 export 가능한 span을 만들되, request count/aggregate input character count/usage/fixed outcome/tool risk/latency만 기록한다. prompt, completion, model alias, provider response ID, tenant/subject, call ID, idempotency key, tool name/arguments/result는 기록하지 않는다. exporter, sampling, retention과 provider outbound propagation은 application deployment가 소유한다.</li>
-          <li>기본 tool mode는 caller-controlled다. <code>ToolRegistry</code>는 deny-by-default approval policy와 typed JSON decoding 뒤에만 handler를 호출한다. <code>execute_with_approval_audit</code>는 approval 뒤 audit sink를 먼저 성공시켜야 하고, 실패하면 handler를 시작하지 않는다. <code>execute_with_execution_audit</code>는 handler 뒤 terminal <code>Succeeded</code>/<code>Failed</code> outcome을 기록하며, outcome write 실패에는 rollback을 주장하지 않은 redacted reconciliation event를 반환한다. application은 idempotency key로 durable retention/retry와 재조정을 수행한다. audit event는 prompt, arguments, result를 갖지 않으며 context identifier도 Debug에 기록하지 않는다. automatic loop는 explicit policy와 action classification/approval을 요구하며 아직 제공하지 않는다.</li>
-          <li>RAG ingestion은 durable job으로 수행하고 retrieval은 application authorization filter를 먼저 적용한다. <code>rustee-ai-rag</code>은 store query와 returned chunk 양쪽에서 tenant/document allowlist를 확인하며, durable <code>DocumentReference</code>/<code>RagIngestionRequest</code>에는 text나 source URI를 넣지 않는다. worker는 application source에서 content/citation을 읽어 chunk, embedding, vector upsert를 검증하고 <code>rustee-ai-rag-jobs</code>가 typed job delivery를 연결한다. <code>rustee-ai-rag-advisor</code>는 application-owned query builder와 renderer가 명시적으로 선택한 message만 final request policy 전에 추가한다.</li>
-          <li>prompt/completion은 observability에 기본 export하지 않는다. AI provider 장애가 전체 HTTP service readiness를 자동으로 실패시키지 않는다.</li>
-          <li>MCP client/server는 Stage 10에서 protocol authorization과 tool trust model을 검증해 optional boundary로 추가했다. remote tool은 Rustee approval/audit을 우회하지 않고, server discovery/call은 application access policy와 trusted execution context를 요구한다. 세부 결정은 <a href="./0015-mcp-remote-tool-boundary.html">ADR 0015</a>와 <a href="./0016-mcp-tool-server-boundary.html">ADR 0016</a>에서 관리한다. additional provider는 별도 contract로 검토한다.</li>
-        </ul>
+        <p>
+          Provide optional provider-neutral pipeline contracts with final-request policy, verified
+          context, budget reservation, typed tools, approval, audit, redaction, RAG ACL
+          revalidation, and provider adapters.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>사용자는 Spring AI와 유사하게 chat, streaming, RAG, tool calling을 조합하지만, provider SDK와 HTTP handler가 분리된다.</li>
-          <li>tool과 retrieval에 <code>Principal</code>/tenant context가 이어져 데이터 노출과 action 권한을 프롬프트에만 맡기지 않는다.</li>
-          <li>자동 agent workflow는 더 많은 policy와 test가 필요하지만, model output이 직접 side effect를 만드는 위험이 줄어든다.</li>
-          <li>모델/embedding provider와 vector index를 바꿀 수 있으나, 이식 불가능한 capability는 named option과 integration test로 관리해야 한다.</li>
-          <li>RAG와 batch AI work가 request latency를 늘리지 않도록 jobs, storage, observability와의 경계가 필요하다.</li>
-        </ul>
+        <p>
+          Rustee does not own prompts, API keys, vector stores, automatic agent loops, domain
+          authorization, billing, or external side effects. Live provider and data-policy
+          qualification are separate release gates.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>대안</th>
-              <th>판단</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>model SDK를 core dependency로 포함</td>
-              <td>모든 web service에 필요하지 않고 provider churn과 credential 관리가 core API를 불안정하게 하므로 채택하지 않는다.</td>
-            </tr>
-            <tr>
-              <td>범용 <code>ChatModel</code> 하나로 모든 provider feature를 숨김</td>
-              <td>tool, reasoning, safety, hosted retrieval, multimodal capability 차이를 잃으므로 최소 공통 contract와 explicit option을 함께 사용한다.</td>
-            </tr>
-            <tr>
-              <td>tool call을 기본 자동 실행</td>
-              <td>prompt injection과 confused-deputy 위험을 키우므로 caller-controlled를 기본으로 하고 승인된 policy에서만 자동 loop를 허용한다.</td>
-            </tr>
-            <tr>
-              <td>conversation/prompt를 trace와 log에 기본 저장</td>
-              <td>민감정보와 retention risk가 크므로 redacted, opt-in audit sink로 분리한다.</td>
-            </tr>
-            <tr>
-              <td>RAG ingestion을 HTTP request 안에서 동기 처리</td>
-              <td>file parsing과 embedding이 길고 재시도가 필요하므로 durable job으로 분리한다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>Stage 9C에서 non-streaming/streaming chat, structured output, usage/error normalization과 request/response/stream <code>AiAdvisor</code>를 구현했다. OpenAI Responses text/function/SSE와 Embeddings batch/index-order adapter, local transport contract test, redacted SSE/NDJSON web response adapter는 구현됐고 opt-in live credential contract는 남아 있다.</li>
-          <li>typed tool, manual execution, deny-by-default approval boundary와 trusted <code>AiExecutionContext</code>, handler/audit idempotency key를 위한 <code>ToolExecutionContext</code> 전달은 구현했다. provider 전 content-free budget admission, approved-handler 전 fail-closed audit, terminal outcome audit과 post-handler write failure의 reconciliation hand-off, PostgreSQL replay-safe audit ledger/pending query, pipeline/tool redacted OTel-exportable span도 contract로 구현했다. <a href="./0014-ai-provider-usage-reservation.html">ADR 0014</a>는 durable usage reservation/completed usage settlement와 pending reconciliation query를 추가했다. application-specific tenant approval policy, atomic quota/pricing policy, provider lookup/refund, audit retention/retry worker, exporter/sampling/retention과 provider trace propagation policy를 구현한다.</li>
-          <li>RAG retrieval scope, returned-chunk ACL filter와 citation contract, content-free document revision ingestion, chunk/embedding/vector upsert validation, capability declaration, typed durable job과 explicit advisor integration을 구현했다. OpenAI Embeddings adapter는 batch response index를 검증해 provider-neutral ordering을 보장한다. actual document source/vector adapter와 opt-in live provider test를 구현한다.</li>
-          <li>Stage 10에서 <code>rustee-ai-mcp</code> JSON/SSE POST-response의 opt-in no-replay session recovery, valid event ID 뒤 GET만 사용하는 bounded no-POST-replay SSE resumption, explicit standalone GET notification stream과 no-replay explicit/opt-in automatic restart가 가능한 bounded stdio remote-tool client, negotiated capability의 read-only resource/template/prompt list/read/get client와 authenticated <code>McpContextProvider</code> 기반 resource/template/prompt serving을 갖춘 <code>rustee-mcp</code> JSON server를 구현했다. standalone notification은 tool/provider/context에 자동 주입하지 않고 server request/response를 거부한다. macOS/Windows CI matrix는 Rust fixture로 stdio initialize/discovery/approved execution/close 기본 경로를 검증하도록 구성한다. MCP context는 <code>ChatRequest</code>에 자동 주입하지 않는다. client/server full session lifecycle, server-initiated request/sampling/elicitation, Windows advanced subprocess lifecycle, context subscription/completion, OAuth authorization, additional provider, controlled auto-tool loop, evaluation과 cache는 별도 contract로 검토한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes its AI core boundary, default tool execution policy, first provider adapter, or RAG authorization direction.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>

@@ -17,7 +17,9 @@ fn redis_url() -> String {
 #[ignore = "requires a Redis server; CI provisions one"]
 async fn fixed_window_rate_limit_is_atomic_and_bounded() {
     let connection = connect(&RedisConfig::new(redis_url())).await.unwrap();
-    readiness(&connection).await.unwrap();
+    readiness(&connection, std::time::Duration::from_secs(1))
+        .await
+        .unwrap();
     let store = RedisFixedWindowStore::new(connection, "rustee:rate-limit:contract:v1").unwrap();
     let key = RateLimitKey::new(format!("client-{}", Uuid::new_v4().simple())).unwrap();
     let policy = FixedWindow::new(2, Duration::from_secs(30)).unwrap();

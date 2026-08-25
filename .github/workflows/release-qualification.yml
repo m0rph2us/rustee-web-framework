@@ -24,16 +24,51 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --workspace --lib --all-features -- -D warnings -D clippy::unwrap_used
+      - run: cargo clippy --locked --workspace --bins --all-features -- -D warnings -D clippy::unwrap_used
+      - run: RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --locked --workspace --all-features --no-deps
       - run: cargo test --workspace --all-targets --locked
+      - run: cargo test --locked --workspace --all-features --all-targets
+      - run: cargo test --locked -p rustee --no-default-features --features macros
+      - run: cargo test --locked -p rustee --no-default-features --features openapi
       - run: cargo test --doc --workspace --locked
-      - run: cargo test -p rustee --features openapi --test openapi_facade --locked
-      - run: cargo test -p rustee --features macros --test from_header_derive --test from_header_ui --test routes_macro --test routes_ui --locked
+      - run: cargo test --locked --doc --workspace --all-features
+      - run: node scripts/check-english-content.mjs
+      - run: node scripts/check-no-unimplemented-source.mjs
+      - run: node scripts/check-tracing-redaction-gate.mjs
+      - run: node scripts/check-tracing-redaction-gate.mjs --self-test
+      - run: node scripts/check-public-generic-debug-gate.mjs
+      - run: node scripts/check-public-generic-debug-gate.mjs --self-test
+      - run: node scripts/check-public-error-debug-redaction-gate.mjs
+      - run: node scripts/check-public-error-debug-redaction-gate.mjs --self-test
+      - run: node scripts/check-public-wildcard-reexports.mjs
+      - run: node scripts/check-public-wildcard-reexports.mjs --self-test
+      - run: node scripts/check-http-redirect-gate.mjs
+      - run: node scripts/check-http-redirect-gate.mjs --self-test
       - run: node scripts/check-html-links.mjs
+      - run: node scripts/check-html-document-structure.mjs
+      - run: node scripts/check-html-document-formatting.mjs
+      - run: node scripts/check-ai-context-module-boundaries.mjs
+      - run: node scripts/check-core-dependency-boundaries.mjs
+      - run: node scripts/check-core-dependency-boundaries.mjs --self-test
+      - run: node scripts/check-workflow-cargo-lock.mjs
+      - run: node scripts/check-workspace-lint-inheritance.mjs
+      - run: node scripts/check-feature-test-gate.mjs
+      - run: node scripts/check-feature-gated-test-targets.mjs
+      - run: node scripts/check-feature-clippy-gate.mjs
+      - run: node scripts/check-production-unwrap-gate.mjs
+      - run: node scripts/check-rustdoc-quality-gate.mjs
+      - run: node scripts/check-qualification-register.mjs
+      - run: node scripts/check-qualification-register.mjs --self-test
       - run: node scripts/check-release-inventory.mjs
+      - run: node scripts/check-release-inventory.mjs --self-test
       - run: node scripts/check-workflow-action-pins.mjs
+      - run: node scripts/check-workflow-container-image-pins.mjs
+      - run: node scripts/check-contract-workflow-coverage.mjs
+      - run: node scripts/check-fuzz-workflow-targets.mjs
       - run: node scripts/package-release-candidates.mjs
-      - run: cargo check -p rustee-events-kafka --features rdkafka --locked
       - run: sha256sum target/package/*.crate > target/package/SHA256SUMS
       - run: cargo install --locked cargo-cyclonedx@0.5.9
       - run: cargo cyclonedx --format json --all-features --target all --spec-version 1.5 --override-filename sbom.cdx -qq

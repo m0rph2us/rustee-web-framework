@@ -1,106 +1,41 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ADR 0014: AI Provider Usage Reservation</title>
-    <link rel="stylesheet" href="../assets/rustee-docs.css">
+    <link rel="stylesheet" href="../assets/rustee-docs.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="brand" href="../index.html">Rustee</a>
-        <nav class="nav" aria-label="문서">
-          <a href="../design-philosophy.html">철학</a>
-          <a href="../architecture.html">구조</a>
-          <a href="../database.html">데이터베이스</a>
-          <a href="../redis.html">Redis</a>
-          <a href="../mongodb.html">MongoDB</a>
-          <a href="../authentication.html">인증</a>
-          <a href="../queues.html">Queue</a>
-          <a href="../events.html">Event</a>
-          <a href="../ai.html">AI</a>
-          <a href="../testing.html">Test</a>
-          <a href="../operations.html">운영</a>
-          <a href="../roadmap.html">로드맵</a>
-          <a href="../ai-context.html">AI 유지관리</a>
-          <a href="./index.html">ADR</a>
-        </nav>
-      </div>
-    </header>
-
     <main class="page">
       <section class="hero">
-        <div class="eyebrow">ADR 0014</div>
-        <h1>AI provider usage reservation</h1>
-        <p class="lead">Status: Accepted. Date: 2026-08-03.</p>
+        <div class="eyebrow">Architecture Decision Record</div>
+        <h1>ADR 0014: AI Provider Usage Reservation</h1>
+        <p class="meta">Status: Accepted</p>
       </section>
-
       <section>
         <h2>Context</h2>
         <p>
-          provider 호출 전 quota를 검사하는 것만으로는 실패, HTTP retry, stream consumer drop 뒤 실제 호출과 token usage를
-          구분할 수 없다. transport error는 provider가 요청을 받지 않았다는 증거가 아니며, stream body가 중단되면
-          terminal usage도 알 수 없다. 이 상태에서 framework가 provider를 재시도하거나 reservation을 자동 refund하면
-          중복 호출, 이중 청구 또는 quota bypass를 만들 수 있다.
+          AI requests can incur provider cost and must not bypass tenant, budget, or audit policy
+          through retries or multiple pipeline paths.
         </p>
       </section>
-
       <section>
         <h2>Decision</h2>
-        <div class="decision">
-          <p>
-            durable AI 경로는 verified tenant/subject, content-free request metadata와 application-owned stable key로
-            <code>AiUsageReservation</code>을 만든다. <code>AiUsageLedger</code>가 <code>Reserved</code>를 반환한
-            호출만 provider를 한 번 시작할 수 있다. non-stream response 또는 stream <code>Completed(Usage)</code>가
-            도착하면 같은 reservation에 actual usage를 terminal settlement로 기록한다. advisor와 함께 쓰는 path는 advisor가 만든
-            final request를 reserve하고 raw terminal usage를 response/event advisor hook 전에 settle한다.
-          </p>
-        </div>
-        <ul>
-          <li>same key의 pending reservation은 <code>PendingReconciliation</code>, completed reservation은 <code>AlreadySettled</code>로 provider 호출 전에 차단한다.</li>
-          <li>provider transport failure, incomplete stream, browser/body drop은 usage나 refund를 추측하지 않고 pending으로 남긴다.</li>
-          <li>completion 뒤 ledger write가 실패하면 response를 포함한 reconciliation error 또는 stream error를 반환하며, framework는 provider를 재시도하지 않는다.</li>
-          <li><code>rustee-ai-audit-sqlx</code>은 PostgreSQL pending/completed usage ledger, replay-safe same usage settlement, changed identity/usage rejection, bounded pending query를 제공한다.</li>
-          <li>가격표, token-to-currency conversion, quota 기간, hard limit과 reservation의 atomic admission은 application-owned ledger implementation 또는 service transaction이 소유한다.</li>
-        </ul>
+        <p>
+          Reserve a content-free provider attempt before dispatch and settle observed usage
+          afterward through explicit <code>AiUsageReservation</code> and ledger contracts.
+        </p>
       </section>
-
       <section>
         <h2>Consequences</h2>
-        <ul>
-          <li>framework는 provider-neutral 경계를 유지하면서 provider attempt의 불확실성을 숨기지 않는다.</li>
-          <li>application은 pending row를 provider idempotency lookup, policy timeout 또는 manual review로 처리해야 한다.</li>
-          <li>prompt, completion, model alias, identity와 idempotency key는 ledger Debug와 tracing default field에 노출하지 않는다.</li>
-          <li>legacy <code>BudgetAdvisor</code>는 content-free pre-admission hook으로 남고, durable accounting은 ledger-aware pipeline API를 명시해 사용한다.</li>
-        </ul>
+        <p>
+          Pricing, quotas, refunds, provider reconciliation, and cross-service atomicity remain
+          application policy. A reservation does not expose prompt content or guarantee provider
+          billing equivalence.
+        </p>
       </section>
-
-      <section>
-        <h2>Alternatives</h2>
-        <table>
-          <thead><tr><th>대안</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td>provider error 때 자동 refund</td><td>요청이 provider에 도달했는지 알 수 없어 quota bypass 또는 이중 호출을 만들 수 있으므로 채택하지 않는다.</td></tr>
-            <tr><td>response ID만 idempotency key로 사용</td><td>response ID는 provider 호출 뒤에만 생기며 pre-call duplicate 차단을 할 수 없으므로 채택하지 않는다.</td></tr>
-            <tr><td>framework가 가격과 quota 기간을 표준화</td><td>model, 계약, currency, tenant policy를 일반화할 수 없으므로 content-free lifecycle contract만 제공한다.</td></tr>
-            <tr><td>모든 AI 호출에 durable ledger 강제</td><td>ephemeral 내부 기능과 custom billing store를 막으므로 opt-in explicit pipeline 경로로 둔다.</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2>Follow-up</h2>
-        <ul>
-          <li>application은 provider idempotency capability, pending reservation SLA, refund/manual-review procedure를 release gate에 기록한다.</li>
-          <li>quota admission과 usage reservation을 함께 보장할 필요가 있으면 application ledger implementation에서 한 durable transaction으로 처리한다.</li>
-          <li>live provider credential contract에는 spend limit과 terminal usage/reconciliation observability를 추가한다.</li>
-        </ul>
-      </section>
-
-      <footer class="doc-footer">
-        <p>Last updated: 2026-08-03. Supersede this ADR if Rustee changes AI usage settlement, retry, refund, or durable accounting ownership.</p>
-      </footer>
+      <footer class="doc-footer"><p>Last updated: 2026-08-08.</p></footer>
     </main>
   </body>
 </html>
